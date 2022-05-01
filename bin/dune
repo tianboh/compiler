@@ -1,0 +1,4 @@
+(executable
+ (name c0c)
+ (modes byte exe)
+ (libraries compiler))
