@@ -9,7 +9,7 @@
  *   - Use a linear, not quadratic, algorithm.
  *
  * Implements a "convenient munch" algorithm
- *)
+*)
 
 open Core
 module T = Tree
@@ -26,7 +26,7 @@ let munch_op = function
 (* munch_exp dest exp
  *
  * Generates instructions for dest <-- exp.
- *)
+*)
 let munch_exp : AS.operand -> T.exp -> AS.instr list =
   (* munch_exp_acc dest exp rev_acc
    *
@@ -43,9 +43,9 @@ let munch_exp : AS.operand -> T.exp -> AS.instr list =
    * statements are built in reverse. This allows us to create the
    * statements in linear time rather than quadratic time (for highly
    * nested expressions).
-   *)
+  *)
   let rec munch_exp_acc (dest : AS.operand) (exp : T.exp) (rev_acc : AS.instr list)
-      : AS.instr list
+    : AS.instr list
     =
     match exp with
     | T.Const n -> AS.Mov { dest; src = AS.Imm n } :: rev_acc
@@ -57,12 +57,12 @@ let munch_exp : AS.operand -> T.exp -> AS.instr list =
    *
    * Much like munch_exp, this returns the result of appending the
    * instructions in reverse to the accumulator argument, rev_acc.
-   *)
+  *)
   and munch_binop_acc
       (dest : AS.operand)
       ((binop, e1, e2) : T.binop * T.exp * T.exp)
       (rev_acc : AS.instr list)
-      : AS.instr list
+    : AS.instr list
     =
     let op = munch_op binop in
     let t1 = AS.Temp (Temp.create ()) in

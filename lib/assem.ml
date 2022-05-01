@@ -7,11 +7,27 @@
  *
  * Currently just a pseudo language with 3-operand
  * instructions and arbitrarily many temps
- *)
+*)
 
 open Core
 
-type reg = EAX
+type reg = 
+  | EAX
+  | EBX
+  | ECX
+  | EDX
+  | ESI
+  | EDI
+  | EBP
+  | ESP
+  | E8D
+  | E9D
+  | E10D
+  | E11D
+  | E12D
+  | E13D
+  | E14D
+  | E15D
 
 type operand =
   | Imm of Int32.t
@@ -42,7 +58,22 @@ type instr =
 (* functions that format assembly output *)
 
 let format_reg = function
-  | EAX -> "%eax"
+  | EAX  -> "%eax"
+  | EBX  -> "%ebx"
+  | ECX  -> "%ecx"
+  | EDX  -> "%edx"
+  | ESI  -> "%esi"
+  | EDI  -> "%edi"
+  | EBP  -> "%ebp"
+  | ESP  -> "%esp"
+  | E8D  -> "%e8d"
+  | E9D  -> "%e9d"
+  | E10D -> "%e10d"
+  | E11D -> "%e11d"
+  | E12D -> "%e12d"
+  | E13D -> "%e13d"
+  | E14D -> "%e14d"
+  | E15D -> "%e15d"
 ;;
 
 let format_binop = function

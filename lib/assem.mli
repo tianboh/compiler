@@ -8,9 +8,25 @@
  * Currently just a pseudo language with 3-operand
  * instructions and arbitrarily many temps
  *
- *)
+*)
 
-type reg = EAX
+type reg = 
+  | EAX
+  | EBX
+  | ECX
+  | EDX
+  | ESI
+  | EDI
+  | EBP
+  | ESP
+  | E8D
+  | E9D
+  | E10D
+  | E11D
+  | E12D
+  | E13D
+  | E14D
+  | E15D
 
 type operand =
   | Imm of Int32.t
