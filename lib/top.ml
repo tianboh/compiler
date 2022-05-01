@@ -11,7 +11,7 @@
  *   - Switch from ocamlbuild to dune 2.7
  *   - TODO: Add support for expect tests
  *   - Update to Core v0.14
- *)
+*)
 
 open Core
 
@@ -70,6 +70,7 @@ type cmd_line_args =
   ; emit : Emit.t
   ; opt_level : Opt_level.t
   ; filename : string
+  ;l1checkpoint : bool
   }
 
 (* A term (using the vocabulary of the Cmdliner library) that can be used to
@@ -85,7 +86,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
    *
    * even if e1 is of type 'a Term.t, we can use x as having type 'a
    * in the body of e2.
-   *)
+  *)
   let module Let_syntax = struct
     let return = Term.pure
     let map ~f a = Term.(return f $ a)
@@ -130,6 +131,9 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and filename =
     let doc = "The source file $(docv) to compile." in
     Arg.(required (pos 0 (some non_dir_file) None (info [] ~doc ~docv:"FILE")))
+  and l1checkpoint =
+    let doc = "Used for L1 checkpoint only." in
+    flag (Arg.info ["r"] ~doc)
   in
   { verbose
   ; dump_parsing
@@ -141,6 +145,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   ; emit
   ; opt_level
   ; filename
+  ; l1checkpoint
   }
 ;;
 
@@ -207,7 +212,7 @@ let run (cmd : cmd_line_args) : unit =
 (* Compiler entry point
  * Use the cmd_line_term to parse the command line arguments, and pass the
  * parsed args to the run function.
- *)
+*)
 let main () =
   let open Cmdliner in
   let cmd_line_info = Term.info "c0c" ~doc:"Compile a c0c source file." in

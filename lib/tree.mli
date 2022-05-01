@@ -4,7 +4,7 @@
  * Modified: Alex Vaynberg <alv@andrew.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
- *)
+*)
 
 type binop =
   | Add
@@ -22,7 +22,7 @@ type exp =
       ; rhs : exp
       }
 
-and stm =
+type stm =
   | Move of
       { dest : Temp.t
       ; src : exp

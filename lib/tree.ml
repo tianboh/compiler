@@ -22,7 +22,7 @@ type exp =
       ; rhs : exp
       }
 
-and stm =
+type stm =
   | Move of
       { dest : Temp.t
       ; src : exp
