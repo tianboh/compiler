@@ -1,0 +1,10 @@
+//test return 1
+
+// successfully assigned after declare and initialize
+
+int main() 
+{ 
+    int a = 1;
+    a = 3;
+    return 1; 
+}

@@ -1,0 +1,8 @@
+//test div-by-zero
+// variable calculation div-by-zero due to mod
+
+int main(){
+    int a = 1;
+    int b = a;
+    return a % (b - a);
+}
