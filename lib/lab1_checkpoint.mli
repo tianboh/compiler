@@ -4,7 +4,7 @@ type reg = string
 
 type line =
   { uses : reg list
-  ; defines : reg list
+  ; define : reg
   ; live_out : reg list
   ; move : bool
   ; line_number : int

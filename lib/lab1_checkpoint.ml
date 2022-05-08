@@ -4,7 +4,7 @@ type reg = string
 
 type line =
   { uses : reg list
-  ; defines : reg list
+  ; define : reg
   ; live_out : reg list
   ; move : bool
   ; line_number : int
@@ -15,11 +15,11 @@ type program = line list
 let line_of_json json =
   let open Yojson.Basic.Util in
   let uses = json |> member "Uses" |> to_list |> List.map ~f:to_string in
-  let defines = json |> member "Defines" |> to_list |> List.map ~f:to_string in
+  let define = json |> member "Defines" |> to_list |> List.map ~f:to_string |> String.concat in
   let live_out = json |> member "Live_out" |> to_list |> List.map ~f:to_string in
   let move = json |> member "Move" |> to_bool in
   let line_number = json |> member "Line" |> to_int in
-  { uses; defines; live_out; move; line_number }
+  { uses; define; live_out; move; line_number };
 ;;
 
 let program_of_json (json : Yojson.Basic.t) =
