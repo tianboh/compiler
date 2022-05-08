@@ -70,7 +70,6 @@ type cmd_line_args =
   ; emit : Emit.t
   ; opt_level : Opt_level.t
   ; filename : string
-  ;l1checkpoint : bool
   }
 
 (* A term (using the vocabulary of the Cmdliner library) that can be used to
@@ -131,9 +130,6 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and filename =
     let doc = "The source file $(docv) to compile." in
     Arg.(required (pos 0 (some non_dir_file) None (info [] ~doc ~docv:"FILE")))
-  and l1checkpoint =
-    let doc = "Used for L1 checkpoint only." in
-    flag (Arg.info ["r"] ~doc)
   in
   { verbose
   ; dump_parsing
@@ -145,7 +141,6 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   ; emit
   ; opt_level
   ; filename
-  ; l1checkpoint
   }
 ;;
 
