@@ -59,3 +59,7 @@ type instr =
   | Comment of string
 
 val format : instr -> string
+
+val reg_to_str : reg -> string
+
+val str_to_reg : string -> reg

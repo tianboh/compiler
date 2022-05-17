@@ -57,7 +57,7 @@ type instr =
 
 (* functions that format assembly output *)
 
-let format_reg = function
+let reg_to_str = function
   | EAX  -> "%eax"
   | EBX  -> "%ebx"
   | ECX  -> "%ecx"
@@ -76,6 +76,27 @@ let format_reg = function
   | E15D -> "%e15d"
 ;;
 
+let str_to_reg = function
+  | "%eax" -> EAX 
+  | "%ebx" -> EBX 
+  | "%ecx" -> ECX 
+  | "%edx" -> EDX 
+  | "%esi" -> ESI 
+  | "%edi" -> EDI 
+  | "%ebp" -> EBP 
+  | "%esp" -> ESP 
+  | "%e8d" -> E8D 
+  | "%e9d" -> E9D 
+  | "%e10d" -> E10D
+  | "%e11d" -> E11D
+  | "%e12d" -> E12D
+  | "%e13d" -> E13D
+  | "%e14d" -> E14D
+  | "%e15d" -> E15D
+  | _ -> EAX
+;;
+
+
 let format_binop = function
   | Add -> "+"
   | Sub -> "-"
@@ -87,7 +108,7 @@ let format_binop = function
 let format_operand = function
   | Imm n -> "$" ^ Int32.to_string n
   | Temp t -> Temp.name t
-  | Reg r -> format_reg r
+  | Reg r -> reg_to_str r
 ;;
 
 let format = function

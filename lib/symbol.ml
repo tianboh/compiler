@@ -4,7 +4,7 @@
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  * Modified: Alice Rao <alrao@andrew.cmu.edu>
  * Modified: Nick Roberts <nroberts@alumni.cmu.edu>
- *)
+*)
 
 open Core
 
