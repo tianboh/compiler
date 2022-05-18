@@ -1,7 +1,7 @@
 open Core
 open Lab1_checkpoint
 open Printf
-open Assem
+(* open Assem *)
 
 let (<?>) c (cmp, x, y) = 
   if c = 0
@@ -11,31 +11,6 @@ let (<?>) c (cmp, x, y) =
 let reg_str_cmp (t1 : string) (t2 : string) = 
   Int.compare (String.length t1) (String.length t2)
   <?> (String.compare, t1, t2)
-;;
-
-(* let reg_cmp (t1 : Assem.reg) (t2 : Assem.reg) = 
-   let t1_str = reg_to_str t1 in
-   let t2_str = reg_to_str t2 in
-   reg_str_cmp t1_str t2_str
-   ;; *)
-
-(* Build single linked adjacency list based on original .in file. *)
-let build_ori_adj_hash (prog : program) =
-  let hash = Hashtbl.create (module String) in 
-  let rec helper prog hash = match prog with 
-    | [] -> hash
-    | h :: t -> 
-      let s1 = match Hashtbl.find hash h.define with 
-        | Some s -> s
-        | None -> Set.empty (module String) in
-      let s2 = Set.of_list (module String) h.live_out in
-      let s_u = Set.union s1 s2 in
-      match h.define with
-      | "" -> hash
-      | _ -> 
-        Hashtbl.set hash ~key: h.define ~data: s_u;
-        helper t hash;
-  in helper prog hash
 ;;
 
 let build_clique adj live_out = 
@@ -48,29 +23,52 @@ let build_clique adj live_out =
             let s2 = Set.of_list (module String) [v] in
             let s = Set.union s1 s2 in
             Hashtbl.set adj ~key:u ~data:s;
-          else
-            ()
+          else ()
         ));
 ;;
 
+(* Build edge between def and live_out *)
+let build_def_lo adj u vs =
+  Set.iter vs ~f:(fun v -> 
+      let s_u = match Hashtbl.find adj u with
+        | None -> Set.empty (module String)
+        | Some s -> s in
+      let s_v = match Hashtbl.find adj v with
+        | None -> Set.empty (module String)
+        | Some s -> s in
+      Hashtbl.set adj ~key:u ~data:(Set.union s_u (Set.of_list (module String) [v]));
+      Hashtbl.set adj ~key:v ~data:(Set.union s_v (Set.of_list (module String) [u])))
+;;
+
+(* Build interference graph
+   1. Build clique based on live_out 
+   2. Build based on def and live_out. 
+        The insight here is we cannot allocate/assign register for def with the same register as 
+        registers allocated for live_out temps
+*)
+let rec _build_graph prog adj = match prog with 
+  | [] -> adj
+  | h :: t -> 
+    let s1 = match Hashtbl.find adj h.define with 
+      | Some s -> s
+      | None -> Set.empty (module String) in
+    let s2 = Set.of_list (module String) h.live_out in
+    let s_u = Set.union s1 s2 in
+    match h.define with
+    | "" -> adj
+    | _ -> 
+      Hashtbl.set adj ~key: h.define ~data: s_u;
+      build_clique adj s2;
+      if Set.mem s2 h.define
+      then ()
+      else build_def_lo adj h.define s2;
+      _build_graph t adj
+;;
+
 (* Build double(mutually) linked adjacency list based on .in file.*)
-let build_mut_adj_hash (prog : program) = 
+let build_graph (prog : program) = 
   let adj = Hashtbl.create (module String) in
-  let rec helper prog adj = match prog with 
-    | [] -> adj
-    | h :: t -> 
-      let s1 = match Hashtbl.find adj h.define with 
-        | Some s -> s
-        | None -> Set.empty (module String) in
-      let s2 = Set.of_list (module String) h.live_out in
-      let s_u = Set.union s1 s2 in
-      match h.define with
-      | "" -> adj
-      | _ -> 
-        Hashtbl.set adj ~key: h.define ~data: s_u;
-        build_clique adj s2;
-        helper t adj;
-  in helper prog adj
+  _build_graph prog adj
 ;;
 
 let gen_line_to_tmp prog = 
@@ -129,12 +127,8 @@ let rec _seo adj reg_table seq =
                              | Some (_, data') -> 
                                (* let () = printf "  current accu %s %d\n" key' data' in *)
                                if data' < data 
-                               then 
-                                 (* let () = printf "  accu not change\n" in *)
-                                 accu
-                               else 
-                                 (* let () = printf "  find smaller value with %s %d\n" key data in *)
-                                 Some (key, data)
+                               then accu
+                               else Some (key, data)
                            ) with
     | None -> failwith "empty reg_table"
     | Some s -> s in 
@@ -148,7 +142,8 @@ let rec _seo adj reg_table seq =
         | Some v -> 
           let order = v + 1 in
           Hashtbl.set reg_table ~key:x ~data:order;
-          printf "---> %s update node %s's order to %d\n" u x order);
+          (* printf "---> %s update node %s's order to %d\n" u x order *)
+      );
     Hashtbl.remove reg_table u;
     _seo adj reg_table seq_new;
 ;;
@@ -161,55 +156,58 @@ let seo adj prog =
 
 (* Check whether register reg is already assigned to some temporary in adj *)
 let reg_is_assigned reg tmp_to_reg adj = 
-  let () = printf "check whether reg %s is assigned\n" (reg_to_str reg) in
+  (* let () = printf "check whether reg %s is assigned\n" (reg_to_str reg) in *)
   Set.fold ~init:false adj ~f:(fun acc tmp -> 
       match Hashtbl.find tmp_to_reg tmp with
       | None -> false || acc
       | Some reg' -> 
-        if reg_str_cmp (reg_to_str reg) (reg_to_str reg') = 0
+        if reg_str_cmp reg reg' = 0
         then 
-          let () = printf "register %s is already allocated\n" (reg_to_str reg) in
-          true || acc;
+          (* let () = printf "register %s is already allocated\n" (reg_to_str reg) in *)
+          true || acc
         else 
-          let () = printf "register %s is not allocated\n" (reg_to_str reg) in
-          false || acc;
+          (* let () = printf "register %s is not allocated\n" (reg_to_str reg) in *)
+          false || acc
     )
 ;;
 
-let rec _alloc reg_list tmp tmp_to_reg adj = 
-  let () = printf "_alloc for tmp %s\n" tmp in
+(* Allocate register for tmp. *)
+let rec alloc reg_list tmp tmp_to_reg adj = 
+  (* let () = printf "_alloc for tmp %s\n" tmp in *)
   match reg_list with
   | [] -> failwith "No available register."
   | h :: t -> 
     if reg_is_assigned h tmp_to_reg adj
-    then
-      _alloc t tmp tmp_to_reg adj
-    else
-      h
+    then alloc t tmp tmp_to_reg adj
+    else h
 ;;
 
-(* Allocate register for tmp. *)
-let alloc reg_list tmp tmp_to_reg adj = 
-  let () = printf "\nallocate register for tmp %s\n" tmp in
-  _alloc reg_list tmp tmp_to_reg adj;
+let is_tmp par = 
+  String.compare (String.sub par ~pos:1 ~len:1) "t" = 0
 ;;
 
-let rec _greedy (seq : string list) adj reg_list tmp_to_reg = match seq with
+let is_reg par = 
+  String.compare (String.sub par ~pos:1 ~len:1) "r" = 0
+;;
+
+let rec _greedy seq adj reg_list tmp_to_reg  = match seq with
   | [] -> tmp_to_reg
   | h :: t -> 
     let nbr = Hashtbl.find_exn adj h in
     let reg = alloc reg_list h tmp_to_reg nbr in
-    let () = Hashtbl.set tmp_to_reg ~key:h ~data:reg in
-    let () = printf "assign reg %s to tmp %s\n" (reg_to_str reg) h in
-    _greedy t adj reg_list tmp_to_reg
+    if is_tmp h
+    then Hashtbl.set tmp_to_reg ~key:h ~data:reg
+    else ();
+    (* let () = printf "assign reg %s to tmp %s\n" (reg_to_str reg) h in *)
+    _greedy t adj reg_list tmp_to_reg 
 ;;
 
+(* Infinite registers to allocate during greedy coloring. *)
 let greedy seq adj tmp_to_reg = 
-  let () = printf "greedy coloring\n" in 
-  (* let seq_for_greedy = List.rev seq in
-     let () = List.iter  ~f:(printf "%s ") seq_for_greedy in
-     let () = printf "\n" in *)
-  let reg_list = [EAX; EBX; ECX; EDX; ESI; EDI; EBP; ESP; E8D; E9D; E10D; E11D; E12D; E13D; E14D; E15D] in
+  let () = printf "\n" in
+  let keys = Hashtbl.keys adj in
+  let reg_list = List.filter keys ~f:(fun x -> is_reg x) in
+  let reg_list = reg_list @ ["%e1d";"%e2d";"%e3d";"%e4d";"%e5d";"%e6d";"%e7d";"%e8d";"%e9d"; "%e10d"; "%e11d"; "%e12d"; "%e13d"; "%e14d"; "%e15d"] in
   _greedy seq adj reg_list tmp_to_reg
 ;;
 
@@ -219,33 +217,44 @@ let pre_color prog =
       match line.define with
       | "" -> ()
       | s -> 
-        if String.compare (String.sub s ~pos:1 ~len:1) "t" = 0
+        if is_tmp s
         then ()
-        else
-          Hashtbl.set hash ~key:line.define ~data:(str_to_reg line.define);
+        else Hashtbl.set hash ~key:line.define ~data:line.define;
     );
   hash;
 ;;
 
+let rec gen_result color prog  = match prog with
+  | [] -> []
+  | h :: t ->
+    let tmp = h.define in
+    let reg = Hashtbl.find color tmp in
+    let tk = match reg with
+      | None -> None
+      | Some reg' -> 
+        if String.compare tmp reg' = 0
+        then None
+        else Some (tmp, reg') 
+    in tk :: (gen_result color t)
+;;
+
 let print_tmp_to_reg color = 
   let () = printf "\n\n==========\nTemporary to register\n" in
-  Hashtbl.iteri color ~f:(fun ~key ~data -> printf "%s -> %s\n" key (reg_to_str data));
-  let l = List.map (Hashtbl.data color) ~f:(fun x -> reg_to_str x) in
-  (* let s = Set.empty (module String)in
-     let () = List.iter l ~f:(fun x -> Set.add s x) in *)
+  Hashtbl.iteri color ~f:(fun ~key ~data -> printf "%s -> %s\n" key  data);
+  let l = List.map (Hashtbl.data color) ~f:(fun x -> x) in
   let s = Set.of_list (module String) l in
   printf "Used %d register\n" (Set.length s);
 ;;
 
 let regalloc (prog : program) : allocations =
-  let adj = build_mut_adj_hash prog in
+  let adj = build_graph prog in
   let tmp_to_reg = pre_color prog in
   let seq = seo adj prog in
   let color = greedy seq adj tmp_to_reg in
-  let () = print_adj adj in
-  let () = printf "SEO order\n" in
-  let () = List.iter ~f:(printf "%s ") seq in
-  let () = print_tmp_to_reg color in
-  let () = printf "\n" in
-  (* let line_to_tmp = gen_line_to_tmp prog in *)
-  failwith "Implement regalloc here";;
+  (* let () = print_adj adj in *)
+  (* let () = printf "SEO order\n" in *)
+  (* let () = List.iter ~f:(printf "%s ") seq in *)
+  (* let () = print_tmp_to_reg color in *)
+  (* let () = printf "\n" in *)
+  gen_result color prog;
+  (* failwith "Implement regalloc here";; *)
