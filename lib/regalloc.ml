@@ -9,7 +9,8 @@ let (<?>) c (cmp, x, y) =
   else c;;
 
 let reg_str_cmp (t1 : string) (t2 : string) = 
-  Int.compare (String.length t1) (String.length t2)
+  String.compare (String.sub t1 ~pos:1 ~len:1) (String.sub t2 ~pos:1 ~len:1)
+  <?> (Int.compare, (String.length t1), (String.length t2))
   <?> (String.compare, t1, t2)
 ;;
 
@@ -110,22 +111,15 @@ let print_adj adj =
 ;;
 
 let rec _seo adj reg_table seq = 
-  (* let () = printf "\nhelper seq\n" in
-     let () = List.iter ~f:(printf "%s ") seq in 
-     let () = printf "\ncurrent graph order\n" in *)
-  (* let () = Hashtbl.iteri reg_table ~f:(fun ~key ~data -> printf "%s %d\n" key data) in *)
   match Hashtbl.is_empty reg_table with
   | true -> seq
   | false -> 
     let (u, _) = match Hashtbl.fold reg_table ~init:None 
                          ~f:(fun ~key ~data accu -> 
-                             (* let () = printf "  iterate reg_table %s %d\n" key data in *)
                              match accu with
                              | None -> 
-                               (* let () = printf "  accu initialize with %s %d\n" key data in *)
                                Some (key, data)
                              | Some (_, data') -> 
-                               (* let () = printf "  current accu %s %d\n" key' data' in *)
                                if data' < data 
                                then accu
                                else Some (key, data)
@@ -162,33 +156,60 @@ let reg_is_assigned reg tmp_to_reg adj =
       | None -> false || acc
       | Some reg' -> 
         if reg_str_cmp reg reg' = 0
-        then 
-          (* let () = printf "register %s is already allocated\n" (reg_to_str reg) in *)
-          true || acc
-        else 
-          (* let () = printf "register %s is not allocated\n" (reg_to_str reg) in *)
-          false || acc
+        then  true || acc
+        else  false || acc
     )
 ;;
 
-(* Allocate register for tmp. *)
-let rec alloc reg_list tmp tmp_to_reg adj = 
-  (* let () = printf "_alloc for tmp %s\n" tmp in *)
+let rec find_reg_w_min_ord_idx nbr_reg idx = 
+  let cur_reg = "%r" ^ (string_of_int idx) in
+  if Set.mem nbr_reg cur_reg
+  then find_reg_w_min_ord_idx nbr_reg (idx + 1)
+  else cur_reg
+;;
+
+let find_reg_w_min_ord nbr_reg = 
+  if Set.mem nbr_reg "%eax"
+  then
+    if Set.mem nbr_reg "%edx"
+    then find_reg_w_min_ord_idx nbr_reg 0
+    else "%edx"
+  else "%eax"
+;;
+
+let alloc_reg_by_nbr nbr tmp_to_reg = 
+  printf "alloc_reg_by_nbr nbrs:\n";
+  let nbr_reg = Set.filter_map (module String) nbr ~f:(fun u -> Hashtbl.find tmp_to_reg u ) in
+  let () = Set.iter nbr_reg ~f:(fun x -> printf "%s " x) in
+  let () = printf "\n" in
+  find_reg_w_min_ord nbr_reg
+;;
+
+(* Allocate register for tmp. 
+   reg_list is registers appeared in the input files, like "%eax", "%edx" etc.
+   tmp is temporary to assign registers
+   tmp_to_reg is a hashtable from temporary to registers.
+   nbr is the neighbor of tmp
+*)
+let rec alloc reg_list tmp tmp_to_reg nbr = 
   match reg_list with
-  | [] -> failwith "No available register."
-  | h :: t -> 
-    if reg_is_assigned h tmp_to_reg adj
-    then alloc t tmp tmp_to_reg adj
-    else h
+  | [] ->
+    let () = printf "\nalloc for %s\n" tmp in
+    alloc_reg_by_nbr nbr tmp_to_reg
+  | reg :: t -> 
+    if reg_is_assigned reg tmp_to_reg nbr
+    then alloc t tmp tmp_to_reg nbr
+    else reg
 ;;
 
 let is_tmp par = 
   String.compare (String.sub par ~pos:1 ~len:1) "t" = 0
 ;;
 
-let is_reg par = 
-  String.compare (String.sub par ~pos:1 ~len:1) "r" = 0
-;;
+(* let is_reg par = 
+   (String.compare (String.sub par ~pos:1 ~len:1) "e" = 0)
+   || (String.compare (String.sub par ~pos:1 ~len:1) "r" = 0)
+   ;; *)
 
 let rec _greedy seq adj reg_list tmp_to_reg  = match seq with
   | [] -> tmp_to_reg
@@ -196,18 +217,15 @@ let rec _greedy seq adj reg_list tmp_to_reg  = match seq with
     let nbr = Hashtbl.find_exn adj h in
     let reg = alloc reg_list h tmp_to_reg nbr in
     if is_tmp h
-    then Hashtbl.set tmp_to_reg ~key:h ~data:reg
+    then let () = printf "assigning reg %s to tmp %s\n" reg h in
+      Hashtbl.set tmp_to_reg ~key:h ~data:reg
     else ();
-    (* let () = printf "assign reg %s to tmp %s\n" (reg_to_str reg) h in *)
     _greedy t adj reg_list tmp_to_reg 
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)
 let greedy seq adj tmp_to_reg = 
-  let () = printf "\n" in
-  let keys = Hashtbl.keys adj in
-  let reg_list = List.filter keys ~f:(fun x -> is_reg x) in
-  let reg_list = reg_list @ ["%e1d";"%e2d";"%e3d";"%e4d";"%e5d";"%e6d";"%e7d";"%e8d";"%e9d"; "%e10d"; "%e11d"; "%e12d"; "%e13d"; "%e14d"; "%e15d"] in
+  let reg_list = ["%eax"; "%edx"] in
   _greedy seq adj reg_list tmp_to_reg
 ;;
 
@@ -249,12 +267,13 @@ let print_tmp_to_reg color =
 let regalloc (prog : program) : allocations =
   let adj = build_graph prog in
   let tmp_to_reg = pre_color prog in
+  let () = print_tmp_to_reg tmp_to_reg in
   let seq = seo adj prog in
   let color = greedy seq adj tmp_to_reg in
-  (* let () = print_adj adj in *)
-  (* let () = printf "SEO order\n" in *)
-  (* let () = List.iter ~f:(printf "%s ") seq in *)
-  (* let () = print_tmp_to_reg color in *)
-  (* let () = printf "\n" in *)
+  let () = print_adj adj in
+  let () = printf "SEO order\n" in
+  let () = List.iter ~f:(printf "%s ") seq in
+  let () = print_tmp_to_reg color in
+  let () = printf "\n" in
   gen_result color prog;
   (* failwith "Implement regalloc here";; *)
