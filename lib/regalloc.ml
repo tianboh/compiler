@@ -1,8 +1,43 @@
 open Core
 open Lab1_checkpoint
 open Printf
-(* open Unix *)
-(* open Assem *)
+(* 
+    This file contains necessary functions to allocate registers 
+    based on input file described as type program in Lab1_checkpoint. 
+
+    I used Hash table from register to register Set 
+    as adjacency list to denote interference graph.
+
+    The basic allocation procedure follows:
+      1) Build interference graph. We build edge from line.define to line.live_out. 
+         We do not build clique based on live_out because this may ignore dependency
+         between define and live_out. For example, if the defined temporary is not used
+         in the future, so it may not in live_out set, then scheduler may allocate a register
+         which is already allocated for the live_out for the current register
+         (because there is no edge between define and live_out). 
+         PS:If we can eliminate redundant defination in SSA, which means every defination 
+         will be in the live_out set, then we can build clique purely based on live_out set.
+         Build interference graph time complexity: O(v + e)
+      2) Use maximum cardinality search to build SEO
+         Theoratically, We initialize every vertex with weight 0. Then, each time 
+         we start from a vertex u with maximum weight and update its neighbors weight by one.
+         Then we record vertex u and delete from graph, and keep doing so until no vertex left on graph.
+         In this assignment, since it is not a pure SSA, we pre-fix the register where define is %eax and %edx
+         as hard ware register %eax and %edx respectively. So we assign the weight for them as one and the rest
+         temporarys as zero. This makes sure %eax is first colored in the future. However, the second potential
+         allocated register is not necessary %edx, so it is sub-optimal compared with scenarios in pure SSA.
+         Time complexity for SEO: O(v + e)
+      3) Greedy coloring based on SEO
+         Greedy assign registers in SEO order. We generate register name based on %rxx. where xx is index number
+         The rule is generate register with minimum index which is greater than its allocated neighbors.
+         Time complexity for coloring: O(v + e)
+
+    Subtle issues(s)
+      1) The input file is not pure SSA because it contains register %eax and %edx.
+         So we need to fix register allocation for line where defination is %eax or %edx.
+         Therefore, the number of register we allocate is up to # elements in maximum clique + 1.
+ *)
+
 
 let (<?>) c (cmp, x, y) = 
   if c = 0
@@ -15,14 +50,28 @@ let reg_str_cmp (t1 : string) (t2 : string) =
   <?> (String.compare, t1, t2)
 ;;
 
+let reg_cmp_pretty (t1 : string) (t2 : string) = 
+  Int.compare (String.length t1) (String.length t2)
+  <?> (String.compare, t1, t2)
+;;
+
+let is_tmp par = 
+  String.compare (String.sub par ~pos:1 ~len:1) "t" = 0
+;;
+
+let is_reg par = 
+  (String.compare (String.sub par ~pos:1 ~len:1) "r" = 0)
+  || (String.compare (String.sub par ~pos:1 ~len:1) "e" = 0)
+;;
+
 let print_adj adj = 
   printf "\nprint adj\n";
   let keys = Hashtbl.keys adj in
-  let sorted_keys = List.sort keys ~compare:reg_str_cmp in
+  let sorted_keys = List.sort keys ~compare:reg_cmp_pretty in
   let () = List.iter sorted_keys 
       ~f:(fun key -> 
           let s = Hashtbl.find_exn adj key in
-          let l = List.sort (Set.to_list s) ~compare:reg_str_cmp in
+          let l = List.sort (Set.to_list s) ~compare:reg_cmp_pretty in
           printf "From %s to\t" key;
           List.iter l ~f:(fun x -> printf "%s " x);
           printf "\n";
@@ -82,8 +131,8 @@ let gen_line_to_tmp prog =
   in helper prog hash
 ;;
 
-let gen_reg_table (prog : program) = 
-  let hash = Hashtbl.create (module String) in
+let gen_reg_table prog tmp_to_reg = 
+  let hash_init = Hashtbl.create (module String) in
   let rec helper prog hash = match prog with
     | [] -> hash
     | h::t -> 
@@ -91,10 +140,16 @@ let gen_reg_table (prog : program) =
       |"" -> helper t hash;
       | _ ->
         Hashtbl.set hash ~key:h.define ~data:0;
-        helper t hash;
-  in helper prog hash
+        helper t hash in 
+  let hash_seo = helper prog hash_init in
+  let () = Hashtbl.iter_keys tmp_to_reg 
+      ~f:(fun tmp -> 
+          if is_reg tmp
+          then Hashtbl.set hash_seo ~key:tmp ~data:1
+          else ()
+        ) in
+  hash_seo;
 ;;
-
 
 let rec _seo adj reg_table seq = 
   match Hashtbl.is_empty reg_table with
@@ -106,29 +161,35 @@ let rec _seo adj reg_table seq =
                              | None -> 
                                Some (key, data)
                              | Some (_, data') -> 
-                               if data' < data 
+                               if data' > data 
                                then accu
                                else Some (key, data)
                            ) with
     | None -> failwith "empty reg_table"
     | Some s -> s in 
     let seq_new = seq@[u] in
-    let nbr = Hashtbl.find_exn adj u in
-    let nbr = Set.remove nbr u in
-    Set.iter nbr ~f:(fun x -> 
-        match Hashtbl.find reg_table x with
-        | None -> ()
-        | Some v -> 
-          let order = v + 1 in
-          Hashtbl.set reg_table ~key:x ~data:order;
-      );
-    Hashtbl.remove reg_table u;
-    _seo adj reg_table seq_new;
+    if is_reg u
+    then 
+      let () = Hashtbl.remove reg_table u in
+      _seo adj reg_table seq_new;
+    else
+      let nbr = Hashtbl.find_exn adj u in
+      let nbr = Set.remove nbr u in
+      Set.iter nbr ~f:(fun x -> 
+          match Hashtbl.find reg_table x with
+          | None -> ()
+          | Some v -> 
+            let order = v + 1 in
+            Hashtbl.set reg_table ~key:x ~data:order;
+        );
+      Hashtbl.remove reg_table u;
+      _seo adj reg_table seq_new;
 ;;
 
-let seo adj prog = 
+(* We need to consider the influence of pre-coloring, which is stored in tmp_to_reg *)
+let seo adj prog tmp_to_reg = 
   let seq = [] in
-  let reg_table = gen_reg_table prog in
+  let reg_table = gen_reg_table prog tmp_to_reg in
   _seo adj reg_table seq
 ;;
 
@@ -182,10 +243,6 @@ let rec alloc reg_list tmp tmp_to_reg nbr =
     else reg
 ;;
 
-let is_tmp par = 
-  String.compare (String.sub par ~pos:1 ~len:1) "t" = 0
-;;
-
 let rec _greedy seq adj reg_list tmp_to_reg  = match seq with
   | [] -> tmp_to_reg
   | h :: t -> 
@@ -203,7 +260,7 @@ let greedy seq adj tmp_to_reg =
   _greedy seq adj reg_list tmp_to_reg
 ;;
 
-let pre_color prog = 
+let pre_fix prog = 
   let hash = Hashtbl.create (module String) in
   List.iter prog ~f:(fun line -> 
       match line.define with
@@ -232,7 +289,8 @@ let rec gen_result color prog  = match prog with
 
 let print_tmp_to_reg color = 
   let () = printf "\n\n==========\nTemporary to register\n" in
-  Hashtbl.iteri color ~f:(fun ~key ~data -> printf "%s -> %s\n" key  data);
+  let sorted_keys = List.sort (Hashtbl.keys color) ~compare:reg_cmp_pretty in
+  List.iter sorted_keys ~f:(fun k -> printf "%s -> %s\n" k (Hashtbl.find_exn color k));
   let l = List.map (Hashtbl.data color) ~f:(fun x -> x) in
   let s = Set.of_list (module String) l in
   printf "Used %d register\n" (Set.length s);
@@ -240,8 +298,9 @@ let print_tmp_to_reg color =
 
 let regalloc (prog : program) : allocations =
   let adj = build_graph prog in
-  let tmp_to_reg = pre_color prog in
-  let seq = seo adj prog in
+  let tmp_to_reg = pre_fix prog in
+  (* let tmp_to_reg = Hashtbl.create (module String) in *)
+  let seq = seo adj prog tmp_to_reg in
   let color = greedy seq adj tmp_to_reg in
   (* let () = print_adj adj in
      let () = printf "SEO order\n" in

@@ -5,13 +5,14 @@ val build_graph : program ->
 
 val gen_line_to_tmp : line list -> (int, reg) Base.Hashtbl.t
 
-val gen_reg_table : program -> (reg, int) Base.Hashtbl.t
+val gen_reg_table : line list -> (reg, 'a) Base.Hashtbl.t -> (reg, int) Base.Hashtbl.t
 
 val print_adj : (reg, (reg, 'a) Base.Set.t) Base.Hashtbl.t -> unit
 
-val pre_color : line list -> (reg, reg) Base.Hashtbl.t
+val pre_fix : line list -> (reg, reg) Base.Hashtbl.t
 
-val seo : (reg, (reg, 'a) Base.Set.t) Base.Hashtbl.t -> program -> reg list
+val seo : (reg, (reg, 'a) Base.Set.t) Base.Hashtbl.t ->
+  line list -> (reg, 'b) Base.Hashtbl.t -> reg list
 
 val greedy : reg list ->
   (reg, (reg, 'a) Base.Set.t) Base.Hashtbl.t ->
