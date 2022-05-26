@@ -1,8 +1,0 @@
-//test error
-// not declared before use
-
-int main()
-{
-    b = 0;
-    return 0;
-}

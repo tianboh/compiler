@@ -1,6 +1,0 @@
-//test div-by-zero
-// brute force div-by-zero
-
-int main(){
-    return 1/0;
-}

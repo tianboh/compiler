@@ -1,8 +1,0 @@
-//test div-by-zero
-// variable calculation div-by-zero
-
-int main(){
-    int a = 1;
-    int b = a;
-    return a / (b - a);
-}

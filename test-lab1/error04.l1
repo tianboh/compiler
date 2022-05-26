@@ -1,7 +1,0 @@
-//test error
-// main does not return
-
-int main()
-{
-    int a;
-}

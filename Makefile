@@ -1,18 +1,18 @@
-all: c0c
+# Running 'make labN' should cause the compiler for labN to be placed
+# in the bin directory as bin/c0c. You can add to this makefile or
+# change the default behavior from lab1 to lab2 (and so on) as you
+# progress through the course. Don't change the behavior of 'make
+# labN' or 'make clean'.
 
-c0c: ../bin/c0c
-../bin/c0c: always
-	dune build
-	mkdir -p ../bin
-	install _build/default/bin/c0c.exe $@
-	cp ../bin/c0c bin/
+.PHONY: lab*
 
-always:
+default: lab1
+lab*: bin
+	$(MAKE) -C $@
+
+bin:
+	mkdir bin
 
 clean:
-	dune clean
-	rm ../bin/c0c
-	rm bin/c0c
-
-
-.PHONY: c0c clean native
+	rm -Rf bin
+	for l in lab*; do $(MAKE) -C $$l clean; done

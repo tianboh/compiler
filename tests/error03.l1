@@ -1,0 +1,9 @@
+//test error
+// already declared
+
+int main()
+{
+    int a;
+    int a;
+    return 0;
+}
