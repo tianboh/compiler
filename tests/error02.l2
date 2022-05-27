@@ -1,0 +1,12 @@
+//test error
+// out of scope
+int main ()
+{
+    int a;
+    {
+        int b;
+        b = 1;
+    }
+    a = 2;
+    return a + b;
+}

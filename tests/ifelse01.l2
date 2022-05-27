@@ -1,0 +1,15 @@
+//test return 1
+// if-else
+int main()
+{
+    int i;
+    int j;
+    i = 10;
+    j = i / 2;
+    if(i + j < 20){
+        return 1;
+    }else{
+        return 2;
+    }
+    return 3;
+}

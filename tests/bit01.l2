@@ -1,0 +1,10 @@
+//test return 15
+
+int main()
+{
+    int a = 1;
+    int b = (a << 3); // 8
+    int c = (a | b); //9
+    int d = (c ^ 6); // 15
+    return d;
+}

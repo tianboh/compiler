@@ -1,0 +1,9 @@
+//test div-by-zero
+// shift and overflow
+int main()
+{
+    int a = 1;
+    int b = 1;
+    return a / ((b << 32) >> 33);
+
+}

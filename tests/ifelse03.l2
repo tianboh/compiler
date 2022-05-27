@@ -1,0 +1,9 @@
+//test return 1
+// triplet expression.
+int main()
+{
+    int i = 1;
+    int j = 2;
+    int k = 0;
+    return i < j ? 1 : i / k;
+}

@@ -1,0 +1,14 @@
+//test div-by-zero
+// int overflow
+int main()
+{
+    int a = 2147483647;
+    int b = a + 1;
+    int c = -2147483648;
+    int d = 2 * c;
+    if(b < 0)
+        return d / (b - c);
+    else
+        return 1;
+    return 0;
+}

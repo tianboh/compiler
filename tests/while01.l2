@@ -1,0 +1,14 @@
+//test return 10
+// while loop
+int main()
+{
+    int a;
+    int b;
+
+    a = 10;
+    b = 1; 
+    while (b < a) {
+        b += 1;
+    }
+    return b;
+}

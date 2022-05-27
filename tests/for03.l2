@@ -1,0 +1,23 @@
+//test return 45
+// treat for as while
+
+int main()
+{
+    int i;
+    int j;
+    int s;
+    i = 0;
+    j = 10;
+    s = 0;
+    for(; true; 0)
+    {
+        if (i == j)
+        {
+            return s;
+        }
+        s += i;
+        i += 1;
+    }
+
+    return s;
+}

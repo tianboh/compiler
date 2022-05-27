@@ -1,0 +1,8 @@
+//test error
+// implicit type casting.
+int main()
+{
+    int a = 1;
+    a = false;
+    return 0;
+}

@@ -1,0 +1,12 @@
+//test return 1
+// test short circuit
+int main()
+{
+    int i = 1;
+    int j = 2;
+    int k = 0;
+    if (i < j || (i / k) > 0)
+        return 1;
+    else
+        return 0;
+}
