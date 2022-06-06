@@ -1,5 +1,5 @@
 open Core
-open Lab1_checkpoint
+open Json_reader.Lab1_checkpoint
 open Printf
 (* 
     This file contains necessary functions to allocate registers 

@@ -14,6 +14,7 @@
 *)
 
 open Core
+open Json_reader
 
 (* Command line arguments *)
 
@@ -67,6 +68,7 @@ type cmd_line_args =
   ; dump_assem : bool
   ; typecheck_only : bool
   ; regalloc_only : bool
+  ; dataflow_analysis_only : bool
   ; emit : Emit.t
   ; opt_level : Opt_level.t
   ; filename : string
@@ -115,6 +117,9 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and regalloc_only =
     let doc = "Regalloc only for l1 checkpoint" in
     flag (Arg.info [ "r"; "regalloc-only" ] ~doc)
+  and dataflow_analysis_only =
+    let doc = "Dataflow analysis only for l2 checkpoint" in
+    flag (Arg.info [ "r2"; "dataflow-analysis-only" ] ~doc)
   and emit =
     let doc = "[abs|x86-64] The type of assembly $(docv) to emit." in
     opt
@@ -138,6 +143,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   ; dump_assem
   ; typecheck_only
   ; regalloc_only
+  ; dataflow_analysis_only
   ; emit
   ; opt_level
   ; filename

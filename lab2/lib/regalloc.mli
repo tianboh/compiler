@@ -1,4 +1,4 @@
-open Lab1_checkpoint
+open Json_reader.Lab1_checkpoint
 
 val build_graph : program ->
   (reg, (reg, Base.String.comparator_witness) Base.Set.t) Base.Hashtbl.t
