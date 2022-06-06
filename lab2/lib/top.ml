@@ -60,6 +60,36 @@ module Emit = struct
   ;;
 end
 
+module Df_analysis = struct
+  type t = 
+    | Forward_may
+    | Forward_must
+    | Backward_may
+    | Backward_must
+    | No_analysis
+
+  let show = function
+    | Forward_may -> "forward-may"
+    | Forward_must -> "forward-must"
+    | Backward_may -> "backward-may"
+    | Backward_must -> "backward-must"
+    | No_analysis -> "no-analysis"
+  ;;
+
+  let parse = function
+    | "forward-may" -> Result.Ok Forward_may
+    | "forward-must" -> Result.Ok Forward_must
+    | "backward-may" -> Result.Ok Backward_may
+    | "backward-must" -> Result.Ok Backward_must
+    | arg -> Result.Error (`Msg ("Error: Unknown --opt arg: " ^ arg))
+  ;;
+
+  let conv =
+    let print ppf opt = Format.fprintf ppf "%s" (show opt) in
+    Cmdliner.Arg.conv (parse, print)
+  ;;
+end
+
 type cmd_line_args =
   { verbose : bool
   ; dump_parsing : bool
@@ -68,9 +98,9 @@ type cmd_line_args =
   ; dump_assem : bool
   ; typecheck_only : bool
   ; regalloc_only : bool
-  ; dataflow_analysis_only : bool
   ; emit : Emit.t
   ; opt_level : Opt_level.t
+  ; dataflow_analysis_only : Df_analysis.t
   ; filename : string
   }
 
@@ -117,9 +147,6 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and regalloc_only =
     let doc = "Regalloc only for l1 checkpoint" in
     flag (Arg.info [ "r"; "regalloc-only" ] ~doc)
-  and dataflow_analysis_only =
-    let doc = "Dataflow analysis only for l2 checkpoint" in
-    flag (Arg.info [ "r2"; "dataflow-analysis-only" ] ~doc)
   and emit =
     let doc = "[abs|x86-64] The type of assembly $(docv) to emit." in
     opt
@@ -132,6 +159,12 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
       Opt_level.conv
       ~default:Opt_level.Opt_none
       (Arg.info [ "O"; "opt" ] ~doc ~docv:"OPT")
+  and dataflow_analysis_only =
+    let doc = "[forward-may|forward-must|backward-may|backward-must|no-analysis] The type of dataflow analysis" in
+    opt
+      Df_analysis.conv
+      ~default:Df_analysis.No_analysis
+      (Arg.info [ "r2"; "lab2 checkpoint" ] ~doc ~docv:"DF-ANALYSIS")
   and filename =
     let doc = "The source file $(docv) to compile." in
     Arg.(required (pos 0 (some non_dir_file) None (info [] ~doc ~docv:"FILE")))
@@ -143,14 +176,18 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   ; dump_assem
   ; typecheck_only
   ; regalloc_only
-  ; dataflow_analysis_only
   ; emit
   ; opt_level
+  ; dataflow_analysis_only
   ; filename
   }
 ;;
 
 let say_if (v : bool) (f : unit -> string) = if v then prerr_endline (f ())
+
+let dfana (direction_logic : Df_analysis.t) = 
+  printf "%s\n" (Df_analysis.show direction_logic)
+;;
 
 let regalloc (cmd : cmd_line_args) =
   match String.chop_suffix cmd.filename ~suffix:".in" with
