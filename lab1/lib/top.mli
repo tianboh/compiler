@@ -4,6 +4,6 @@
  * Modified: Alex Vaynberg <alv@andrew.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
- *)
+*)
 
 val main : unit -> unit

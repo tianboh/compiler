@@ -100,7 +100,7 @@ type cmd_line_args =
   ; regalloc_only : bool
   ; emit : Emit.t
   ; opt_level : Opt_level.t
-  ; dataflow_analysis_only : Df_analysis.t
+  ; df_type : Df_analysis.t
   ; filename : string
   }
 
@@ -159,7 +159,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
       Opt_level.conv
       ~default:Opt_level.Opt_none
       (Arg.info [ "O"; "opt" ] ~doc ~docv:"OPT")
-  and dataflow_analysis_only =
+  and df_type =
     let doc = "[forward-may|forward-must|backward-may|backward-must|no-analysis] The type of dataflow analysis" in
     opt
       Df_analysis.conv
@@ -178,31 +178,36 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   ; regalloc_only
   ; emit
   ; opt_level
-  ; dataflow_analysis_only
+  ; df_type
   ; filename
   }
 ;;
 
 let say_if (v : bool) (f : unit -> string) = if v then prerr_endline (f ())
 
-let dfana (direction_logic : Df_analysis.t) = 
-  printf "%s\n" (Df_analysis.show direction_logic)
-;;
-
-let regalloc (cmd : cmd_line_args) =
+let process_checkpoint (cmd : cmd_line_args) =
   match String.chop_suffix cmd.filename ~suffix:".in" with
   | None ->
     prerr_endline "Invalid input filename";
     exit 1
   | Some base_filename ->
     let input_json = Yojson.Basic.from_file cmd.filename in
-    let input = Lab1_checkpoint.program_of_json input_json in
-    let output = Regalloc.regalloc input in
-    let filename = base_filename ^ ".out" in
-    Out_channel.with_file filename ~f:(fun out ->
-        Out_channel.output_string
-          out
-          (output |> Lab1_checkpoint.json_of_allocations |> Yojson.Basic.to_string))
+    if cmd.regalloc_only then
+      let input = Lab1_checkpoint.program_of_json input_json in
+      let output = Regalloc.regalloc input in
+      let filename = base_filename ^ ".out" in
+      Out_channel.with_file filename ~f:(fun out ->
+          Out_channel.output_string
+            out
+            (output |> Lab1_checkpoint.json_of_allocations |> Yojson.Basic.to_string))
+    else
+      let input = Lab2_checkpoint.program_of_json input_json in
+      let output = Dfana.dfana input in
+      let filename = base_filename ^ ".out" in
+      Out_channel.with_file filename ~f:(fun out ->
+          Out_channel.output_string
+            out
+            (output |> Lab2_checkpoint.json_of_dflines)) 
 ;;
 
 (* The main driver for the compiler: runs each phase. *)
@@ -241,10 +246,16 @@ let compile (cmd : cmd_line_args) : unit =
 ;;
 
 let run (cmd : cmd_line_args) : unit =
-  try if cmd.regalloc_only then regalloc cmd else compile cmd with
-  | Error_msg.Error ->
-    prerr_endline "Compilation failed.";
-    exit 1
+  match cmd.regalloc_only, cmd.df_type with
+  | (true, No_analysis) -> process_checkpoint cmd
+  | (false, Forward_may) -> process_checkpoint cmd
+  | (false, Forward_must) -> process_checkpoint cmd
+  | (false, Backward_may) -> process_checkpoint cmd
+  | (false, Backward_must) -> process_checkpoint cmd
+  | (_, _) -> try compile cmd with
+    | Error_msg.Error ->
+      prerr_endline "Compilation failed.";
+      exit 1
 ;;
 
 (* Compiler entry point
