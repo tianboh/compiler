@@ -1,9 +1,9 @@
 open Core
 
 type line =
-  { gen : string list
-  ; kill : string list
-  ; succs : int list
+  { gen : int list
+  ; kill : int list
+  ; succ : int list
   ; is_label : bool
   ; line_number : int
   }
@@ -12,12 +12,12 @@ type program = line list
 
 let line_of_json json =
   let open Yojson.Basic.Util in
-  let gen = json |> member "Gen" |> to_list |> List.map ~f:to_string in
-  let kill = json |> member "Kill" |> to_list |> List.map ~f:to_string in
-  let succs = json |> member "Successors" |> to_list |> List.map ~f:to_int in
+  let gen = json |> member "Gen" |> to_list |> List.map ~f:to_string |> List.map ~f:(fun x -> int_of_string x) in
+  let kill = json |> member "Kill" |> to_list |> List.map ~f:to_string |> List.map ~f:(fun x -> int_of_string x) in
+  let succ = json |> member "Successors" |> to_list |> List.map ~f:to_int in
   let is_label = json |> member "Is_label" |> to_bool in
   let line_number = json |> member "Line" |> to_int in
-  { gen; kill; succs; is_label; line_number };
+  { gen; kill; succ; is_label; line_number };
 ;;
 
 let program_of_json (json : Yojson.Basic.t) =

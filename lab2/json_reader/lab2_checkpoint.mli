@@ -1,9 +1,9 @@
 open! Core
 
 type line =
-  { gen : string list
-  ; kill : string list
-  ; succs : int list
+  { gen : int list
+  ; kill : int list
+  ; succ : int list
   ; is_label : bool
   ; line_number : int
   }
