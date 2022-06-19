@@ -1,6 +1,6 @@
 (library
  (name compiler)
- (libraries core cmdliner yojson json_reader)
+ (libraries core cmdliner yojson json_reader args)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))

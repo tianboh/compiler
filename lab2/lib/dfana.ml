@@ -5,6 +5,7 @@
 *)
 open Core
 open Json_reader.Lab2_checkpoint
+open Args
 (* open Printf *)
 
 module IntSet = Set.Make(Int)
@@ -71,9 +72,9 @@ let print_b2l b2l =
       printf "block %d [%d, %d]\n" k s e)
 ;;
 
-let print_l2b l2b = 
-  Hashtbl.iteri l2b ~f:(fun ~key:k ~data:v -> printf "line %d block %d\n" k v)
-;;
+(* let print_l2b l2b = 
+   Hashtbl.iteri l2b ~f:(fun ~key:k ~data:v -> printf "line %d block %d\n" k v)
+   ;; *)
 
 (* group lines from is_label to is_label, first is_lable is inclusive and the second is exclusive *)
 let group_lines prog = 
@@ -89,19 +90,19 @@ let group_lines prog =
   in helper prog true l acc
 ;;
 
-let rec print_ls ls = match ls with
-  | [] -> ()
-  | h :: t -> let () = printf "%d\n" h.line_number in 
+(* let rec print_ls ls = match ls with
+   | [] -> ()
+   | h :: t -> let () = printf "%d\n" h.line_number in 
     print_ls t
-;;
+   ;; *)
 
-let rec print_groups lss = match lss with
-  | [] -> ()
-  | h :: t -> 
+(* let rec print_groups lss = match lss with
+   | [] -> ()
+   | h :: t -> 
     let () = printf "block\n" in 
     let () = print_ls h in
     print_groups t
-;;
+   ;; *)
 
 let get_block_succ (ls : line list) l2b = 
   let succ = IntSet.empty in
@@ -143,6 +144,7 @@ let build_one_block ls l2b =
   {blk with succ = succ; gen = gen; kill=kill}
 ;;
 
+(* Set up successors, gen, kill field *)
 let rec build_blocks_step1 lss l2b blocks = match lss with
   | [] -> blocks
   | h :: t -> 
@@ -151,6 +153,7 @@ let rec build_blocks_step1 lss l2b blocks = match lss with
     build_blocks_step1 t l2b blocks
 ;;
 
+(* Set up pred field *)
 let build_blocks_step2 blocks = 
   let blk_no_l = Hashtbl.keys blocks in
   let () = List.iter blk_no_l 
@@ -187,19 +190,129 @@ let print_blocks blocks =
       let succ = IntSet.to_list blk.succ in
       let () = printf "\nsucc " in
       let () = List.iter ~f:(printf "%d ") succ in
+      let in_ = IntSet.to_list blk.in_ in
+      let () = printf "\nin " in
+      let () = List.iter ~f:(printf "%d ") in_ in
+      let out_ = IntSet.to_list blk.out_ in
+      let () = printf "\nout " in
+      let () = List.iter ~f:(printf "%d ") out_ in
       printf "\n"
     )
 ;;
 
-let dfana (prog : program) = 
+let rec unfold_right f init =
+  match f init with
+  | None -> []
+  | Some (x, next) -> x :: unfold_right f next
+;;
+
+(* 
+  [init, init + n)
+ *)
+let range init n =
+  let irange x = if x >= init + n then None else Some (x, x + 1) in
+  unfold_right irange init
+;;
+
+(*  
+    Swap predecessors and successors if dataflow analysis is backward.
+    This can make DFS life easier in backward analysis.
+*)
+let swap_pred_succ blocks = 
+  let blk_no_list = Hashtbl.keys blocks in
+  let () = List.iter blk_no_list 
+      ~f:(fun blk_no -> 
+          let blk = Hashtbl.find_exn blocks blk_no in
+          let blk_swap = {blk with pred = blk.succ; succ = blk.pred} in
+          Hashtbl.set blocks ~key:blk_no ~data:blk_swap
+        ) in
+  blocks
+;;
+
+(* 
+  Swap in and out set for blocks. This is used when backward analysis is finished.
+ *)
+let swap_in_out blocks = 
+  let blk_no_list = Hashtbl.keys blocks in
+  let () = List.iter blk_no_list 
+      ~f:(fun blk_no -> 
+          let blk = Hashtbl.find_exn blocks blk_no in
+          let blk_swap = {blk with out_ = blk.in_; in_ = blk.out_} in
+          Hashtbl.set blocks ~key:blk_no ~data:blk_swap
+        ) in
+  blocks
+;;
+
+(* 
+  Calculate out set of predecessors of v. 
+  The output of predecessors will be combined using union or intersection decided by df_type
+  This is also the in set for block v.
+*)
+let get_preds_out v blocks df_type = 
+  let us_l = IntSet.to_list v.pred in
+  let us_blk = List.map us_l ~f:(fun blk_no -> Hashtbl.find_exn blocks blk_no) in
+  let preds_out = List.map us_blk ~f:(fun blk -> blk.out_) in
+  match df_type with
+  | Df_analysis.Forward_may| Df_analysis.Backward_may ->
+    List.fold_left preds_out ~init:IntSet.empty ~f:(fun acc out -> IntSet.union acc out)
+  | Df_analysis.Forward_must| Df_analysis.Backward_must -> 
+    let init_set = match List.nth preds_out 0 with
+      | Some s -> s
+      | None -> IntSet.empty
+    in
+    List.fold_left preds_out ~init:init_set ~f:(fun acc out -> IntSet.inter acc out)
+  | Df_analysis.No_analysis -> failwith "error for input type no_analysis in get_preds_out"
+;;
+
+let process_out block blocks df_type = 
+  let preds_out = get_preds_out block blocks df_type in
+  IntSet.union (block.gen) (IntSet.diff (preds_out) (block.kill))
+;;
+
+let rec _dfs blocks df_type queue = 
+  match queue with
+  | [] -> blocks
+  | blk_no :: t -> 
+    let v = Hashtbl.find_exn blocks blk_no in
+    let out' = process_out v blocks df_type in
+
+    if IntSet.equal out' v.out_ 
+    then 
+      _dfs blocks df_type t
+    else 
+      let v' = {v with out_ = out'} in
+      let () = Hashtbl.set blocks ~key:blk_no ~data:v' in
+      _dfs blocks df_type (t @ [blk_no])
+;;
+
+(* 
+  There are 4 types of dataflow analysis. We treat backward or forward the same
+  by swapping block predecessors and successors in backward analysis.
+  Once finished DFS, we need to swap in and out field for backward analysis.
+ *)
+let dfs blocks (df_type : Df_analysis.t) = 
+  let order = range 0 ((Hashtbl.length blocks) -1) in
+  match df_type with
+  | Df_analysis.Forward_may| Df_analysis.Forward_must  -> 
+    _dfs blocks df_type (order @ [-1])
+  | Df_analysis.Backward_may| Df_analysis.Backward_must ->
+    let blocks = swap_pred_succ blocks in
+    let blocks = _dfs blocks df_type ([-1] @ (List.rev order)) in
+    let blocks = swap_in_out blocks in
+    swap_pred_succ blocks
+  | Df_analysis.No_analysis -> failwith "error for input type no_analysis in dfs"
+;;
+
+let dfana (prog : program) (df_type : Df_analysis.t) = 
   let l2b = get_l2b prog (-1) in
   let b2l = get_b2l l2b in
   let () = print_b2l b2l in
-  let () = print_l2b l2b in
+  (* let () = print_l2b l2b in *)
   let lss = group_lines prog in
-  let () = print_groups lss in
+  (* let () = print_groups lss in *)
   let blocks = build_blocks lss l2b in
-  let () = print_blocks blocks in
+  let res = dfs blocks df_type in
+  let () = print_blocks res in
   (* let () = print_succ l in *)
   (* let () = print_df blocks in *)
   (* let () = check_df_graph prog blocks l2b b2l in *)
