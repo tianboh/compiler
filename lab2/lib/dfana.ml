@@ -48,6 +48,9 @@ let get_l2b prog block_no =
   _get_l2b prog block_no
 ;;
 
+(* 
+  Each block gets a interval [a, b] indicates its line number range. Both sides are inclusivE.
+*)
 let get_b2l l2b = 
   let l = Hashtbl.to_alist l2b in
   let b2l = Hashtbl.create (module Int) in
@@ -67,14 +70,15 @@ let get_b2l l2b =
 ;;
 
 let print_b2l b2l = 
-  Hashtbl.iteri b2l ~f:(fun ~key:k ~data:v -> 
-      let (s, e) = v in 
-      printf "block %d [%d, %d]\n" k s e)
-;;
+  let keys = Hashtbl.keys b2l in
+  let sorted_keys = List.sort keys ~compare:Int.compare in
+  List.iter sorted_keys ~f:(fun x -> 
+      let (s, e) = Hashtbl.find_exn b2l x in
+      printf "block %d [%d, %d]\n" x s e)
 
-(* let print_l2b l2b = 
-   Hashtbl.iteri l2b ~f:(fun ~key:k ~data:v -> printf "line %d block %d\n" k v)
-   ;; *)
+let print_l2b l2b = 
+  Hashtbl.iteri l2b ~f:(fun ~key:k ~data:v -> printf "line %d block %d\n" k v)
+;;
 
 (* group lines from is_label to is_label, first is_lable is inclusive and the second is exclusive *)
 let group_lines prog = 
@@ -90,31 +94,31 @@ let group_lines prog =
   in helper prog true l acc
 ;;
 
-(* let rec print_ls ls = match ls with
-   | [] -> ()
-   | h :: t -> let () = printf "%d\n" h.line_number in 
-    print_ls t
-   ;; *)
+let rec _group_lines_logical lss acc = match lss with
+  | [] -> acc
+  | h :: t -> 
+    let new_h = List.rev h in
+    _group_lines_logical t (acc @ [new_h])
+;;
 
-(* let rec print_groups lss = match lss with
-   | [] -> ()
-   | h :: t -> 
-    let () = printf "block\n" in 
-    let () = print_ls h in
-    print_groups t
-   ;; *)
+let group_lines_logical prog (df_type : Df_analysis.t) = 
+  let lss = group_lines prog in
+  let lss_logical = match df_type with 
+    | Forward_must | Forward_may -> lss
+    | Backward_must | Backward_may -> _group_lines_logical lss []
+    | _ -> failwith "failed at group_lines_logical" in
+  lss_logical
+;;
 
 let get_block_succ (ls : line list) l2b = 
-  let succ = IntSet.empty in
-  let rec helper (ls : line list) succ = match ls with 
-    | [] -> 
-      if IntSet.is_empty succ 
-      then IntSet.of_list [-1]
-      else IntSet.map succ ~f:(fun x -> Hashtbl.find_exn l2b x)
-    | h :: t -> let succ' = IntSet.union succ (IntSet.of_list h.succ) in
-      let succ'' = IntSet.diff succ' (IntSet.of_list [h.line_number]) in 
-      helper t succ'' in
-  helper ls succ
+  let blk_lines_l = List.map ls ~f:(fun line -> line.line_number) in
+  let blk_lines_s = IntSet.of_list blk_lines_l in
+  let blk_succ_lines_l = List.fold_left ls ~init:[] ~f:(fun acc line -> line.succ @ acc) in
+  let blk_succ_lines_s = IntSet.of_list blk_succ_lines_l in
+  let succ = IntSet.diff blk_succ_lines_s blk_lines_s in
+  if IntSet.is_empty succ
+  then IntSet.of_list [-1]
+  else IntSet.map succ ~f:(fun s -> Hashtbl.find_exn l2b s)
 ;;
 
 let get_block_gen_kill (ls : line list) =
@@ -139,6 +143,7 @@ let build_one_block ls l2b =
   let first_line = List.nth_exn ls 0 in
   let blk_no = Hashtbl.find_exn l2b first_line.line_number in
   let succ = get_block_succ ls l2b in
+  (* let () = printf "---build block %d\n" blk_no in *)
   let gen, kill = get_block_gen_kill ls in
   let blk = empty_blk blk_no in
   {blk with succ = succ; gen = gen; kill=kill}
@@ -167,16 +172,46 @@ let build_blocks_step2 blocks =
         ) in 
   blocks
 
-let build_blocks lss l2b =
+(* Get full set for generator line. *)
+let get_full_set blocks = 
+  Hashtbl.fold blocks ~init:IntSet.empty ~f:(fun ~key:_ ~data:blk acc -> IntSet.union acc blk.gen)
+;;
+
+(* 
+  Set up default output/input field in blocks based on forward/backward must/may analysis.
+ *)
+let build_blocks_step3 blocks (df_type : Df_analysis.t) = 
+  let blk_no_l = Hashtbl.keys blocks in
+  let logical_init = match df_type with 
+    | Forward_must | Backward_must -> get_full_set blocks
+    | Forward_may | Backward_may -> IntSet.empty
+    | _ -> failwith "invalid input for build_blocks_step3" in
+  let () = List.iter blk_no_l ~f:(
+      fun blk_no -> 
+        let blk = Hashtbl.find_exn blocks blk_no in
+        let blk_new = match df_type with
+          | Forward_must | Forward_may -> {blk with out_ = logical_init}
+          | Backward_must | Backward_may -> {blk with in_ = logical_init}
+          | _ -> failwith "invalid input for build_blocks_step3 iter" in
+        Hashtbl.set blocks ~key:blk_no ~data:blk_new
+    ) in
+  blocks
+;;
+
+let build_blocks lss l2b df_type =
   let blocks = Hashtbl.create (module Int) in
   let () = Hashtbl.set blocks ~key:(-1) ~data:(empty_blk (-1)) in
   let blocks = build_blocks_step1 lss l2b blocks in
   let blocks = build_blocks_step2 blocks in
+  let blocks = build_blocks_step3 blocks df_type in
   blocks
 ;;
 
 let print_blocks blocks = 
-  Hashtbl.iteri blocks ~f:(fun ~key:blk_no ~data:blk -> 
+  let blk_no_l = Hashtbl.keys blocks in
+  let blk_no_l_sort = List.sort blk_no_l ~compare:Int.compare in
+  List.iter blk_no_l_sort ~f:(fun blk_no -> 
+      let blk = Hashtbl.find_exn blocks blk_no in
       let () = printf "===blk_no %d===" blk_no in
       let gen = IntSet.to_list blk.gen in
       let () = printf "\ngen " in
@@ -244,7 +279,7 @@ let swap_in_out blocks =
 ;;
 
 (* 
-  Calculate out set of predecessors of v. 
+  Calculate out set of predecessors of v. That is u -> v
   The output of predecessors will be combined using union or intersection decided by df_type
   This is also the in set for block v.
 *)
@@ -260,13 +295,15 @@ let get_preds_out v blocks df_type =
       | Some s -> s
       | None -> IntSet.empty
     in
+    (* let () = printf "  init_set is " in
+       let () = IntSet.iter init_set ~f:(fun x -> printf "%d " x) in
+       let () = printf "\n" in *)
     List.fold_left preds_out ~init:init_set ~f:(fun acc out -> IntSet.inter acc out)
   | Df_analysis.No_analysis -> failwith "error for input type no_analysis in get_preds_out"
 ;;
 
-let process_out block blocks df_type = 
-  let preds_out = get_preds_out block blocks df_type in
-  IntSet.union (block.gen) (IntSet.diff (preds_out) (block.kill))
+let process_out block in_  = 
+  IntSet.union (block.gen) (IntSet.diff (in_) (block.kill))
 ;;
 
 let rec _dfs blocks df_type queue = 
@@ -274,15 +311,17 @@ let rec _dfs blocks df_type queue =
   | [] -> blocks
   | blk_no :: t -> 
     let v = Hashtbl.find_exn blocks blk_no in
-    let out' = process_out v blocks df_type in
-
-    if IntSet.equal out' v.out_ 
+    (* let () = printf "_dfs block %d\n" blk_no in *)
+    let in_ = get_preds_out v blocks df_type in
+    let out_ = process_out v in_ in
+    let v' = {v with out_ = out_; in_ = in_} in
+    let () = Hashtbl.set blocks ~key:blk_no ~data:v' in
+    if IntSet.equal v'.out_ v.out_ 
     then 
       _dfs blocks df_type t
     else 
-      let v' = {v with out_ = out'} in
-      let () = Hashtbl.set blocks ~key:blk_no ~data:v' in
-      _dfs blocks df_type (t @ [blk_no])
+      let l = t @ (IntSet.to_list v'.succ) in
+      _dfs blocks df_type l
 ;;
 
 (* 
@@ -292,29 +331,104 @@ let rec _dfs blocks df_type queue =
  *)
 let dfs blocks (df_type : Df_analysis.t) = 
   let order = range 0 ((Hashtbl.length blocks) -1) in
-  match df_type with
-  | Df_analysis.Forward_may| Df_analysis.Forward_must  -> 
-    _dfs blocks df_type (order @ [-1])
-  | Df_analysis.Backward_may| Df_analysis.Backward_must ->
-    let blocks = swap_pred_succ blocks in
-    let blocks = _dfs blocks df_type ([-1] @ (List.rev order)) in
-    let blocks = swap_in_out blocks in
-    swap_pred_succ blocks
-  | Df_analysis.No_analysis -> failwith "error for input type no_analysis in dfs"
+  let blocks_logical = match df_type with
+    | Df_analysis.Forward_may| Df_analysis.Forward_must  -> 
+      _dfs blocks df_type (order @ [-1])
+    | Df_analysis.Backward_may| Df_analysis.Backward_must ->
+      let blocks = swap_pred_succ blocks in
+      let blocks = swap_in_out blocks in
+      let blocks = _dfs blocks df_type ([-1] @ (List.rev order)) in
+      let blocks = swap_in_out blocks in
+      swap_pred_succ blocks
+    | Df_analysis.No_analysis -> failwith "error for input type no_analysis in dfs" in 
+  let () = Hashtbl.remove blocks_logical (-1) in
+  blocks_logical
+;;
+
+let store_info prog = 
+  let lines = Hashtbl.create (module Int) in 
+  let rec helper prog  = match prog with
+    | [] -> lines
+    | h :: t -> 
+      let () = Hashtbl.set lines ~key:h.line_number ~data:h in
+      helper t
+  in helper prog
+;;
+
+(* 
+  Notice in_logical is not necessary to be the real in set for line, this in_logical is a logical concept.
+  If we pass out field in backward analysis as in_logical, this function still works.
+  And this is what we have done in backward analysis.
+*)
+let process_line (line_info : line) (in_logical : IntSet.t) =
+  let gen = IntSet.of_list line_info.gen in
+  let kill = IntSet.of_list line_info.kill in
+  let out_logical = IntSet.union gen (IntSet.diff in_logical kill) in
+  out_logical
+;;
+
+let one_block_to_lines lines_info block res df_type line_l = 
+  let in_logical = match df_type with
+    | Df_analysis.Forward_may| Df_analysis.Forward_must -> block.in_
+    | Df_analysis.Backward_may| Df_analysis.Backward_must -> block.out_
+    | Df_analysis.No_analysis -> failwith "error for input type no_analysis in one_block_to_lines" in
+  let line_l = match df_type with
+    | Df_analysis.Forward_may| Df_analysis.Forward_must -> line_l
+    | Df_analysis.Backward_may| Df_analysis.Backward_must -> List.rev line_l
+    | _ -> failwith "error for input type no_analysis in one_block_to_lines" in
+  let rec helper ls in_logical lines_info res = match ls with
+    | [] ->  res
+    | h :: t ->
+      let line_info = Hashtbl.find_exn lines_info h in
+      let out_logical = process_line line_info in_logical in
+      let () = match df_type with
+        | Df_analysis.Forward_may| Df_analysis.Forward_must -> Hashtbl.set res ~key:h ~data:(in_logical, out_logical)
+        | Df_analysis.Backward_may| Df_analysis.Backward_must -> Hashtbl.set res ~key:h ~data:(out_logical, in_logical)
+        |_ -> failwith "error for input type no_analysis in one_block_to_lines helper"
+      in 
+      helper t out_logical lines_info res
+  in helper line_l in_logical lines_info res
+;;
+
+(* 
+  Given blocks that finished dataflow analysis. Convert the blocks to line format with in and out field.
+*)
+let blocks_to_lines blocks lines_info b2l df_type = 
+  let res = Hashtbl.create (module Int) in
+  let blks_no = Hashtbl.keys blocks in
+  let rec helper blks_no res = match blks_no with
+    | [] -> res
+    | h :: t -> 
+      let block = Hashtbl.find_exn blocks h in
+      let s, e = Hashtbl.find_exn b2l block.no in
+      let line_l = range s (e - s + 1) in
+      let res = one_block_to_lines lines_info block res df_type line_l in
+      helper t res
+  in helper blks_no res
+;;
+
+let gen_res res = 
+  let keys = Hashtbl.keys res in
+  let keys_ordered = List.sort keys ~compare:Int.compare in
+  let accu = [] in 
+  let rec helper lines accu = match lines with
+    | [] -> accu
+    | h :: t -> 
+      let line_in_set, line_out_set = Hashtbl.find_exn res h in
+      let line_in = IntSet.to_list line_in_set in
+      let line_out = IntSet.to_list line_out_set in
+      let accu = accu @ [(line_in, line_out, h)] in
+      helper t accu
+  in helper keys_ordered accu
 ;;
 
 let dfana (prog : program) (df_type : Df_analysis.t) = 
   let l2b = get_l2b prog (-1) in
   let b2l = get_b2l l2b in
-  let () = print_b2l b2l in
-  (* let () = print_l2b l2b in *)
-  let lss = group_lines prog in
-  (* let () = print_groups lss in *)
-  let blocks = build_blocks lss l2b in
-  let res = dfs blocks df_type in
-  let () = print_blocks res in
-  (* let () = print_succ l in *)
-  (* let () = print_df blocks in *)
-  (* let () = check_df_graph prog blocks l2b b2l in *)
-  [([1;2], [3;4], 0); ([4],[5;6],1); ([],[],2)]
+  let line_info = store_info prog in
+  let lss = group_lines_logical prog df_type in
+  let blocks = build_blocks lss l2b df_type in
+  let blocks = dfs blocks df_type in
+  let res = blocks_to_lines blocks line_info b2l df_type in
+  gen_res res
 ;;
