@@ -1,7 +1,37 @@
 (*
-  This file is used to achieve data flow analysis.
-  We use 0 and -1 to denote entry and exit point respectively
-  So there is only one entry point and one exit point in the whole program
+  This file is used to achieve dataflow analysis.
+
+  We traverse by block to boost the performance. Each block contains information including 
+  gen, kill, successor, predecessor, in set and out set. Each block has one entry point and one exit point.
+  It may have multiple predecessors and successors though. We use block number 0 and -1 to denote entry and 
+  exit block respectively, and there is only one entry and one exit block in the whole program.
+
+  In forward analysis, we can traverse from entry point to exit point using successor field in each
+  block. However, in backward analysis, we should traverse using predecessor field. In order to make life
+  easier, we swap predecessors and successors in backward analysis. So we can use the same traverse scheme in
+  forward and backward by using successor field.
+
+  Though we can use same traverse scheme in dataflow analysis. We still need to calculate gen and kill set for
+  each block. The traverse order in each block differs in forward and backward analysis. Therefore, we use 
+  logical line concept. Each logical block is composed of several logical lines. Logical lines are normal line
+  number order in forward analysis, and reversed in backward analysis. By preprocess logical lines from original
+  lines, we can traverse from first logical line to the end logical line without considering forward/backward scenario.
+
+  Traverse every logical lines within the same basic block(BB) using below formula to get gen and kill set for BB.
+    gen[BB] <- gen[BB] U gen[s] - kill[s]
+    kill[BB] <- kill[BB] U kill[s] - gen[s]
+
+  For forward-may analysis, we calculate by
+    in[BB] <- U out[BB'] where BB' are predecessors of BB. out[BB'] are initialized to empty set in the begining.
+
+  For forward-must analysis, we calculate by
+    in[BB] <- Intersect out[BB'] where BB' are predecessors of BB. out[BB'] are initialized to full set.
+
+  Since we use logical block, backward is treated as forward, so we ignore its formula here.
+
+  Heuristically speeking, we should use pre-order to traverse logical blocks. However, control flow graph may contain
+  circles, so we didn't use this order.
+
 *)
 open Core
 open Json_reader.Lab2_checkpoint
@@ -48,9 +78,7 @@ let get_l2b prog block_no =
   _get_l2b prog block_no
 ;;
 
-(* 
-  Each block gets a interval [a, b] indicates its line number range. Both sides are inclusivE.
-*)
+(* Each block gets a interval [a, b] indicates its line number range. Both sides are inclusive. *)
 let get_b2l l2b = 
   let l = Hashtbl.to_alist l2b in
   let b2l = Hashtbl.create (module Int) in
@@ -80,8 +108,11 @@ let print_l2b l2b =
   Hashtbl.iteri l2b ~f:(fun ~key:k ~data:v -> printf "line %d block %d\n" k v)
 ;;
 
-(* group lines from is_label to is_label, first is_lable is inclusive and the second is exclusive *)
-let group_lines prog = 
+(* 
+  group lines from is_label to is_label, first is_lable is inclusive and the second is exclusive 
+  In other words, lines within the same group are grouped together as a line list.
+*)
+let group_block_lines prog = 
   let l = [] in
   let acc = [] in
   let rec helper prog inclusive l acc = match prog with
@@ -94,18 +125,22 @@ let group_lines prog =
   in helper prog true l acc
 ;;
 
-let rec _group_lines_logical lss acc = match lss with
+let rec _group_logical_lines lss acc = match lss with
   | [] -> acc
   | h :: t -> 
     let new_h = List.rev h in
-    _group_lines_logical t (acc @ [new_h])
+    _group_logical_lines t (acc @ [new_h])
 ;;
 
-let group_lines_logical prog (df_type : Df_analysis.t) = 
-  let lss = group_lines prog in
+(*  
+  Generate a list of line list. Lines within the same block are grouped together.
+  Lines within the same block are ordered based on forward/backward analysis type.
+*)
+let group_logical_block_lines prog (df_type : Df_analysis.t) = 
+  let lss = group_block_lines prog in
   let lss_logical = match df_type with 
     | Forward_must | Forward_may -> lss
-    | Backward_must | Backward_may -> _group_lines_logical lss []
+    | Backward_must | Backward_may -> _group_logical_lines lss []
     | _ -> failwith "failed at group_lines_logical" in
   lss_logical
 ;;
@@ -135,6 +170,11 @@ let get_block_gen_kill (ls : line list) =
   in helper ls gen kill
 ;;
 
+(* Get full set for generator line. *)
+let get_full_set blocks = 
+  Hashtbl.fold blocks ~init:IntSet.empty ~f:(fun ~key:_ ~data:blk acc -> IntSet.union acc blk.gen)
+;;
+
 (* 
   build a block based on lines within the same block
   ls: lines within a block, guaranteed to be non-empty 
@@ -150,16 +190,16 @@ let build_one_block ls l2b =
 ;;
 
 (* Set up successors, gen, kill field *)
-let rec build_blocks_step1 lss l2b blocks = match lss with
+let rec build_blocks_gen_kill_succ lss l2b blocks = match lss with
   | [] -> blocks
   | h :: t -> 
     let blk = build_one_block h l2b in
     let () = Hashtbl.set blocks ~key:blk.no ~data:blk in
-    build_blocks_step1 t l2b blocks
+    build_blocks_gen_kill_succ t l2b blocks
 ;;
 
 (* Set up pred field *)
-let build_blocks_step2 blocks = 
+let build_blocks_pred blocks = 
   let blk_no_l = Hashtbl.keys blocks in
   let () = List.iter blk_no_l 
       ~f:(fun blk_no -> 
@@ -172,15 +212,8 @@ let build_blocks_step2 blocks =
         ) in 
   blocks
 
-(* Get full set for generator line. *)
-let get_full_set blocks = 
-  Hashtbl.fold blocks ~init:IntSet.empty ~f:(fun ~key:_ ~data:blk acc -> IntSet.union acc blk.gen)
-;;
-
-(* 
-  Set up default output/input field in blocks based on forward/backward must/may analysis.
- *)
-let build_blocks_step3 blocks (df_type : Df_analysis.t) = 
+(* Set up default output/input field in blocks based on forward/backward must/may analysis. *)
+let build_blocks_in_out blocks (df_type : Df_analysis.t) = 
   let blk_no_l = Hashtbl.keys blocks in
   let logical_init = match df_type with 
     | Forward_must | Backward_must -> get_full_set blocks
@@ -198,12 +231,26 @@ let build_blocks_step3 blocks (df_type : Df_analysis.t) =
   blocks
 ;;
 
-let build_blocks lss l2b df_type =
+(* 
+  build_logical_blocks calculate gen, kill, predecessor and successor field for each block including entry
+  and exit block.
+  These blocks are logical based on df_type. So we do not need to distinguish forward and backward analysis,
+  and we can just start from entry block to the end. To do so, we will swap successor or predecessors in backward analysis.
+  Also, gen and kill set of one block in backward analysis is different, so we will traverse from end to
+  the beginning in this case. This is already done in lss generated from group_lines_logical. Check comments
+  in function group_lines_logical for detail.
+  par lss: line list list. Each block has its line list composing it. line list in each block is reversed in 
+  backward analysis. So we can start from index 0 to the end and obey the traverse order.
+  par l2b: Hashtbl storing information from line number to block number.
+  par df_type: data analysis type
+  return: Hashtbl from block number to block.
+*)
+let build_logical_blocks lss l2b df_type =
   let blocks = Hashtbl.create (module Int) in
   let () = Hashtbl.set blocks ~key:(-1) ~data:(empty_blk (-1)) in
-  let blocks = build_blocks_step1 lss l2b blocks in
-  let blocks = build_blocks_step2 blocks in
-  let blocks = build_blocks_step3 blocks df_type in
+  let blocks = build_blocks_gen_kill_succ lss l2b blocks in
+  let blocks = build_blocks_pred blocks in
+  let blocks = build_blocks_in_out blocks df_type in
   blocks
 ;;
 
@@ -235,16 +282,13 @@ let print_blocks blocks =
     )
 ;;
 
-let rec unfold_right f init =
-  match f init with
-  | None -> []
-  | Some (x, next) -> x :: unfold_right f next
-;;
-
-(* 
-  [init, init + n)
- *)
+(* Generate an integer array: [init, init + n) *)
 let range init n =
+  let rec unfold_right f init =
+    match f init with
+    | None -> []
+    | Some (x, next) -> x :: unfold_right f next
+  in
   let irange x = if x >= init + n then None else Some (x, x + 1) in
   unfold_right irange init
 ;;
@@ -264,9 +308,7 @@ let swap_pred_succ blocks =
   blocks
 ;;
 
-(* 
-  Swap in and out set for blocks. This is used when backward analysis is finished.
- *)
+(* Swap in and out set for blocks. This is used when backward analysis is finished. *)
 let swap_in_out blocks = 
   let blk_no_list = Hashtbl.keys blocks in
   let () = List.iter blk_no_list 
@@ -295,9 +337,6 @@ let get_preds_out v blocks df_type =
       | Some s -> s
       | None -> IntSet.empty
     in
-    (* let () = printf "  init_set is " in
-       let () = IntSet.iter init_set ~f:(fun x -> printf "%d " x) in
-       let () = printf "\n" in *)
     List.fold_left preds_out ~init:init_set ~f:(fun acc out -> IntSet.inter acc out)
   | Df_analysis.No_analysis -> failwith "error for input type no_analysis in get_preds_out"
 ;;
@@ -390,9 +429,7 @@ let one_block_to_lines lines_info block res df_type line_l =
   in helper line_l in_logical lines_info res
 ;;
 
-(* 
-  Given blocks that finished dataflow analysis. Convert the blocks to line format with in and out field.
-*)
+(* Given blocks that finished dataflow analysis. Convert the blocks to line format with in and out field. *)
 let blocks_to_lines blocks lines_info b2l df_type = 
   let res = Hashtbl.create (module Int) in
   let blks_no = Hashtbl.keys blocks in
@@ -426,9 +463,9 @@ let dfana (prog : program) (df_type : Df_analysis.t) =
   let l2b = get_l2b prog (-1) in
   let b2l = get_b2l l2b in
   let line_info = store_info prog in
-  let lss = group_lines_logical prog df_type in
-  let blocks = build_blocks lss l2b df_type in
-  let blocks = dfs blocks df_type in
-  let res = blocks_to_lines blocks line_info b2l df_type in
+  let lss = group_logical_block_lines prog df_type in
+  let blocks_logical = build_logical_blocks lss l2b df_type in
+  let blocks_res = dfs blocks_logical df_type in
+  let res = blocks_to_lines blocks_res line_info b2l df_type in
   gen_res res
 ;;

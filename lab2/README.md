@@ -1,27 +1,46 @@
-# L1 Compiler
+# L2 Compiler
 
 ## Overview
-lab1 is register allocation. Students are required to 
-1) Submit 10 test cases for l1 including scenarios in success, error and exception.
-2) Implement register allocation algorithm.
-The temporaries in test input file is formatted to be SSA.
-More information can be reached in [handout](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab1.pdf) and [checkpoint](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab1checkpoint.pdf).
+lab2 is dataflow analysis. Students are required to 
+1) Submit 10 test cases for l2 including scenarios in success, error and exception.
+2) Implement dataflow analysis algorithm.
+Core concept in dataflow analysis is gen and kill set. Each expression has a value on the left and an
+expression on the right. Gen is the right side part. Kill corresponds to expression using left side part.
+More information can be reached in [handout](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf) and [checkpoint](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2checkpoint.pdf).
 
 ## Data structure
-Hash table from register to register Set as adjacency list to denote interference graph.
+Instead of traversing line by line, we use basic block as the traverse unit. Each block has gen, kill, pred, succ, in and out field. Once we calculate in set and out set for each block, we calculate in and out set for each line from the end/beginning of each block.
 
 ## Algorithm
-The basic allocation procedure follows:
-### 1) Build interference graph
-We build edge from line.define to line.live_out. We do not build clique based on live_out because this may ignore dependency between define and live_out. For example, if the defined temporary is not used in the future, so it may not in live_out set, then scheduler may allocate a register which is already allocated for the live_out for the current register (because there is no edge between define and live_out). 
-PS:If we can eliminate redundant defination in SSA, which means every defination will be in the live_out set, then we can build clique purely based on live_out set.
-Complexity: O(v + e)
-### 2) Build SEO
-Theoratically, We initialize every vertex with weight 0. Then, each time we start from a vertex u with maximum weight and update its neighbors weight by one. Then we record vertex u and delete from graph, and keep doing so until no vertex left on graph. There are lines where %eax or %edx is in the define field. We isolate these nodes in the interferance graph because interferance graph is used to describe the relationship between temporaries during register alloc to keep the consistance, we do not use %eax nor %edx for temporary register allcation as well. In addition, for line whose define field is %eax or %edx, we do not allocate other register as well, which means these lines will use %eax or %edx to execute. This avoid superfluous allocation. Notice temporaries in interference graph is pure SSA. So we can apply maximum cardinality to find optimal register allocation policy.
-Complexity: O(v + e)
-### 3) Greedy coloring based on SEO
-Greedy assign registers in SEO order. We generate register name based on %rxx. where xx is index number. The rule is generate register with minimum index which is greater than its allocated neighbors.
-Complexity: O(v + e)
+The dataflow analysis procedure is shown below:
+### 1) Build control flow graph in terms of basic block
+Lines within the same block are grouped together in order(dependes on forward/backward, check dfana.ml for more details). Gen, kill, successor, predecessor field are calculated for each basic block(BB) in this step. Specifically, traverse each statement by order and update as below:
+
+    gen[BB] <- gen[BB] U gen[s] - kill[s]
+
+    kill[BB] <- kill[BB] U kill[s] - gen[s]
+
+Complexity: O(l) where l is number of lines in input file.
+### 2) Update block until converge
+Initialize the process queue(check dfana.ml for details about the order).
+
+For forward-may analysis, we calculate in set by
+
+    in[BB] <- U out[BB'] where BB' are predecessors of BB. out[BB'] are initialized to empty set in the begining.
+
+For forward-must analysis, 
+
+    in[BB] <- Intersect out[BB'] where BB' are predecessors of BB. out[BB'] are initialized to full set.
+
+Then use below formula to update out set for BB. If new out[BB] is different from previous ones, then push its successors to process queue.
+
+    out[BB] <- gen[BB] U (in[BB] - kill) 
+
+Complexity: Check [notes](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/09-df-theory.pdf) for details.
+### 3) Transform from block to line
+Finally, we should traverse each block and transfrom from block in/out set to line in/out set. We can apply in and out formula in terms of line from above step.
+
+Complexity: O(l)
     
 ## Test
 Start container. Mount workspace to the Root project which contains test cases. Root project contains compiler directory.
@@ -35,14 +54,19 @@ to
 ```
 "$script_directory/harness/runHarness" gradeTests "$@"
 ```
-Then, save the hand written test cases to /workspace/tests/l1-my-tests, then run
+Then, save the hand written test cases to /workspace/tests/l2-my-tests, then run
 ```
-/workspace/compiler# ../runverifier l1-my-tests
+/workspace/compiler# ../runverifier l2-my-tests
 ```
 
-### Task 2 (register allocation)
+### Task 2 (dataflow analysis)
+Modify ROOT_PROJECT/runverifier, change the last line to
+```
+"$script_directory/harness/runHarness" verifyCheckpoint "$@"
+``` 
+then run
 ```
 cd /workspace/compiler
-../runverifier l1-basic-checkpoint
-../runverifier l1-large-checkpoint
+../runverifier l2-basic-checkpoint
+../runverifier l2-large-checkpoint
 ```
