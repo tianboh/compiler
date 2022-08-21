@@ -1,5 +1,5 @@
 {
-(* L1 Compiler
+(* L2 Compiler
  * Lexer
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
@@ -23,6 +23,11 @@
  *
  * Update this file to lex the necessary keywords and other tokens
  * in order to make the grammar forward compatible with C0.
+ * 
+ * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
+ *    Implemented L2 lexer based on L1. Features are listed below.
+ *    - Provide if, else, while, for loop control logic.
+ *    - Provide special character support. 
  *)
 
 open Core
@@ -92,6 +97,76 @@ rule initial = parse
   | ')' { T.R_paren }
 
   | ';' { T.Semicolon }
+  | '!'  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | '~'  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "--" { T.Minus_minus }
+  | "++" { T.Plus_plus }
+
+  | '*' { T.Star }
+  | '/' { T.Slash }
+  | '%' { T.Percent }
+
+  | '+'  { T.Plus }
+  | '-'  { T.Minus }
+
+  | ">>"  { error lexbuf
+              ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+            initial lexbuf
+          }
+  | "<<"  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+
+  | '<'   { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | '>'   { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | ">="  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "<="  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  
+  | "=="  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "!="  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+
+  | '&'   { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+
+  | '^'   { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  
+  | '|'   { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  
+  | "&&"  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  
+  | "||"  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  
+  | '?'   { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | ':'   { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
 
   | '='  { T.Assign }
   | "+=" { T.Plus_eq }
@@ -99,41 +174,84 @@ rule initial = parse
   | "*=" { T.Star_eq }
   | "/=" { T.Slash_eq }
   | "%=" { T.Percent_eq }
+  | "&="  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "^="  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "|="  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "<<=" { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | ">>=" { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
 
-  | '+' { T.Plus }
-  | '-' { T.Minus }
-  | '*' { T.Star }
-  | '/' { T.Slash }
-  | '%' { T.Percent }
-
-  | "--" { T.Minus_minus } (* Illegal *)
-
-  | "assert" { assert false }
+  | "assert" { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
   | "main"   { T.Main }
   | "return" { T.Return }
 
-  | "bool"    { assert false }
-  | "char"    { assert false }
+  | "bool"    { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "char"    { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
   | "int"     { T.Int }
-  | "void"    { assert false }
-  | "struct"  { assert false }
-  | "typedef" { assert false }
+  | "void"    { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "struct"  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "typedef" { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
 
-  | "if"    { assert false }
-  | "else"  { assert false }
-  | "while" { assert false }
-  | "for"   { assert false }
+  | "if"    { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "else"  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "while" { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "for"   { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
 
-  | "true"  { assert false }
-  | "false" { assert false }
+  | "true"  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "false" { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
 
-  | "NULL"        { assert false }
-  | "alloc"       { assert false }
-  | "alloc_array" { assert false }
+  | "NULL"  { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "alloc" { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "alloc_array" { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
 
-  | "string"   { assert false }
-  | "continue" { assert false }
-  | "break"    { assert false }
+  | "string"   { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "continue" { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
+  | "break"    { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         initial lexbuf }
 
   | dec_num as n { dec_constant n lexbuf }
   | hex_num as n { hex_constant n lexbuf }

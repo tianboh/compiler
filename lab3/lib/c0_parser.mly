@@ -1,6 +1,6 @@
 %{
-(* L1 Compiler
- * L1 grammar
+(* L2 Compiler
+ * L2 grammar
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  *
@@ -60,6 +60,9 @@ let expand_asnop ~lhs ~op ~rhs
 %token L_paren R_paren
 %token Unary
 %token Minus_minus 
+%token Plus_plus
+%token <Int32.t> Dbg_line
+%token <Int32.t> Dbg_col
 
 (* Unary is a dummy terminal.
  * We need dummy terminals if we wish to assign a precedence
@@ -85,20 +88,18 @@ let expand_asnop ~lhs ~op ~rhs
 %type <Ast.mstm list> program
 %type <Ast.mstm list> stms
 %type <Ast.stm> stm
-%type <Ast.mstm> m(stm)
 %type <Ast.decl> decl
 %type <Ast.stm> simp
 %type <Symbol.t> lvalue
-%type <Symbol.t Mark.t> m(lvalue)
 %type <Ast.exp> exp
-%type <Ast.mexp> m(exp)
 %type <Core.Int32.t> int_const
-%type <Ast.binop> binop
 %type <Ast.binop option> asnop
+%type <Ast.binop> binop
+// %type <Ast.postop> postop
 
 %%
 
-proram :
+program :
   | Int;
     Main;
     L_paren R_paren;
@@ -123,10 +124,10 @@ m(x) :
 stms :
   | (* empty *)
       { [] }
-  | hd = m(stm); tl = stms;
-      { hd :: tl }
   | L_brace; body = stms; R_brace;
       { body }
+  | hd = m(stm); tl = stms;
+      { hd :: tl }
   ;
 
 stm :
@@ -143,10 +144,10 @@ decl :
       { Ast.New_var ident }
   | Int; ident = Ident; Assign; e = m(exp);
       { Ast.Init (ident, e) }
-  | Int; Main;
-      { Ast.New_var (Symbol.symbol "main") }
-  | Int; Main; Assign; e = m(exp);
-      { Ast.Init (Symbol.symbol "main", e) }
+  // | Int; Main;
+  //     { Ast.New_var (Symbol.symbol "main") }
+  // | Int; Main; Assign; e = m(exp);
+  //     { Ast.Init (Symbol.symbol "main", e) }
   ;
 
 simp :
@@ -154,13 +155,16 @@ simp :
     op = asnop;
     rhs = m(exp);
       { expand_asnop ~lhs ~op ~rhs $startpos(lhs) $endpos(rhs) }
+  // | lhs = m(lvalue);
+  //   op = postop;
+  //     { expand_}
   ;
 
 lvalue :
   | ident = Ident;
       { ident }
-  | Main;
-      { Symbol.symbol "main" }
+  // | Main;
+  //     { Symbol.symbol "main" }
   | L_paren; lhs = lvalue; R_paren;
       { lhs }
   ;
@@ -170,8 +174,8 @@ exp :
       { e }
   | c = int_const;
       { Ast.Const c }
-  | Main;
-      { Ast.Var (Symbol.symbol "main") }
+  // | Main;
+  //     { Ast.Var (Symbol.symbol "main") }
   | ident = Ident;
       { Ast.Var ident }
   | lhs = m(exp);
