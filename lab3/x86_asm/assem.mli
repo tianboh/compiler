@@ -33,17 +33,19 @@ type operand =
   | Reg of reg
   | Temp of Temp.t
 
-type operation =
+  type bin_op =
   | Add
   | Sub
   | Mul
   | Div
   | Mod
+  | And
+  | Or
 
 type instr =
   (* dest <- lhs op rhs *)
   | Binop of
-      { op : operation
+      { op : bin_op
       ; dest : operand
       ; lhs : operand
       ; rhs : operand

@@ -6,9 +6,9 @@
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  *)
 open Core
-module A = Parser.Ast
+module A = Ast
 module S = Util.Symbol.Map
-module T = Parser.Tree
+module T = Tree
 module Symbol = Util.Symbol
 module Mark = Util.Mark
 
@@ -18,6 +18,8 @@ let trans_binop = function
   | A.Times -> T.Mul
   | A.Divided_by -> T.Div
   | A.Modulo -> T.Mod
+  | A.And_and -> T.And_and
+  | A.Or_or -> T.Or_or
 ;;
 
 let trans_unop = function
@@ -28,7 +30,8 @@ let trans_unop = function
 let rec trans_exp env = function
   (* after type-checking, id must be declared; do not guard lookup *)
   | A.Var id -> T.Temp (S.find_exn env id)
-  | A.Const c -> T.Const c
+  | A.Const_int c -> T.Const_int c
+  | A.Const_bool b -> T.Const_bool b
   | A.Binop binop ->
     T.Binop
       { op = trans_binop binop.op
@@ -37,7 +40,7 @@ let rec trans_exp env = function
       }
   | A.Unop { op = A.Negative; operand = e } ->
     T.Binop
-      { op = trans_unop A.Negative; lhs = T.Const Int32.zero; rhs = trans_mexp env e }
+      { op = trans_unop A.Negative; lhs = T.Const_int Int32.zero; rhs = trans_mexp env e }
 
 and trans_mexp env mexp = trans_exp env (Mark.data mexp)
 
@@ -47,8 +50,8 @@ let rec trans_stms (env : Temp.t S.t) (ast : A.stm list) : T.stm list =
   | A.Declare d :: stms ->
     (match d with
     | A.New_var _ -> trans_stms env stms
-    | A.Init (id, e) -> trans_stms env (A.Assign (id, e) :: stms))
-  | A.Assign (id, e) :: stms ->
+    | A.Init id -> trans_stms env (A.Assign {name = id.name; value = id.value} :: stms))
+  | A.Assign {name=id; value=e} :: stms ->
     let t = Temp.create () in
     let env' = S.set env ~key:id ~data:t in
     T.Move { dest = t; src = trans_mexp env e } :: trans_stms env' stms

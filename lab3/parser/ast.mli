@@ -18,13 +18,16 @@ type binop =
   | Times
   | Divided_by
   | Modulo
+  | And_and
+  | Or_or
 
 type unop = Negative
 
 (* Expression *)
 type exp =
   | Var of Symbol.t
-  | Const of Int32.t
+  | Const_int of Int32.t
+  | Const_bool of Bool.t
   | Binop of
       { op : binop
       ; lhs : mexp
@@ -38,17 +41,21 @@ type exp =
 (* Expression plus src file location *)
 and mexp = exp Mark.t
 
+type dtype = 
+| Int
+| Bool
+
 (* Declaration *)
 type decl =
-  (* int x; *)
-  | New_var of Symbol.t
-  (* int x = e; *)
-  | Init of Symbol.t * mexp
+  (* int/bool x; *)
+  | New_var of { t : dtype; name : Symbol.t }
+  (* int/bool x = e; *)
+  | Init of { t : dtype; name : Symbol.t; value : mexp}
 
 (* Statement *)
 type stm =
   | Declare of decl
-  | Assign of Symbol.t * mexp
+  | Assign of {name : Symbol.t ; value : mexp}
   | Return of mexp
 
 (* Statement plus src file location *)

@@ -12,9 +12,12 @@ type binop =
   | Mul
   | Div
   | Mod
+  | And_and
+  | Or_or
 
 type exp =
-  | Const of Int32.t
+  | Const_int of Int32.t
+  | Const_bool of Bool.t
   | Temp of Temp.t
   | Binop of
       { lhs : exp
@@ -44,10 +47,13 @@ module Print : PRINT = struct
     | Mul -> "*"
     | Div -> "/"
     | Mod -> "%"
+    | And_and -> "&&"
+    | Or_or -> "||"
   ;;
 
   let rec pp_exp = function
-    | Const x -> Int32.to_string x
+    | Const_int x -> Int32.to_string x
+    | Const_bool x -> Bool.to_string x
     | Temp t -> Temp.name t
     | Binop binop ->
       Printf.sprintf

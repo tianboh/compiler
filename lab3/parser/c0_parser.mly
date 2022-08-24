@@ -37,14 +37,14 @@ let expand_asnop ~lhs ~op ~rhs
   (start_pos : Lexing.position)
   (end_pos : Lexing.position) =
     match lhs, op, rhs with
-    | id, None, exp -> Ast.Assign (Mark.data id, exp)
+    | id, None, exp -> Ast.Assign {name = Mark.data id; value = exp}
     | id, Some op, exp ->
       let binop = Ast.Binop {
         op;
         lhs = Mark.map lhs ~f:(fun id -> Ast.Var id);
         rhs = exp;
       } in
-      Ast.Assign (Mark.data id, mark binop start_pos end_pos)
+      Ast.Assign {name = Mark.data id; value = mark binop start_pos end_pos}
 
 %}
 
@@ -52,9 +52,11 @@ let expand_asnop ~lhs ~op ~rhs
 %token Semicolon
 %token <Int32.t> Dec_const
 %token <Int32.t> Hex_const
+%token <Bool.t> Bool_const
 %token <Util.Symbol.t> Ident
 %token Return
 %token Int
+%token Bool
 %token Main
 %token Plus Minus Star Slash Percent
 %token Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq
@@ -63,6 +65,7 @@ let expand_asnop ~lhs ~op ~rhs
 %token Unary
 %token Minus_minus 
 %token Plus_plus
+%token And_and Or_or
 %token <Int32.t> Dbg_line
 %token <Int32.t> Dbg_col
 
@@ -88,6 +91,7 @@ let expand_asnop ~lhs ~op ~rhs
  * the types of other rules.
  *)
 %type <Ast.mstm list> program
+%type <Ast.dtype> dtype
 %type <Ast.mstm list> stms
 %type <Ast.stm> stm
 %type <Ast.decl> decl
@@ -95,6 +99,7 @@ let expand_asnop ~lhs ~op ~rhs
 %type <Symbol.t> lvalue
 %type <Ast.exp> exp
 %type <Core.Int32.t> int_const
+%type <Core.Bool.t> bool_const
 %type <Ast.binop option> asnop
 %type <Ast.binop> binop
 // %type <Ast.postop> postop
@@ -141,11 +146,17 @@ stm :
       { Ast.Return e }
   ;
 
+dtype : 
+  | Int;
+      { Ast.Int }
+  | Bool;
+      {Ast.Bool}
+
 decl :
-  | Int; ident = Ident;
-      { Ast.New_var ident }
-  | Int; ident = Ident; Assign; e = m(exp);
-      { Ast.Init (ident, e) }
+  | t = dtype; ident = Ident;
+      { Ast.New_var { t = t; name = ident } }
+  | t = dtype; ident = Ident; Assign; e = m(exp);
+      { Ast.Init { t = t; name = ident; value = e } }
   // | Int; Main;
   //     { Ast.New_var (Symbol.symbol "main") }
   // | Int; Main; Assign; e = m(exp);
@@ -175,9 +186,9 @@ exp :
   | L_paren; e = exp; R_paren;
       { e }
   | c = int_const;
-      { Ast.Const c }
-  // | Main;
-  //     { Ast.Var (Symbol.symbol "main") }
+      { Ast.Const_int c }
+  | b = bool_const;
+      { Ast.Const_bool b }
   | ident = Ident;
       { Ast.Var ident }
   | lhs = m(exp);
@@ -193,6 +204,11 @@ int_const :
       { c }
   | c = Hex_const;
       { c }
+  ;
+
+bool_const : 
+  | b = Bool_const;
+    { b }
   ;
 
 (* See the menhir documentation for %inline.
@@ -211,6 +227,10 @@ binop :
       { Ast.Divided_by }
   | Percent;
       { Ast.Modulo }
+  | And_and;
+      { Ast.And_and }
+  | Or_or;
+      { Ast.Or_or }
   ;
 
 asnop :

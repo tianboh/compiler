@@ -21,6 +21,8 @@ let munch_op = function
   | T.Mul -> AS.Mul
   | T.Div -> AS.Div
   | T.Mod -> AS.Mod
+  | T.And_and -> AS.And
+  | T.Or_or -> AS.Or
 ;;
 
 (* munch_exp dest exp
@@ -48,7 +50,10 @@ let munch_exp : AS.operand -> T.exp -> AS.instr list =
     : AS.instr list
     =
     match exp with
-    | T.Const n -> AS.Mov { dest; src = AS.Imm n } :: rev_acc
+    | T.Const_int i -> AS.Mov { dest; src = AS.Imm i } :: rev_acc
+    | T.Const_bool b -> (match b with
+        | true -> AS.Mov { dest; src = AS.Imm Int32.one } :: rev_acc
+        | false -> AS.Mov { dest; src = AS.Imm Int32.zero } :: rev_acc)
     | T.Temp t -> AS.Mov { dest; src = AS.Temp t } :: rev_acc
     | T.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
   (* munch_binop_acc dest (binop, e1, e2) rev_acc

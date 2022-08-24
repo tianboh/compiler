@@ -156,13 +156,9 @@ rule initial = parse
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
          initial lexbuf }
   
-  | "&&"  { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+  | "&&"  { T.And_and }
   
-  | "||"  { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+  | "||"  { T.Or_or }
   
   | '?'   { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
@@ -199,9 +195,7 @@ rule initial = parse
   | "main"   { T.Main }
   | "return" { T.Return }
 
-  | "bool"    { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+  | "bool"    { T.Bool }
   | "char"    { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
          initial lexbuf }
@@ -229,12 +223,8 @@ rule initial = parse
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
          initial lexbuf }
 
-  | "true"  { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
-  | "false" { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+  | "true"  { T.Bool_const true }
+  | "false" { T.Bool_const false }
 
   | "NULL"  { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));

@@ -12,9 +12,12 @@ type binop =
   | Mul
   | Div
   | Mod
+  | And_and
+  | Or_or
 
 type exp =
-  | Const of Int32.t
+  | Const_int of Int32.t
+  | Const_bool of Bool.t
   | Temp of Temp.t
   | Binop of
       { lhs : exp

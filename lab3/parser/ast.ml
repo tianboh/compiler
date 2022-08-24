@@ -20,6 +20,8 @@ type binop =
   | Times
   | Divided_by
   | Modulo
+  | And_and
+  | Or_or
 
 type unop = Negative
 
@@ -44,7 +46,8 @@ type unop = Negative
  *)
 type exp =
   | Var of Symbol.t
-  | Const of Int32.t
+  | Const_int of Int32.t
+  | Const_bool of Bool.t
   | Binop of
       { op : binop
       ; lhs : mexp
@@ -57,13 +60,17 @@ type exp =
 
 and mexp = exp Mark.t
 
+type dtype = 
+| Int
+| Bool
+
 type decl =
-  | New_var of Symbol.t
-  | Init of Symbol.t * mexp
+  | New_var of { t : dtype; name : Symbol.t }
+  | Init of { t : dtype; name : Symbol.t; value : mexp}
 
 type stm =
   | Declare of decl
-  | Assign of Symbol.t * mexp
+  | Assign of {name : Symbol.t ; value : mexp}
   | Return of mexp
 
 and mstm = stm Mark.t
@@ -77,6 +84,8 @@ module Print = struct
     | Times -> "*"
     | Divided_by -> "/"
     | Modulo -> "%"
+    | And_and -> "&&"
+    | Or_or -> "||"
   ;;
 
   let pp_unop = function
@@ -85,21 +94,26 @@ module Print = struct
 
   let rec pp_exp = function
     | Var id -> Symbol.name id
-    | Const c -> Int32.to_string c
+    | Const_int c -> Int32.to_string c
+    | Const_bool b -> Bool.to_string b
     | Unop unop -> sprintf "%s(%s)" (pp_unop unop.op) (pp_mexp unop.operand)
     | Binop binop ->
       sprintf "(%s %s %s)" (pp_mexp binop.lhs) (pp_binop binop.op) (pp_mexp binop.rhs)
 
   and pp_mexp e = pp_exp (Mark.data e)
 
+  let pp_dtype = function
+  | Int -> "int"
+  | Bool -> "bool"
+
   let pp_decl = function
-    | New_var id -> sprintf "int %s;" (Symbol.name id)
-    | Init (id, e) -> sprintf "int %s = %s;" (Symbol.name id) (pp_mexp e)
+    | New_var id -> sprintf "%s %s;" (pp_dtype id.t) (Symbol.name id.name)
+    | Init id -> sprintf "%s %s = %s;" (pp_dtype id.t) (Symbol.name id.name) (pp_mexp id.value)
   ;;
 
   let rec pp_stm = function
     | Declare d -> pp_decl d
-    | Assign (id, e) -> sprintf "%s = %s;" (Symbol.name id) (pp_mexp e)
+    | Assign id -> sprintf "%s = %s;" (Symbol.name id.name) (pp_mexp id.value)
     | Return e -> sprintf "return %s;" (pp_mexp e)
 
   and pp_mstm stm = pp_stm (Mark.data stm)

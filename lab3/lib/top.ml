@@ -22,6 +22,7 @@ module Ast = Parser.Ast
 module Typechecker = Type.Typechecker
 module Dfana = Flow.Dfana
 module Tree = Parser.Tree
+module Trans = Parser.Trans
 
 (* Command line arguments *)
 

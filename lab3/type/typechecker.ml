@@ -48,7 +48,8 @@ let rec tc_exp (ast : A.mexp) (vars : init_status S.t) : unit =
     | Some Decl ->
       error ~msg:(sprintf "Not initialized before use: `%s`" (Symbol.name id))
     | Some Init -> ())
-  | A.Const _ -> ()
+  | A.Const_int _ -> ()
+  | A.Const_bool _ -> ()
   | A.Binop binop ->
     tc_exp binop.lhs vars;
     tc_exp binop.rhs vars
@@ -76,10 +77,10 @@ let rec tc_stms (ast : A.mstm list) (env : env) : env =
     in
     (match Util.Mark.data stm with
     | A.Declare (A.New_var id) ->
-      (match S.find env.vars id with
-      | Some _ -> error ~msg:(sprintf "Already declared: `%s`" (Symbol.name id))
-      | None -> tc_stms stms { env with vars = S.set env.vars ~key:id ~data:Decl })
-    | A.Declare (A.Init (id, e)) ->
+      (match S.find env.vars id.name with
+      | Some _ -> error ~msg:(sprintf "Already declared: `%s`" (Symbol.name id.name))
+      | None -> tc_stms stms { env with vars = S.set env.vars ~key:id.name ~data:Decl })
+    | A.Declare (A.Init {t=t; name=name; value=value}) ->
       (* Since we're creating new statements, we just maintain the
        * source location of the original statement `stm`. This is just
        * for debugging and pretty error messages; we could just use
@@ -96,10 +97,10 @@ let rec tc_stms (ast : A.mstm list) (env : env) : env =
        * NB: This property will no longer hold when function calls are introduced.
        *)
       let stms' =
-        remark (A.Declare (A.New_var id)) :: remark (A.Assign (id, e)) :: stms
+        remark (A.Declare (A.New_var {t; name})) :: remark (A.Assign {name = name; value = value}) :: stms
       in
       tc_stms stms' env
-    | A.Assign (id, e) ->
+    | A.Assign {name = id; value = e} ->
       tc_exp e env.vars;
       (match S.find env.vars id with
       | None ->
