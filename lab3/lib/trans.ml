@@ -6,9 +6,11 @@
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  *)
 open Core
-module A = Ast
-module S = Symbol.Map
-module T = Tree
+module A = Parser.Ast
+module S = Util.Symbol.Map
+module T = Parser.Tree
+module Symbol = Util.Symbol
+module Mark = Util.Mark
 
 let trans_binop = function
   | A.Plus -> T.Add

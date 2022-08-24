@@ -1,0 +1,18 @@
+(library
+ (name parser)
+ (libraries core cmdliner yojson json_reader args x86_asm temp util)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))
+
+(ocamllex
+ (modules c0_lexer))
+
+(env
+ ; For lab 1, Minus_minus is unused, so we suppress that warning here.
+ ; Feel free to remove that for future labs.
+ (_
+  (menhir_flags --unused-token Minus_minus)))
+
+(menhir
+ (modules c0_parser))

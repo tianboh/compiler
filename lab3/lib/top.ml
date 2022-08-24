@@ -16,6 +16,12 @@
 open Core
 open Json_reader
 open Args
+module Assem = X86_asm.Assem
+module Parse = Parser.Parse
+module Ast = Parser.Ast
+module Typechecker = Type.Typechecker
+module Dfana = Flow.Dfana
+module Tree = Parser.Tree
 
 (* Command line arguments *)
 
@@ -182,7 +188,7 @@ let run (cmd : cmd_line_args) : unit =
   | (false, Backward_may) -> process_checkpoint cmd
   | (false, Backward_must) -> process_checkpoint cmd
   | (_, _) -> try compile cmd with
-    | Error_msg.Error ->
+    | Util.Error_msg.Error ->
       prerr_endline "Compilation failed.";
       exit 1
 ;;

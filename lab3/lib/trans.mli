@@ -7,4 +7,5 @@
  *)
 
 (* translate abstract syntax tree to IR tree *)
-val translate : Ast.program -> Tree.stm list
+
+val translate : Parser.Ast.program -> Parser.Tree.stm list

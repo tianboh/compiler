@@ -12,8 +12,8 @@
 *)
 
 open Core
-module T = Tree
-module AS = Assem
+module T = Parser.Tree
+module AS = X86_asm.Assem
 
 let munch_op = function
   | T.Add -> AS.Add

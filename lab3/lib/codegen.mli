@@ -8,4 +8,4 @@
  * Implements a "convenient munch" algorithm
  *)
 
-val codegen : Tree.stm list -> Assem.instr list
+val codegen : Parser.Tree.stm list -> X86_asm.Assem.instr list
