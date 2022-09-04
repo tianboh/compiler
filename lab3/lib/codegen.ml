@@ -21,8 +21,11 @@ let munch_op = function
   | T.Mul -> AS.Mul
   | T.Div -> AS.Div
   | T.Mod -> AS.Mod
-  | T.And_and -> AS.And
-  | T.Or_or -> AS.Or
+  | T.Logic_and -> AS.And
+  | T.Logic_or -> AS.Or
+  | T.Bit_and -> AS.Pand
+  | T.Bit_or -> AS.Por
+  | T.Bit_xor -> AS.Pxor
 ;;
 
 (* munch_exp dest exp

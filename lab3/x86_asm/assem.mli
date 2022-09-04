@@ -41,6 +41,9 @@ type operand =
   | Mod
   | And
   | Or
+  | Pand
+  | Por
+  | Pxor
 
 type instr =
   (* dest <- lhs op rhs *)

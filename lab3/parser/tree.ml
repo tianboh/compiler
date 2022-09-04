@@ -12,8 +12,11 @@ type binop =
   | Mul
   | Div
   | Mod
-  | And_and
-  | Or_or
+  | Logic_and
+  | Logic_or
+  | Bit_and
+  | Bit_or
+  | Bit_xor
 
 type exp =
   | Const_int of Int32.t
@@ -47,8 +50,11 @@ module Print : PRINT = struct
     | Mul -> "*"
     | Div -> "/"
     | Mod -> "%"
-    | And_and -> "&&"
-    | Or_or -> "||"
+    | Logic_and -> "&&"
+    | Logic_or -> "||"
+    | Bit_and -> "&"
+    | Bit_or -> "|"
+    | Bit_xor -> "^"
   ;;
 
   let rec pp_exp = function

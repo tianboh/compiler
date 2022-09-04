@@ -144,21 +144,15 @@ rule initial = parse
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
          initial lexbuf }
 
-  | '&'   { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+  | '&'   { T.Bit_and }
 
-  | '^'   { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+  | '^'   { T.Bit_xor }
   
-  | '|'   { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+  | '|'   { T.Bit_or }
   
-  | "&&"  { T.And_and }
+  | "&&"  { T.Logic_and }
   
-  | "||"  { T.Or_or }
+  | "||"  { T.Logic_or }
   
   | '?'   { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));

@@ -48,24 +48,31 @@ let expand_asnop ~lhs ~op ~rhs
 
 %}
 
-%token Eof
-%token Semicolon
+(* Variable name *)
+%token <Util.Symbol.t> Ident
+(* Data type  *) 
+%token Int
+%token Bool
+(* Data type values *)
 %token <Int32.t> Dec_const
 %token <Int32.t> Hex_const
 %token <Bool.t> Bool_const
-%token <Util.Symbol.t> Ident
-%token Return
-%token Int
-%token Bool
+(* Keywords *)
 %token Main
-%token Plus Minus Star Slash Percent
-%token Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq
+%token Return
+(* Special characters *)
 %token L_brace R_brace
 %token L_paren R_paren
+%token Eof
+%token Semicolon
 %token Unary
-%token Minus_minus 
-%token Plus_plus
-%token And_and Or_or
+(* Below are binary operators *) 
+%token Plus Minus Star Slash Percent
+%token Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq
+%token Minus_minus Plus_plus
+%token Logic_and Logic_or           (* Logic op: && || *)
+%token Bit_and Bit_or Bit_xor       (* Bitwise op: & | ^ *)
+(* Others *)
 %token <Int32.t> Dbg_line
 %token <Int32.t> Dbg_col
 
@@ -227,10 +234,16 @@ binop :
       { Ast.Divided_by }
   | Percent;
       { Ast.Modulo }
-  | And_and;
-      { Ast.And_and }
-  | Or_or;
-      { Ast.Or_or }
+  | Logic_and;
+      { Ast.Logic_and }
+  | Logic_or;
+      { Ast.Logic_or }
+  | Bit_and;
+      { Ast.Bit_and }
+  | Bit_or;
+      { Ast.Bit_or }
+  | Bit_xor;
+      { Ast.Bit_xor }
   ;
 
 asnop :

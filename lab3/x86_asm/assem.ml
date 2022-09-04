@@ -42,6 +42,9 @@ type bin_op =
   | Mod
   | And
   | Or
+  | Pand
+  | Por
+  | Pxor
 
 type instr =
   | Binop of
@@ -107,6 +110,9 @@ let format_binop = function
   | Mod -> "%"
   | And -> "&&"
   | Or -> "||"
+  | Pand -> "&"
+  | Por -> "|"
+  | Pxor -> "^"
 ;;
 
 let format_operand = function

@@ -20,8 +20,11 @@ type binop =
   | Times
   | Divided_by
   | Modulo
-  | And_and
-  | Or_or
+  | Logic_and
+  | Logic_or
+  | Bit_and
+  | Bit_or
+  | Bit_xor
 
 type unop = Negative
 
@@ -84,8 +87,11 @@ module Print = struct
     | Times -> "*"
     | Divided_by -> "/"
     | Modulo -> "%"
-    | And_and -> "&&"
-    | Or_or -> "||"
+    | Logic_and -> "&&"
+    | Logic_or -> "||"
+    | Bit_and -> "&"
+    | Bit_or -> "|"
+    | Bit_xor -> "^"
   ;;
 
   let pp_unop = function

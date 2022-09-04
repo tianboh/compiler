@@ -18,8 +18,11 @@ let trans_binop = function
   | A.Times -> T.Mul
   | A.Divided_by -> T.Div
   | A.Modulo -> T.Mod
-  | A.And_and -> T.And_and
-  | A.Or_or -> T.Or_or
+  | A.Logic_and -> T.Logic_and
+  | A.Logic_or -> T.Logic_or
+  | A.Bit_and -> T.Bit_and
+  | A.Bit_or -> T.Bit_or
+  | A.Bit_xor -> T.Bit_xor
 ;;
 
 let trans_unop = function
