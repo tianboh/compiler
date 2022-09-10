@@ -1,6 +1,0 @@
-(library
- (name x86_asm)
- (libraries core temp)
- (inline_tests)
- (preprocess
-  (pps ppx_jane ppx_expect)))

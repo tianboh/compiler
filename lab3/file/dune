@@ -1,0 +1,6 @@
+(library
+ (name file)
+ (libraries core temp register parser assem)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))
