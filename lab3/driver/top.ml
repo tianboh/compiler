@@ -132,6 +132,8 @@ let process_checkpoint (cmd : cmd_line_args) =
     let input_json = Yojson.Basic.from_file cmd.filename in
     if cmd.regalloc_only then
       let input = Lab1_checkpoint.program_of_json input_json in
+      let input_temp = Codegen.Program.transform_json_to_temp input in
+      let () = Codegen.Program.print_lines input_temp in
       let output = Codegen.Regalloc.regalloc input in
       let filename = base_filename ^ ".out" in
       Out_channel.with_file filename ~f:(fun out ->

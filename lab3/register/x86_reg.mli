@@ -1,24 +1,15 @@
 
-type reg = 
-  | EAX
-  | EBX
-  | ECX
-  | EDX
-  | ESI
-  | EDI
-  | EBP
-  | ESP
-  | E8D
-  | E9D
-  | E10D
-  | E11D
-  | E12D
-  | E13D
-  | E14D
-  | E15D
+open Core
 
+type t [@@deriving compare, sexp, hash]
 
-val reg_to_str : reg -> string
+include Comparable.S with type t := t
 
-val str_to_reg : string -> reg
+(* resets temp numbering *)
+val reset : unit -> unit
 
+(* returns a unique new temp *)
+val create : unit -> t
+
+(* returns the name of a temp *)
+val reg_to_str : t -> string

@@ -9,19 +9,37 @@
 *)
 open Core
 
-module StrSet : Set.S
+module TempSet : Set.S
+module AS = Assem.Pseudo
+module Inst_reg_info = Json_reader.Lab1_checkpoint
 ;;
 
-(* type line =
-  { uses : StrSet.t
-  ; define : string
-  ; live_out : StrSet.t
+type line =
+  { uses : TempSet.t
+  ; define : TempSet.t
+  ; live_out : TempSet.t
   ; move : bool
   ; line_number : int
   }
-;; *)
+;;
 
-(* val gen_forward : Assem.Pseudo.instr list ->
-    (int, line) Base.Hashtbl.t -> int -> (int, line) Base.Hashtbl.t *)
+type temps_info = line list
+;;
 
-val gen_regalloc_info: Assem.Pseudo.instr list -> Json_reader.Lab1_checkpoint.program
+(* Return None if define field is empty else Some Temp.t *)
+val get_def : line -> Temp.t option
+;;
+
+val gen_forward : AS.instr list ->
+  (int, line) Base.Hashtbl.t -> int -> (int, line) Base.Hashtbl.t
+;;
+
+val gen_backward : AS.instr list ->
+  (int, line) Base.Hashtbl.t -> int -> TempSet.t -> (int, line) Base.Hashtbl.t
+;;
+  
+val transform_json_to_temp : Inst_reg_info.program -> line list
+;;
+
+val print_lines : line list -> unit
+(* val gen_regalloc_info: Assem.Pseudo.instr list -> Json_reader.Lab1_checkpoint.program *)

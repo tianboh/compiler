@@ -20,6 +20,11 @@ let create () =
   t
 ;;
 
+let create_no (n:int) : t = 
+  let t = n in
+  t
+;;
+
 let name t = "%t" ^ string_of_int t
 
 include Comparable.Make (Int)

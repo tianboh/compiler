@@ -92,7 +92,8 @@ let munch_stm = function
   | T.Move mv -> munch_exp (AS.Temp mv.dest) mv.src
   | T.Return e ->
     (* return e is implemented as %eax <- e *)
-    munch_exp (AS.Reg Register.EAX) e
+    let t = Temp.create () in
+    munch_exp (AS.Temp t) e
 ;;
 
 (* To codegen a series of statements, just concatenate the results of

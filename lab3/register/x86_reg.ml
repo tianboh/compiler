@@ -1,60 +1,34 @@
+(* 
+   This file is a register module. 
+   It will create register by sequence after the first 16 x86 determined register.
+*)
 
+open Core
 
-type reg = 
-  | EAX
-  | EBX
-  | ECX
-  | EDX
-  | ESI
-  | EDI
-  | EBP
-  | ESP
-  | E8D
-  | E9D
-  | E10D
-  | E11D
-  | E12D
-  | E13D
-  | E14D
-  | E15D
+type t = int [@@deriving sexp, compare, hash]
 
+let counter = ref 1
+let reset () = counter := 1
 
-let reg_to_str = function
-  | EAX  -> "%eax"
-  | EBX  -> "%ebx"
-  | ECX  -> "%ecx"
-  | EDX  -> "%edx"
-  | ESI  -> "%esi"
-  | EDI  -> "%edi"
-  | EBP  -> "%ebp"
-  | ESP  -> "%esp"
-  | E8D  -> "%e8d"
-  | E9D  -> "%e9d"
-  | E10D -> "%e10d"
-  | E11D -> "%e11d"
-  | E12D -> "%e12d"
-  | E13D -> "%e13d"
-  | E14D -> "%e14d"
-  | E15D -> "%e15d"
+let create () =
+  let t = !counter in
+  incr counter;
+  t
 ;;
 
-let str_to_reg = function
-  | "%eax" -> EAX 
-  | "%ebx" -> EBX 
-  | "%ecx" -> ECX 
-  | "%edx" -> EDX 
-  | "%esi" -> ESI 
-  | "%edi" -> EDI 
-  | "%ebp" -> EBP 
-  | "%esp" -> ESP 
-  | "%e8d" -> E8D 
-  | "%e9d" -> E9D 
-  | "%e10d" -> E10D
-  | "%e11d" -> E11D
-  | "%e12d" -> E12D
-  | "%e13d" -> E13D
-  | "%e14d" -> E14D
-  | "%e15d" -> E15D
-  | _ -> EAX
+let name t = 
+  "%r" ^ string_of_int t
+
+let reg_to_str (idx : int) = match idx with
+  | 1  -> "%EAX"
+  | 2  -> "%EBX"
+  | 3  -> "%ECX"
+  | 4  -> "%EDX"
+  | 5  -> "%ESI"
+  | 6  -> "%EDI"
+  | 7  -> "%EDP"
+  | 8  -> "%ESP"
+  | _ -> name idx
 ;;
 
+include Comparable.Make (Int)

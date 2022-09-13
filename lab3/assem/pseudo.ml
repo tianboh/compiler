@@ -11,9 +11,10 @@
 open Core
 module Register = Register.X86_reg
 
+(* Notice that pseudo assembly does not assign register to each temp, so 
+   operand does not contain register type. Register is assigned in x86 assemb. *)
 type operand =
   | Imm of Int32.t
-  | Reg of Register.reg
   | Temp of Temp.t
 
 type bin_op =
@@ -61,7 +62,6 @@ let format_binop = function
 let format_operand = function
   | Imm n -> "$" ^ Int32.to_string n
   | Temp t -> Temp.name t
-  | Reg r -> Register.reg_to_str r
 ;;
 
 let format = function

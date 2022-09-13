@@ -19,5 +19,7 @@ val reset : unit -> unit
 (* returns a unique new temp *)
 val create : unit -> t
 
+val create_no : int -> t
+
 (* returns the name of a temp *)
 val name : t -> string

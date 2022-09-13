@@ -2,8 +2,7 @@ module Register = Register.X86_reg
 
 type operand =
 | Imm of Int32.t
-| Reg of Register.reg
-| Temp of Temp.t
+| Reg of Register.t
 
 type bin_op =
 | Add
