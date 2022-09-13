@@ -5,6 +5,7 @@
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
 *)
+module Temp = Temp.Temp
 
 type binop =
   | Add

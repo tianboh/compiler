@@ -5,30 +5,44 @@
 
 open Core
 
-type t = int [@@deriving sexp, compare, hash]
+module Register = struct
+  module T = struct
+    type t = int [@@deriving sexp, compare, hash]
+  end
+  include T
 
-let counter = ref 1
-let reset () = counter := 1
+  let counter = ref 1
+  let reset () = counter := 1
 
-let create () =
-  let t = !counter in
-  incr counter;
-  t
-;;
+  let create () =
+    let t = !counter in
+    incr counter;
+    t
+  ;;
 
-let name t = 
-  "%r" ^ string_of_int t
+  let create_no (n:int) : t = 
+    let t = n in
+    t
+  ;;
 
-let reg_to_str (idx : int) = match idx with
-  | 1  -> "%EAX"
-  | 2  -> "%EBX"
-  | 3  -> "%ECX"
-  | 4  -> "%EDX"
-  | 5  -> "%ESI"
-  | 6  -> "%EDI"
-  | 7  -> "%EDP"
-  | 8  -> "%ESP"
-  | _ -> name idx
-;;
+  let create_pp t =
+    t + 1
+  ;;
 
-include Comparable.Make (Int)
+  let name t = 
+    "%R" ^ string_of_int t
+
+  let reg_to_str (idx : int) = match idx with
+    | 1  -> "%EAX"
+    | 2  -> "%EBX"
+    | 3  -> "%ECX"
+    | 4  -> "%EDX"
+    | 5  -> "%ESI"
+    | 6  -> "%EDI"
+    | 7  -> "%EDP"
+    | 8  -> "%ESP"
+    | _ -> name idx
+  ;;
+
+  include Comparable.Make (T)
+end

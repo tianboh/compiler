@@ -1,5 +1,5 @@
 (library
- (name assem)
+ (name inst)
  (libraries core temp register)
  (inline_tests)
  (preprocess

@@ -1,6 +1,6 @@
 open Core
-module Asm_ps = Assem.Pseudo
-module Asm_x86 = Assem.X86
+module Asm_ps = Inst.Pseudo
+module Asm_x86 = Inst.X86
 
 let dump_asm_ps file_name ps_asm = 
   Out_channel.with_file file_name ~f:(fun out ->

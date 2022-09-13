@@ -7,17 +7,18 @@
     "define", "use", "live_out", "move" and "line_num" info
     for each pseudo assembly instruction.
 *)
-open Core
+(* open Core *)
 
-module TempSet : Set.S
-module AS = Assem.Pseudo
+module AS = Inst.Pseudo
 module Inst_reg_info = Json_reader.Lab1_checkpoint
+module Temp = Temp.Temp
+module Register = Register.X86_reg.Register
 ;;
 
 type line =
-  { uses : TempSet.t
-  ; define : TempSet.t
-  ; live_out : TempSet.t
+  { uses : Temp.Set.t
+  ; define : Temp.Set.t
+  ; live_out : Temp.Set.t
   ; move : bool
   ; line_number : int
   }
@@ -35,11 +36,15 @@ val gen_forward : AS.instr list ->
 ;;
 
 val gen_backward : AS.instr list ->
-  (int, line) Base.Hashtbl.t -> int -> TempSet.t -> (int, line) Base.Hashtbl.t
+  (int, line) Base.Hashtbl.t -> int -> Temp.Set.t -> (int, line) Base.Hashtbl.t
 ;;
   
 val transform_json_to_temp : Inst_reg_info.program -> line list
 ;;
 
+val transform_temps_to_json : (Temp.t * Register.t) option list -> Inst_reg_info.allocations
+;;
+
 val print_lines : line list -> unit
-(* val gen_regalloc_info: Assem.Pseudo.instr list -> Json_reader.Lab1_checkpoint.program *)
+
+val gen_regalloc_info: AS.instr list -> line list

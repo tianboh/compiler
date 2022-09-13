@@ -1,5 +1,4 @@
 open Core
-open Json_reader.Lab1_checkpoint
 open Printf
 (* 
     This file contains necessary functions to allocate registers 
@@ -35,53 +34,59 @@ open Printf
          The rule is generate register with minimum index which is greater than its allocated neighbors.
          Time complexity for coloring: O(v + e)
  *)
-
-let (<?>) c (cmp, x, y) = 
+module Temp = Temp.Temp
+module Register = Register.X86_reg.Register
+module Reg_info = Program
+type reg = Register.t
+type temp = Temp.t
+type allocations = (temp * temp) option list
+ 
+(* let (<?>) c (cmp, x, y) = 
   if c = 0
   then cmp x y
-  else c;;
+  else c;; *)
 
-let reg_cmp_pretty (t1 : string) (t2 : string) = 
+(* let reg_cmp_pretty (t1 : string) (t2 : string) = 
   Int.compare (String.length t1) (String.length t2)
   <?> (String.compare, t1, t2)
-;;
+;; *)
 
-let is_tmp par = 
+(* module TempSet = Set.Make(Temp) *)
+(* type t = TempSet.t *)
+(* let is_tmp par = 
   String.compare (String.sub par ~pos:1 ~len:1) "t" = 0
 ;;
 
 let is_reg par = 
   (String.compare (String.sub par ~pos:1 ~len:1) "r" = 0)
   || (String.compare (String.sub par ~pos:1 ~len:1) "e" = 0)
-;;
+;; *)
 
 (* print adjacency list (interference graph) *)
 let print_adj adj = 
   printf "\nprint adj\n";
-  let keys = Hashtbl.keys adj in
-  let sorted_keys = List.sort keys ~compare:reg_cmp_pretty in
+  let keys = Temp.Map.keys adj in
+  let sorted_keys = List.sort keys ~compare:Temp.compare in
   let () = List.iter sorted_keys 
       ~f:(fun key -> 
-          let s = Hashtbl.find_exn adj key in
-          let l = List.sort (Set.to_list s) ~compare:reg_cmp_pretty in
-          printf "From %s to\t" key;
-          List.iter l ~f:(fun x -> printf "%s " x);
+          let s = Temp.Map.find_exn adj key in
+          let l = List.sort (Temp.Set.to_list s) ~compare:Temp.compare in
+          printf "From %s to\t" (Temp.name key);
+          List.iter l ~f:(fun x -> printf "%s " (Temp.name x));
           printf "\n";
         ) in
   printf "\n\n";
 ;;
 
 (* Build edge between def and live_out *)
-let build_def_lo adj u vs =
-  let s_u = match Hashtbl.find adj u with
-    | None -> Set.empty (module String)
-    | Some s -> s in
-  Set.iter vs ~f:(fun v -> 
-      let s_v = match Hashtbl.find adj v with
-        | None -> Set.empty (module String)
-        | Some s -> s in
-      Hashtbl.set adj ~key:u ~data:(Set.union s_u (Set.of_list (module String) [v]));
-      Hashtbl.set adj ~key:v ~data:(Set.union s_v (Set.of_list (module String) [u]))
+let build_def_lo adj def s_lo =
+  let s_def = Temp.Set.of_list [def] in
+  Temp.Set.fold_right s_lo ~init:adj ~f:(fun v adj ->
+    let s_v = match Temp.Map.find adj v with
+      | None -> Temp.Set.empty
+      | Some s -> s in
+    let s_res = Temp.Set.union s_v s_def in
+    Temp.Map.set adj ~key:v ~data:s_res
     )
 ;;
 
@@ -93,50 +98,48 @@ let build_def_lo adj u vs =
    For lines whose define field is %eax or %edx, we build a isolated node for them and do not
    build edge from them to any temporaries.
 *)
-let rec _build_graph prog adj = match prog with 
+let rec _build_graph (prog : Program.temps_info) adj = match prog with 
   | [] -> adj
   | h :: t -> 
-    let s1 = match Hashtbl.find adj h.define with 
-      | Some s -> s
-      | None -> Set.empty (module String) in
-    let s2 = Set.of_list (module String) h.live_out in
-    let s_u = Set.union s1 s2 in
-    match h.define with
-    | "" -> adj
-    | _ -> 
-      if is_tmp h.define
-      then
-        let () = Hashtbl.set adj ~key: h.define ~data: s_u in
-        build_def_lo adj h.define s2
-      else 
-        Hashtbl.set adj ~key:h.define ~data: (Set.of_list (module String)[h.define]);
-      _build_graph t adj
+    (* let () = print_adj adj in *)
+    match Program.get_def h with
+      | None -> _build_graph t adj
+      | Some def ->
+        let s_def_nbr = match Temp.Map.find adj def with 
+          | Some s -> s
+          | None -> Temp.Set.empty in
+        let s_lo = h.live_out in
+        let s_u = Temp.Set.union s_def_nbr s_lo in
+        let adj = Temp.Map.set adj ~key:def ~data:s_u in
+        let adj = build_def_lo adj def s_lo in
+        _build_graph t adj
 ;;
 
 (* Build double(mutually) linked adjacency list based on .in file.*)
-let build_graph (prog : program) = 
-  let adj = Hashtbl.create (module String) in
+let build_graph (prog : Program.temps_info) = 
+  let adj = Temp.Map.empty in
   _build_graph prog adj
 ;;
 
+(* Table store info from temp to register index. *)
 let gen_reg_table prog = 
-  let hash_init = Hashtbl.create (module String) in
+  let hash_init = Temp.Map.empty in
   let rec helper prog hash = match prog with
     | [] -> hash
-    | h::t -> 
-      match h.define with
-      |"" -> helper t hash;
-      | _ ->
-        Hashtbl.set hash ~key:h.define ~data:0;
+    | h :: t -> 
+      match Program.get_def h with
+      | None -> helper t hash
+      | Some def_ ->
+        let hash = Temp.Map.set hash ~key:def_ ~data:0 in
         helper t hash in 
   helper prog hash_init
 ;;
 
 let rec _seo adj reg_table seq = 
-  match Hashtbl.is_empty reg_table with
+  match Temp.Map.is_empty reg_table with
   | true -> seq
   | false -> 
-    let (u, _) = match Hashtbl.fold reg_table ~init:None 
+    let (u, _) = match Temp.Map.fold reg_table ~init:None 
                          ~f:(fun ~key ~data accu -> 
                              match accu with
                              | None -> 
@@ -149,21 +152,16 @@ let rec _seo adj reg_table seq =
     | None -> failwith "empty reg_table"
     | Some s -> s in 
     let seq_new = seq@[u] in
-    if is_reg u
-    then 
-      let () = Hashtbl.remove reg_table u in
-      _seo adj reg_table seq_new;
-    else
-      let nbr = Hashtbl.find_exn adj u in
-      let nbr = Set.remove nbr u in
-      Set.iter nbr ~f:(fun x -> 
-          match Hashtbl.find reg_table x with
-          | None -> ()
-          | Some v -> 
-            let order = v + 1 in
-            Hashtbl.set reg_table ~key:x ~data:order;
-        );
-      Hashtbl.remove reg_table u;
+    let nbr = Temp.Map.find_exn adj u in
+    let nbr = Temp.Set.remove nbr u in
+    let reg_table = Temp.Set.fold_right nbr ~init:reg_table ~f:(fun x acc -> 
+        match Temp.Map.find reg_table x with
+        | None -> acc
+        | Some v -> 
+          let order = v + 1 in
+          Temp.Map.set reg_table ~key:x ~data:order;
+      ) in
+      let reg_table = Temp.Map.remove reg_table u in
       _seo adj reg_table seq_new;
 ;;
 
@@ -178,64 +176,70 @@ let seo adj prog =
    If nbr[u] is [1,5,0,2], then find_reg will return 3.
 *)
 let rec find_reg nbr_reg idx = 
-  let cur_reg = "%r" ^ (string_of_int idx) in
-  if Set.mem nbr_reg cur_reg
-  then find_reg nbr_reg (idx + 1)
-  else cur_reg
+  if Register.Set.mem nbr_reg idx
+  then find_reg nbr_reg (Register.create_pp idx)
+  else idx
 ;;
 
 (* Allocate register for tmp. 
    tmp_to_reg is a hashtable from temporary to registers.
    nbr is the neighbor of tmp
 *)
-let alloc nbr tmp_to_reg = 
-  let nbr_reg = Set.filter_map (module String) nbr ~f:(fun u -> Hashtbl.find tmp_to_reg u ) in
-  find_reg nbr_reg 0
+let alloc (nbr : Temp.Set.t) (tmp_to_reg : reg Temp.Map.t) : reg = 
+  (* let nbr_reg_allocated =  *)
+  let nbr_reg_l = Temp.Set.fold nbr ~init:[] ~f:(fun acc u -> 
+    match Temp.Map.find tmp_to_reg u with
+    | None -> acc
+    | Some u' -> [u']@acc) in
+  let nbr_reg_s = Register.Set.of_list nbr_reg_l in
+  find_reg nbr_reg_s (Register.create_no 10)
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)
 let rec greedy seq adj tmp_to_reg  = match seq with
   | [] -> tmp_to_reg
   | h :: t -> 
-    let nbr = Hashtbl.find_exn adj h in
+    let nbr = Temp.Map.find_exn adj h in
     let reg = alloc nbr tmp_to_reg in
-    if is_tmp h
-    then Hashtbl.set tmp_to_reg ~key:h ~data:reg
-    else Hashtbl.set tmp_to_reg ~key:h ~data:h;
+    let tmp_to_reg = Temp.Map.set tmp_to_reg ~key:h ~data:reg in
     greedy t adj tmp_to_reg 
 ;;
 
-let rec gen_result color prog  = match prog with
+let rec gen_result (color : reg Temp.Map.t) prog  = match prog with
   | [] -> []
   | h :: t ->
-    let tmp = h.define in
-    let reg = Hashtbl.find color tmp in
-    let tk = match reg with
-      | None -> None
-      | Some reg' -> 
-        if String.compare tmp reg' = 0
-        then None
-        else Some (tmp, reg') 
-    in tk :: (gen_result color t)
+    match Program.get_def h with
+    | None -> None :: (gen_result color t)
+    | Some tmp ->
+      let reg = Temp.Map.find color tmp in
+      let tk = match reg with
+        | None -> None
+        | Some reg' -> Some (tmp, reg') 
+      in tk :: (gen_result color t)
 ;;
 
-let print_tmp_to_reg color = 
+let print_tmp_to_reg (color : reg Temp.Map.t) = 
   let () = printf "\n\n==========\nTemporary to register\n" in
-  let sorted_keys = List.sort (Hashtbl.keys color) ~compare:reg_cmp_pretty in
-  List.iter sorted_keys ~f:(fun k -> printf "%s -> %s\n" k (Hashtbl.find_exn color k));
-  let l = List.map (Hashtbl.data color) ~f:(fun x -> x) in
-  let s = Set.of_list (module String) l in
-  printf "Used %d register\n" (Set.length s);
+  let sorted_keys = List.sort (Temp.Map.keys color) ~compare:Temp.compare in
+  List.iter sorted_keys ~f:(fun k -> 
+    let t = Temp.name k in
+    let r = Register.reg_to_str (Temp.Map.find_exn color k) in
+    printf "%s -> %s\n" t r
+    );
+  let l = List.map (Temp.Map.data color) ~f:(fun x -> x) in
+  let s = Register.Set.of_list l in
+  printf "Used %d register\n" (Register.Set.length s);
 ;;
 
-let regalloc (prog : program) : allocations =
+let regalloc (prog : Reg_info.temps_info) : (Temp.t * Register.t) option list =
   let adj = build_graph prog in
-  let tmp_to_reg = Hashtbl.create (module String) in
   let seq = seo adj prog in
+  let tmp_to_reg = Temp.Map.empty in
   let color = greedy seq adj tmp_to_reg in
   (* let () = print_adj adj in
-     let () = printf "SEO order\n" in
-     let () = List.iter ~f:(printf "%s ") seq in
-     let () = print_tmp_to_reg color in
-     let () = printf "\n" in *)
+  let () = printf "SEO order\n" in
+  let seq_l = List.map seq ~f:(fun x -> Temp.name x) in
+  let () = List.iter ~f:(printf "%s ") seq_l in
+  let () = print_tmp_to_reg color in
+  let () = printf "\n" in *)
   gen_result color prog;

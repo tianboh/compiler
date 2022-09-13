@@ -1,18 +1,21 @@
-open Json_reader.Lab1_checkpoint
+module Temp = Temp.Temp
+module Register = Register.X86_reg.Register
+module Reg_info = Program
 
-val build_graph : program ->
-  (reg, (reg, Base.String.comparator_witness) Base.Set.t) Base.Hashtbl.t
+type reg = Register.t
+type temp = Temp.t
+type allocations = (temp * temp) option list
 
-val gen_reg_table : line list -> (reg, int) Base.Hashtbl.t
+val build_graph : Reg_info.temps_info -> Temp.Set.t Temp.Map.t
 
-val print_adj : (reg, (reg, 'a) Base.Set.t) Base.Hashtbl.t -> unit
+val gen_reg_table : Reg_info.line list -> int Temp.Map.t
 
-val seo : (reg, (reg, 'a) Base.Set.t) Base.Hashtbl.t -> line list -> reg list
+val print_adj : Temp.Set.t Temp.Map.t -> unit
 
-val greedy : reg list ->
-  (reg, (reg, 'a) Base.Set.t) Base.Hashtbl.t ->
-  (reg, reg) Base.Hashtbl.t -> (reg, reg) Base.Hashtbl.t
+val seo : Temp.Set.t Temp.Map.t -> Reg_info.line list -> temp list
 
-val regalloc : program -> allocations
+val greedy : temp list -> Temp.Set.t Temp.Map.t -> reg Temp.Map.t -> reg Temp.Map.t
 
-val print_tmp_to_reg : (reg, reg) Base.Hashtbl.t -> unit
+val regalloc : Reg_info.temps_info -> (temp * reg) option list
+
+val print_tmp_to_reg : reg Temp.Map.t -> unit

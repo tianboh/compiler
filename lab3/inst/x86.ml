@@ -3,7 +3,7 @@
 *)
 
 open Core
-module Register = Register.X86_reg
+module Register = Register.X86_reg.Register
 
 type operand =
   | Imm of Int32.t

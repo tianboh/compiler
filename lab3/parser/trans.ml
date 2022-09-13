@@ -11,6 +11,7 @@ module S = Util.Symbol.Map
 module T = Tree
 module Symbol = Util.Symbol
 module Mark = Util.Mark
+module Temp = Temp.Temp
 
 let trans_binop = function
   | A.Plus -> T.Add

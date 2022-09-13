@@ -7,5 +7,6 @@
  *
  * Implements a "convenient munch" algorithm
  *)
+ module AS = Inst.Pseudo
 
- val codegen : Parser.Tree.stm list -> Assem.Pseudo.instr list
+ val gen_pseudo : Parser.Tree.stm list -> AS.instr list

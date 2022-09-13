@@ -6,7 +6,7 @@
   yojson
   json_reader
   args
-  assem
+  inst
   register
   util
   parser

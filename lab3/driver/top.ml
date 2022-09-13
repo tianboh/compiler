@@ -14,10 +14,10 @@
 *)
 
 open Core
-open Json_reader
+(* open Json_reader *)
 open Args
-module AS_psu = Assem.Pseudo
-module AS_x86 = Assem.X86
+module AS_psu = Inst.Pseudo
+module AS_x86 = Inst.X86
 module Parse = Parser.Parse
 module Ast = Parser.Ast
 module Typechecker = Type.Typechecker
@@ -131,23 +131,24 @@ let process_checkpoint (cmd : cmd_line_args) =
   | Some base_filename ->
     let input_json = Yojson.Basic.from_file cmd.filename in
     if cmd.regalloc_only then
-      let input = Lab1_checkpoint.program_of_json input_json in
+      let input = Json_reader.Lab1_checkpoint.program_of_json input_json in
       let input_temp = Codegen.Program.transform_json_to_temp input in
-      let () = Codegen.Program.print_lines input_temp in
-      let output = Codegen.Regalloc.regalloc input in
+      (* let () = Codegen.Program.print_lines input_temp in *)
+      let output = Codegen.Regalloc.regalloc input_temp in
+      let output' = Codegen.Program.transform_temps_to_json output in
       let filename = base_filename ^ ".out" in
       Out_channel.with_file filename ~f:(fun out ->
           Out_channel.output_string
             out
-            (output |> Lab1_checkpoint.json_of_allocations |> Yojson.Basic.to_string))
+            (output' |> Json_reader.Lab1_checkpoint.json_of_allocations |> Yojson.Basic.to_string))
     else
-      let input = Lab2_checkpoint.program_of_json input_json in
+      let input = Json_reader.Lab2_checkpoint.program_of_json input_json in
       let output = Dfana.dfana input cmd.df_type in
       let filename = base_filename ^ ".out" in
       Out_channel.with_file filename ~f:(fun out ->
           Out_channel.output_string
             out
-            (output |> Lab2_checkpoint.json_of_dflines)) 
+            (output |> Json_reader.Lab2_checkpoint.json_of_dflines)) 
 ;;
 
 (* The main driver for the compiler: runs each phase. *)
@@ -167,26 +168,21 @@ let compile (cmd : cmd_line_args) : unit =
   say_if cmd.dump_ir (fun () -> Tree.Print.pp_program ir);
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
-  let assem_ps = Codegen.Pseudo.codegen ir in
+  let assem_ps = Codegen.Gen.gen_pseudo ir in
   say_if cmd.dump_assem (fun () -> List.to_string ~f:AS_psu.format assem_ps);
   match cmd.emit with
   (* Output: abstract 3-address assem *)
   | Abstract_assem ->
-    (* let file = cmd.filename ^ ".abs" in
+    let file = cmd.filename ^ ".abs" in
     say_if cmd.verbose (fun () -> sprintf "Writing abstract assem to %s..." file);
+    File.dump_asm_ps file assem_ps
+  | X86_64 ->
+    (* let file = cmd.filename ^ ".abs" in
+    say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
     let program = Codegen.Program.gen_regalloc_info assem_ps in
-    let reg_alloc_info = Codegen.Alloc.regalloc program in
-    (* let assem_ps =  in *)
-    let filename = file ^ ".out" in
-      Out_channel.with_file filename ~f:(fun out ->
-          Out_channel.output_string out
-            (reg_alloc_info |> Lab1_checkpoint.json_of_allocations |> Yojson.Basic.to_string))
+    let reg_alloc_info = Codegen.Regalloc.regalloc program in
     File.dump_asm_ps file assem_ps *)
     failwith "error"
-  | X86_64 ->
-    failwith "error"
-    (* let file = cmd.filename ^ ".s" in
-    say_if cmd.verbose (fun () -> sprintf "Writing x86-assem to %s..." file) *)
 ;;
 
 let run (cmd : cmd_line_args) : unit =

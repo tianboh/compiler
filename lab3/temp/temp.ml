@@ -9,22 +9,33 @@
 
 open Core
 
-type t = int [@@deriving sexp, compare, hash]
+module Temp = struct
 
-let counter = ref 1
-let reset () = counter := 1
+  module T = struct
+    type t = int [@@deriving sexp, compare, hash]
+  end
+  include T
+  let counter = ref 1
+  let reset () = counter := 1
 
-let create () =
-  let t = !counter in
-  incr counter;
-  t
-;;
+  let create () =
+    let t = !counter in
+    incr counter;
+    t
+  ;;
 
-let create_no (n:int) : t = 
-  let t = n in
-  t
-;;
+  let create_no (n:int) : t = 
+    let t = n in
+    t
+  ;;
 
-let name t = "%t" ^ string_of_int t
+  let create_no_t (n : int) (t : t) : t =
+    let k = n + t in
+    k
+  ;;
 
-include Comparable.Make (Int)
+  let name t = "%t" ^ string_of_int t
+
+
+  include Comparable.Make (T)
+end
