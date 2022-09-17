@@ -24,12 +24,12 @@ type bin_op =
 type instr =
   | Binop of
       { op : bin_op
-      ; dest : operand
+      ; dest : Register.t
       ; lhs : operand
       ; rhs : operand
       }
   | Mov of
-      { dest : operand
+      { dest : Register.t
       ; src : operand
       }
   | Directive of string
@@ -60,11 +60,11 @@ let format = function
   | Binop binop ->
     sprintf
       "%s <-- %s %s %s"
-      (format_operand binop.dest)
+      (format_operand (Reg binop.dest))
       (format_operand binop.lhs)
       (format_binop binop.op)
       (format_operand binop.rhs)
-  | Mov mv -> sprintf "%s <-- %s" (format_operand mv.dest) (format_operand mv.src)
+  | Mov mv -> sprintf "%s <-- %s" (format_operand (Reg mv.dest)) (format_operand mv.src)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
 ;;

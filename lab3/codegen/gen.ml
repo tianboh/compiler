@@ -102,22 +102,43 @@ let munch_stm = function
  * codegen-ing each statement. *)
 let gen_pseudo = List.concat_map ~f:munch_stm
 
-(* let rec _codegen_w_reg res inst_list (reg_alloc_info : Register.t Temp.Map.t) =
+let operand_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t) : AS_x86.operand =
+  match operand with
+  | Imm i -> AS_x86.Imm i
+  | Temp t -> AS_x86.Reg (Temp.Map.find_exn reg_alloc_info t)
+;;
+
+let inst_bin_ps_to_x86 (op : AS.bin_op) : AS_x86.bin_op = 
+  match op with
+  | Add -> AS_x86.Add
+  | Sub -> AS_x86.Sub
+  | Mul -> AS_x86.Mul
+  | Div -> AS_x86.Div
+  | Mod -> AS_x86.Mod
+  | And -> AS_x86.And
+  | Or -> AS_x86.Or
+  | Pand -> AS_x86.Pand
+  | Por -> AS_x86.Por
+  | Pxor -> AS_x86.Pxor
+;;
+
+let rec _codegen_w_reg res inst_list (reg_alloc_info : Register.t Temp.Map.t) =
   match inst_list with
   | [] -> res
   | h :: t -> 
     match h with
     | AS.Binop bin_op -> 
       let dest = Temp.Map.find_exn reg_alloc_info bin_op.dest in
-      let lhs = Temp.Map.find_exn reg_alloc_info bin_op.lhs in
-      let rhs = Temp.Map.find_exn reg_alloc_info bin_op.rhs in
-      let bin_op = {bin_op with dest=dest; lhs=lhs; rhs=rhs} in
-      _codegen_w_reg (bin_op @@ res) t reg_alloc_info
+      let lhs = operand_ps_to_x86 bin_op.lhs reg_alloc_info in
+      let rhs = operand_ps_to_x86 bin_op.rhs reg_alloc_info in
+      let op = inst_bin_ps_to_x86 bin_op.op in
+      let bin_op = AS_x86.Binop {op; dest; lhs; rhs} in
+      _codegen_w_reg ([bin_op] @ res) t reg_alloc_info
     | AS.Mov mov -> 
       let dest = Temp.Map.find_exn reg_alloc_info mov.dest in
-      let src = Temp.Map.find_exn reg_alloc_info mov.dest in
-      let mov = {mov with dest=dest; src=src} in
-      _codegen_w_reg (mov @@ res) t reg_alloc_info
+      let src = operand_ps_to_x86 mov.src reg_alloc_info in
+      let mov = AS_x86.Mov {dest; src} in
+      _codegen_w_reg ([mov] @ res) t reg_alloc_info
     | AS.Directive _ | AS.Comment _ -> _codegen_w_reg res t reg_alloc_info
 ;;
 let gen_x86 
@@ -129,6 +150,6 @@ let gen_x86
       | Some x -> 
           match x with (temp, reg) -> Temp.Map.set acc ~key:temp ~data:reg
     ) in
-  _codegen_w_reg [] inst_list reg_alloc *)
+  _codegen_w_reg [] inst_list reg_alloc
 
 ;;

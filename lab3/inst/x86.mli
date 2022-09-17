@@ -20,13 +20,13 @@ type instr =
 (* dest <- lhs op rhs *)
 | Binop of
     { op : bin_op
-    ; dest : operand
+    ; dest : Register.t
     ; lhs : operand
     ; rhs : operand
     }
 (* dest <- src *)
 | Mov of
-    { dest : operand
+    { dest : Register.t
     ; src : operand
     }
 (* Assembly directive. *)

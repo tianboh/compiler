@@ -177,12 +177,13 @@ let compile (cmd : cmd_line_args) : unit =
     say_if cmd.verbose (fun () -> sprintf "Writing abstract assem to %s..." file);
     File.dump_asm_ps file assem_ps
   | X86_64 ->
-    (* let file = cmd.filename ^ ".abs" in
+    let file = cmd.filename ^ ".abs" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
     let program = Codegen.Program.gen_regalloc_info assem_ps in
     let reg_alloc_info = Codegen.Regalloc.regalloc program in
-    File.dump_asm_ps file assem_ps *)
-    failwith "error"
+    let assem_x86 = Codegen.Gen.gen_x86 assem_ps reg_alloc_info in
+    File.dump_asm_x86 file assem_x86
+    (* failwith "error" *)
 ;;
 
 let run (cmd : cmd_line_args) : unit =
