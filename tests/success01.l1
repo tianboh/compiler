@@ -1,10 +1,7 @@
-//test return 1
-
-// successfully declare and initialize
-
-int main() 
-{ 
-    int a;
-    a = 1;
-    return 1; 
+//test return 2
+// Test whether register allocation/codegen can handle return register interference graph when eax is occupied.
+int main()
+{
+  int f1 = 1;
+  return f1 + 1;			
 }

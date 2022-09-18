@@ -12,6 +12,6 @@
  module Register = Register.X86_reg.Register
  module AS_x86 = Inst.X86
 
- val gen_pseudo : Parser.Tree.stm list -> AS.instr list
+ val gen_pseudo : bool -> Parser.Tree.stm list -> AS.instr list
 
  val gen_x86 : AS.instr list -> (Temp.t * Register.t) option list -> AS_x86.instr list

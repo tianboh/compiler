@@ -168,7 +168,8 @@ let compile (cmd : cmd_line_args) : unit =
   say_if cmd.dump_ir (fun () -> Tree.Print.pp_program ir);
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
-  let assem_ps = Codegen.Gen.gen_pseudo ir in
+  let for_x86 = match cmd.emit with | Abstract_assem -> false | X86_64 -> true in
+  let assem_ps = Codegen.Gen.gen_pseudo for_x86 ir in
   say_if cmd.dump_assem (fun () -> List.to_string ~f:AS_psu.format assem_ps);
   match cmd.emit with
   (* Output: abstract 3-address assem *)
@@ -177,7 +178,7 @@ let compile (cmd : cmd_line_args) : unit =
     say_if cmd.verbose (fun () -> sprintf "Writing abstract assem to %s..." file);
     File.dump_asm_ps file assem_ps
   | X86_64 ->
-    let file = cmd.filename ^ ".abs" in
+    let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
     let program = Codegen.Program.gen_regalloc_info assem_ps in
     let reg_alloc_info = Codegen.Regalloc.regalloc program in

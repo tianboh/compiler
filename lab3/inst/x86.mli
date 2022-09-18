@@ -29,6 +29,7 @@ type instr =
     { dest : Register.t
     ; src : operand
     }
+| Ret
 (* Assembly directive. *)
 | Directive of string
 (* Human-friendly comment. *)

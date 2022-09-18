@@ -192,7 +192,7 @@ let alloc (nbr : Temp.Set.t) (tmp_to_reg : reg Temp.Map.t) : reg =
     | None -> acc
     | Some u' -> [u']@acc) in
   let nbr_reg_s = Register.Set.of_list nbr_reg_l in
-  find_reg nbr_reg_s (Register.create_no 10)
+  find_reg nbr_reg_s (Register.create_no 1)
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)

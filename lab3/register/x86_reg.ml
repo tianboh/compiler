@@ -33,14 +33,14 @@ module Register = struct
     "%R" ^ string_of_int t
 
   let reg_to_str (idx : int) = match idx with
-    | 1  -> "%EAX"
-    | 2  -> "%EBX"
-    | 3  -> "%ECX"
-    | 4  -> "%EDX"
-    | 5  -> "%ESI"
-    | 6  -> "%EDI"
-    | 7  -> "%EDP"
-    | 8  -> "%ESP"
+    | 1  -> "%eax"
+    | 2  -> "%ebx"
+    | 3  -> "%ecx"
+    | 4  -> "%edx"
+    | 5  -> "%esi"
+    | 6  -> "%edi"
+    | 7  -> "%edp"
+    | 8  -> "%esp"
     | _ -> name idx
   ;;
 

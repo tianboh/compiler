@@ -9,6 +9,23 @@
  *   - Use a linear, not quadratic, algorithm.
  *
  * Implements a "convenient munch" algorithm
+ * We provide 3 address pseudo and 2 address pseudo based on x86 architecture.
+ * the way to convert from 3 address to 2 address is to use same operand for
+ * Destination and first operand for binary operation. This makes sense because
+ * Each binary op will copy the operand and then calculate. The copied operand will
+ * never be used again after calculation. So we can safely store the result to the
+ * operand.
+ * Notice that for [a <- b + c, d <- b + c ] will not reuse temporary in b and c 
+ * in the second execution. The assembly looks like
+ * t1 <- some_value for b
+ * t2 <- some_value for c
+ * t3 <- t1
+ * t4 <- t2
+ * t5 <- t3 + t4
+ * t6 <- t1
+ * t7 <- t2
+ * t8 <- t6 + t7
+ * Therefore, we can reuse t3 as destination of t3 + t4 for x86 add inplace mechanism.
 *)
 
 open Core
@@ -36,7 +53,7 @@ let munch_op = function
  *
  * Generates instructions for dest <-- exp.
 *)
-let munch_exp : Temp.t -> T.exp -> AS.instr list =
+let munch_exp : Temp.t -> T.exp -> bool -> AS.instr list =
   (* munch_exp_acc dest exp rev_acc
    *
    * Suppose we have the statement:
@@ -53,16 +70,15 @@ let munch_exp : Temp.t -> T.exp -> AS.instr list =
    * statements in linear time rather than quadratic time (for highly
    * nested expressions).
   *)
-  let rec munch_exp_acc (dest : Temp.t) (exp : T.exp) (rev_acc : AS.instr list)
-    : AS.instr list
-    =
+  let rec munch_exp_acc (dest : Temp.t) (exp : T.exp) (for_x86 : bool) (rev_acc : AS.instr list) 
+    : AS.instr list =
     match exp with
     | T.Const_int i -> AS.Mov { dest; src = AS.Imm i } :: rev_acc
     | T.Const_bool b -> (match b with
         | true -> AS.Mov { dest; src = AS.Imm Int32.one } :: rev_acc
         | false -> AS.Mov { dest; src = AS.Imm Int32.zero } :: rev_acc)
     | T.Temp t -> AS.Mov { dest; src = AS.Temp t } :: rev_acc
-    | T.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
+    | T.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc for_x86
   (* munch_binop_acc dest (binop, e1, e2) rev_acc
    *
    * generates instructions to achieve dest <- e1 binop e2
@@ -74,33 +90,35 @@ let munch_exp : Temp.t -> T.exp -> AS.instr list =
       (dest : Temp.t)
       ((binop, e1, e2) : T.binop * T.exp * T.exp)
       (rev_acc : AS.instr list)
+      (for_x86 : bool)
     : AS.instr list
     =
     let op = munch_op binop in
-    let t1 = Temp.create () in
+    (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
+    let t1 = match for_x86 with | true -> dest | false -> Temp.create () in
     let t2 = Temp.create () in
-    let rev_acc' = rev_acc |> munch_exp_acc t1 e1 |> munch_exp_acc t2 e2 in
+    let rev_acc' = rev_acc |> munch_exp_acc t1 e1 for_x86 |> munch_exp_acc t2 e2 for_x86 in
     AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
   in
-  fun dest exp ->
+  fun dest exp for_x86 ->
     (* Since munch_exp_acc returns the reversed accumulator, we must
      * reverse the list before returning. *)
-    List.rev (munch_exp_acc dest exp [])
+    List.rev (munch_exp_acc dest exp for_x86 [])
 ;;
 
 (* munch_stm : T.stm -> AS.instr list *)
 (* munch_stm stm generates code to execute stm *)
-let munch_stm = function
-  | T.Move mv -> munch_exp mv.dest mv.src
+let munch_stm stm for_x86 = match stm with
+  | T.Move mv -> munch_exp mv.dest mv.src for_x86
   | T.Return e ->
     (* return e is implemented as %eax <- e *)
     let t = Temp.create () in
-    munch_exp t e
+    munch_exp t e for_x86
 ;;
 
 (* To codegen a series of statements, just concatenate the results of
  * codegen-ing each statement. *)
-let gen_pseudo = List.concat_map ~f:munch_stm
+let gen_pseudo for_x86 = List.concat_map ~f:(fun stm -> munch_stm stm for_x86)
 
 let operand_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t) : AS_x86.operand =
   match operand with
@@ -124,7 +142,7 @@ let inst_bin_ps_to_x86 (op : AS.bin_op) : AS_x86.bin_op =
 
 let rec _codegen_w_reg res inst_list (reg_alloc_info : Register.t Temp.Map.t) =
   match inst_list with
-  | [] -> res
+  | [] -> res @ [AS_x86.Ret]
   | h :: t -> 
     match h with
     | AS.Binop bin_op -> 
@@ -133,12 +151,12 @@ let rec _codegen_w_reg res inst_list (reg_alloc_info : Register.t Temp.Map.t) =
       let rhs = operand_ps_to_x86 bin_op.rhs reg_alloc_info in
       let op = inst_bin_ps_to_x86 bin_op.op in
       let bin_op = AS_x86.Binop {op; dest; lhs; rhs} in
-      _codegen_w_reg ([bin_op] @ res) t reg_alloc_info
+      _codegen_w_reg (res @ [bin_op]) t reg_alloc_info
     | AS.Mov mov -> 
       let dest = Temp.Map.find_exn reg_alloc_info mov.dest in
       let src = operand_ps_to_x86 mov.src reg_alloc_info in
       let mov = AS_x86.Mov {dest; src} in
-      _codegen_w_reg ([mov] @ res) t reg_alloc_info
+      _codegen_w_reg (res @ [mov]) t reg_alloc_info
     | AS.Directive _ | AS.Comment _ -> _codegen_w_reg res t reg_alloc_info
 ;;
 let gen_x86 
