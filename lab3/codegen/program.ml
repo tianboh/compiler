@@ -51,6 +51,7 @@ let gen_TempSet (l : AS.operand list)  =
     | h :: t ->
       match h with
       | Imm _ -> _filter_imm t res
+      | Reg _ -> failwith "error"
       | Temp temp -> _filter_imm t ([temp]@res) in
   let l = _filter_imm l [] in
   Temp.Set.of_list l

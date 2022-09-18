@@ -49,125 +49,131 @@ let munch_op = function
   | T.Bit_xor -> AS.Pxor
 ;;
 
-(* munch_exp dest exp
- *
- * Generates instructions for dest <-- exp.
-*)
-let munch_exp : Temp.t -> T.exp -> bool -> AS.instr list =
-  (* munch_exp_acc dest exp rev_acc
-   *
-   * Suppose we have the statement:
-   *   dest <-- exp
-   *
-   * If the codegened statements for this are:
-   *   s1; s2; s3; s4;
-   *
-   * Then this function returns the result:
-   *   s4 :: s3 :: s2 :: s1 :: rev_acc
-   *
-   * I.e., rev_acc is an accumulator argument where the codegen'ed
-   * statements are built in reverse. This allows us to create the
-   * statements in linear time rather than quadratic time (for highly
-   * nested expressions).
+module Pseudo = struct
+  (* munch_exp dest exp
+  *
+  * Generates instructions for dest <-- exp.
   *)
-  let rec munch_exp_acc (dest : Temp.t) (exp : T.exp) (for_x86 : bool) (rev_acc : AS.instr list) 
-    : AS.instr list =
-    match exp with
-    | T.Const_int i -> AS.Mov { dest; src = AS.Imm i } :: rev_acc
-    | T.Const_bool b -> (match b with
-        | true -> AS.Mov { dest; src = AS.Imm Int32.one } :: rev_acc
-        | false -> AS.Mov { dest; src = AS.Imm Int32.zero } :: rev_acc)
-    | T.Temp t -> AS.Mov { dest; src = AS.Temp t } :: rev_acc
-    | T.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc for_x86
-  (* munch_binop_acc dest (binop, e1, e2) rev_acc
-   *
-   * generates instructions to achieve dest <- e1 binop e2
-   *
-   * Much like munch_exp, this returns the result of appending the
-   * instructions in reverse to the accumulator argument, rev_acc.
-  *)
-  and munch_binop_acc
-      (dest : Temp.t)
-      ((binop, e1, e2) : T.binop * T.exp * T.exp)
-      (rev_acc : AS.instr list)
-      (for_x86 : bool)
-    : AS.instr list
-    =
-    let op = munch_op binop in
-    (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
-    let t1 = match for_x86 with | true -> dest | false -> Temp.create () in
-    let t2 = Temp.create () in
-    let rev_acc' = rev_acc |> munch_exp_acc t1 e1 for_x86 |> munch_exp_acc t2 e2 for_x86 in
-    AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
-  in
-  fun dest exp for_x86 ->
-    (* Since munch_exp_acc returns the reversed accumulator, we must
-     * reverse the list before returning. *)
-    List.rev (munch_exp_acc dest exp for_x86 [])
-;;
+  let munch_exp : Temp.t -> T.exp -> AS.instr list =
+    (* munch_exp_acc dest exp rev_acc
+    *
+    * Suppose we have the statement:
+    *   dest <-- exp
+    *
+    * If the codegened statements for this are:
+    *   s1; s2; s3; s4;
+    *
+    * Then this function returns the result:
+    *   s4 :: s3 :: s2 :: s1 :: rev_acc
+    *
+    * I.e., rev_acc is an accumulator argument where the codegen'ed
+    * statements are built in reverse. This allows us to create the
+    * statements in linear time rather than quadratic time (for highly
+    * nested expressions).
+    *)
+    let rec munch_exp_acc (dest : Temp.t) (exp : T.exp) (rev_acc : AS.instr list) 
+      : AS.instr list =
+      match exp with
+      | T.Const_int i -> AS.Mov { dest; src = AS.Imm i } :: rev_acc
+      | T.Const_bool b -> (match b with
+          | true -> AS.Mov { dest; src = AS.Imm Int32.one } :: rev_acc
+          | false -> AS.Mov { dest; src = AS.Imm Int32.zero } :: rev_acc)
+      | T.Temp t -> AS.Mov { dest; src = AS.Temp t } :: rev_acc
+      | T.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
+    (* munch_binop_acc dest (binop, e1, e2) rev_acc
+    *
+    * generates instructions to achieve dest <- e1 binop e2
+    *
+    * Much like munch_exp, this returns the result of appending the
+    * instructions in reverse to the accumulator argument, rev_acc.
+    *)
+    and munch_binop_acc
+        (dest : Temp.t)
+        ((binop, e1, e2) : T.binop * T.exp * T.exp)
+        (rev_acc : AS.instr list)
+      : AS.instr list
+      =
+      let op = munch_op binop in
+      (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
+      let t1 = Temp.create () in
+      let t2 = Temp.create () in
+      let rev_acc' = rev_acc |> munch_exp_acc t1 e1 |> munch_exp_acc t2 e2 in
+      AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
+    in
+    fun dest exp  ->
+      (* Since munch_exp_acc returns the reversed accumulator, we must
+      * reverse the list before returning. *)
+      List.rev (munch_exp_acc dest exp [])
+  ;;
 
-(* munch_stm : T.stm -> AS.instr list *)
-(* munch_stm stm generates code to execute stm *)
-let munch_stm stm for_x86 = match stm with
-  | T.Move mv -> munch_exp mv.dest mv.src for_x86
-  | T.Return e ->
-    (* return e is implemented as %eax <- e *)
-    let t = Temp.create () in
-    munch_exp t e for_x86
-;;
+  (* munch_stm : T.stm -> AS.instr list *)
+  (* munch_stm stm generates code to execute stm *)
+  let munch_stm stm  = match stm with
+    | T.Move mv -> munch_exp mv.dest mv.src 
+    | T.Return e ->
+      (* return e is implemented as %eax <- e *)
+      let t = Temp.create () in
+      munch_exp t e 
+  ;;
 
-(* To codegen a series of statements, just concatenate the results of
- * codegen-ing each statement. *)
-let gen_pseudo for_x86 = List.concat_map ~f:(fun stm -> munch_stm stm for_x86)
+  (* To codegen a series of statements, just concatenate the results of
+  * codegen-ing each statement. *)
+  let gen = List.concat_map ~f:(fun stm -> munch_stm stm)
 
-let operand_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t) : AS_x86.operand =
-  match operand with
-  | Imm i -> AS_x86.Imm i
-  | Temp t -> AS_x86.Reg (Temp.Map.find_exn reg_alloc_info t)
-;;
+end
 
-let inst_bin_ps_to_x86 (op : AS.bin_op) : AS_x86.bin_op = 
-  match op with
-  | Add -> AS_x86.Add
-  | Sub -> AS_x86.Sub
-  | Mul -> AS_x86.Mul
-  | Div -> AS_x86.Div
-  | Mod -> AS_x86.Mod
-  | And -> AS_x86.And
-  | Or -> AS_x86.Or
-  | Pand -> AS_x86.Pand
-  | Por -> AS_x86.Por
-  | Pxor -> AS_x86.Pxor
-;;
+(* module Pseudo_x86 = struct
+  let gen = List.concat_map ~f:(fun stm -> munch_stm stm)
+end *)
 
-let rec _codegen_w_reg res inst_list (reg_alloc_info : Register.t Temp.Map.t) =
-  match inst_list with
-  | [] -> res @ [AS_x86.Ret]
-  | h :: t -> 
-    match h with
-    | AS.Binop bin_op -> 
-      let dest = Temp.Map.find_exn reg_alloc_info bin_op.dest in
-      let lhs = operand_ps_to_x86 bin_op.lhs reg_alloc_info in
-      let rhs = operand_ps_to_x86 bin_op.rhs reg_alloc_info in
-      let op = inst_bin_ps_to_x86 bin_op.op in
-      let bin_op = AS_x86.Binop {op; dest; lhs; rhs} in
-      _codegen_w_reg (res @ [bin_op]) t reg_alloc_info
-    | AS.Mov mov -> 
-      let dest = Temp.Map.find_exn reg_alloc_info mov.dest in
-      let src = operand_ps_to_x86 mov.src reg_alloc_info in
-      let mov = AS_x86.Mov {dest; src} in
-      _codegen_w_reg (res @ [mov]) t reg_alloc_info
-    | AS.Directive _ | AS.Comment _ -> _codegen_w_reg res t reg_alloc_info
-;;
-let gen_x86 
-          (inst_list : AS.instr list) 
-          (reg_alloc_info : (Temp.t * Register.t) option list) : AS_x86.instr list = 
-  let reg_alloc = List.fold  reg_alloc_info ~init:(Temp.Map.empty) ~f:(fun acc x -> 
-      match x with 
-      | None -> acc
-      | Some x -> 
-          match x with (temp, reg) -> Temp.Map.set acc ~key:temp ~data:reg
-    ) in
-  _codegen_w_reg [] inst_list reg_alloc
+module X86 = struct
+  let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t) : AS_x86.operand =
+    match operand with
+    | Imm i -> AS_x86.Imm i
+    | Temp t -> AS_x86.Reg (Temp.Map.find_exn reg_alloc_info t)
+    | Reg r -> AS_x86.Reg r
+  ;;
 
-;;
+  let inst_bin_ps_to_x86 (op : AS.bin_op) : AS_x86.bin_op = 
+    match op with
+    | Add -> AS_x86.Add
+    | Sub -> AS_x86.Sub
+    | Mul -> AS_x86.Mul
+    | Div -> AS_x86.Div
+    | Mod -> AS_x86.Mod
+    | And -> AS_x86.And
+    | Or -> AS_x86.Or
+    | Pand -> AS_x86.Pand
+    | Por -> AS_x86.Por
+    | Pxor -> AS_x86.Pxor
+  ;;
+
+  let rec _codegen_w_reg res inst_list (reg_alloc_info : Register.t Temp.Map.t) =
+    match inst_list with
+    | [] -> res @ [AS_x86.Ret]
+    | h :: t -> 
+      match h with
+      | AS.Binop bin_op -> 
+        let dest = Temp.Map.find_exn reg_alloc_info bin_op.dest in
+        let lhs = oprd_ps_to_x86 bin_op.lhs reg_alloc_info in
+        let rhs = oprd_ps_to_x86 bin_op.rhs reg_alloc_info in
+        let op = inst_bin_ps_to_x86 bin_op.op in
+        let bin_op = AS_x86.Binop {op; dest; lhs; rhs} in
+        _codegen_w_reg (res @ [bin_op]) t reg_alloc_info
+      | AS.Mov mov -> 
+        let dest = Temp.Map.find_exn reg_alloc_info mov.dest in
+        let src = oprd_ps_to_x86 mov.src reg_alloc_info in
+        let mov = AS_x86.Mov {dest; src} in
+        _codegen_w_reg (res @ [mov]) t reg_alloc_info
+      | AS.Directive _ | AS.Comment _ -> _codegen_w_reg res t reg_alloc_info
+  ;;
+  let gen (inst_list : AS.instr list) 
+              (reg_alloc_info : (Temp.t * Register.t) option list) : AS_x86.instr list = 
+    let reg_alloc = List.fold  reg_alloc_info ~init:(Temp.Map.empty) ~f:(fun acc x -> 
+        match x with 
+        | None -> acc
+        | Some x -> match x with (temp, reg) -> Temp.Map.set acc ~key:temp ~data:reg
+      ) in
+    _codegen_w_reg [] inst_list reg_alloc
+
+end
