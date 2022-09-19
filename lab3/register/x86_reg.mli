@@ -1,6 +1,6 @@
 
 open Core
-
+module Temp = Temp.Temp
 module Register : sig
     type t [@@deriving compare, sexp, hash]
 
@@ -22,5 +22,11 @@ module Register : sig
 
     (* returns the name of a temp *)
     val reg_to_str : t -> string
+
+    val reg_to_tmp : t -> Temp.t
+
+    val str_to_reg : string -> t
+
+    val tmp_to_reg : Temp.t -> t
 
 end

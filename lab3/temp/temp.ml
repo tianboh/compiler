@@ -36,6 +36,8 @@ module Temp = struct
 
   let name t = "%t" ^ string_of_int t
 
+  let value t = t
+
 
   include Comparable.Make (T)
 end

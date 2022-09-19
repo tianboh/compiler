@@ -8,7 +8,7 @@ type allocations = (temp * temp) option list
 
 val build_graph : Reg_info.temps_info -> Temp.Set.t Temp.Map.t
 
-val gen_reg_table : Reg_info.line list -> int Temp.Map.t
+val gen_reg_table : Reg_info.line list -> Temp.Set.t Temp.Map.t -> int Temp.Map.t
 
 val print_adj : Temp.Set.t Temp.Map.t -> unit
 

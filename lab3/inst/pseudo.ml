@@ -21,7 +21,6 @@ module Temp = Temp.Temp
 type operand =
   | Imm of Int32.t
   | Temp of Temp.t
-  | Reg of Register.t
 
 type bin_op =
   | Add
@@ -68,7 +67,6 @@ let format_binop = function
 let format_operand = function
   | Imm n -> "$" ^ Int32.to_string n
   | Temp t -> Temp.name t
-  | Reg r -> Register.reg_to_str r
 ;;
 
 let format = function

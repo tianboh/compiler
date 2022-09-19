@@ -131,7 +131,6 @@ module X86 = struct
     match operand with
     | Imm i -> AS_x86.Imm i
     | Temp t -> AS_x86.Reg (Temp.Map.find_exn reg_alloc_info t)
-    | Reg r -> AS_x86.Reg r
   ;;
 
   let inst_bin_ps_to_x86 (op : AS.bin_op) : AS_x86.bin_op = 

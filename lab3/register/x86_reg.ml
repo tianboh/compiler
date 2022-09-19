@@ -4,6 +4,7 @@
 *)
 
 open Core
+module Temp = Temp.Temp
 
 module Register = struct
   module T = struct
@@ -30,7 +31,7 @@ module Register = struct
   ;;
 
   let name t = 
-    "%R" ^ string_of_int t
+    "%e" ^ string_of_int t
 
   let reg_to_str (idx : int) = match idx with
     | 1  -> "%eax"
@@ -42,6 +43,25 @@ module Register = struct
     | 7  -> "%edp"
     | 8  -> "%esp"
     | _ -> name idx
+  ;;
+
+  let str_to_reg (str : string) = match str with
+  | "%eax" -> 1
+  | "%ebx" -> 2
+  | "%ecx" -> 3
+  | "%edx" -> 4
+  | "%esi" -> 5
+  | "%edi" -> 6
+  | "%edp" -> 7
+  | "%esp" -> 8
+  | s -> 
+    let str_l = String.split_on_chars ~on:['e'] s in
+    Int.of_string (List.last_exn str_l)
+  ;;
+  let reg_to_tmp idx = Temp.create_no (-idx)
+
+  let tmp_to_reg (tmp : Temp.t) = -(Temp.value tmp)
+
   ;;
 
   include Comparable.Make (T)

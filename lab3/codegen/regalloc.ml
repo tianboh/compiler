@@ -7,6 +7,11 @@ open Printf
     I used Hash table from register to register Set 
     as adjacency list to denote interference graph.
 
+    We considered x86 conventions during register allocation. These registers are converted
+    to temporary with negative index. They are pre-colored before SEO, and their neighbors
+    are increased as if %eax or %edx are firstly traversed. 
+    See https://www.cs.cmu.edu/~janh/courses/411/17/lec/03-regalloc.pdf Section 7 for details.
+
     The basic allocation procedure follows:
       1) Build interference graph. We build edge from line.define to line.live_out. 
          We do not build clique based on live_out because this may ignore dependency
@@ -16,21 +21,19 @@ open Printf
          (because there is no edge between define and live_out). 
          PS:If we can eliminate redundant defination in SSA, which means every defination 
          will be in the live_out set, then we can build clique purely based on live_out set.
-         Build interference graph time complexity: O(v + e)
-      2) Use maximum cardinality search to build SEO
+         Time complexity: O(v + e)
+      2) Pre-color and maintain order of neighbors of pre-colored nodes. Pre-colored nodes are basically
+         %eax and %edx to obey x86 conventions. 
+         Time complexity: O(v + e)
+      3) Use maximum cardinality search to build SEO
          Theoratically, We initialize every vertex with weight 0. Then, each time 
          we start from a vertex u with maximum weight and update its neighbors weight by one.
          Then we record vertex u and delete from graph, and keep doing so until no vertex left on graph.
-         There are lines where %eax or %edx is in the define field. We isolate these nodes in the interferance graph
-         because interferance graph is used to describe the relationship between temporaries during register alloc
-         To keep the consistance, we do not use %eax nor %edx for temporary register allcation as well.
-         In addition, for line whose define field is %eax or %edx, we do not allocate other register as well,
-         which means these lines will use %eax or %edx to execute. This avoid superfluous allocation.
-         Notice temporaries in interference graph is pure SSA. So we can apply maximum cardinality to find
-         optimal register allocation policy.
+         Notice temporaries(not consider pre-colored register) in interference graph is pure SSA. 
+         So we can apply maximum cardinality to find optimal register allocation policy.
          Time complexity for SEO: O(v + e)
-      3) Greedy coloring based on SEO
-         Greedy assign registers in SEO order. We generate register name based on %rxx. where xx is index number
+      4) Greedy coloring based on SEO
+         Greedy assign registers in SEO order. We generate register name based on %rax. 
          The rule is generate register with minimum index which is greater than its allocated neighbors.
          Time complexity for coloring: O(v + e)
  *)
@@ -121,9 +124,12 @@ let build_graph (prog : Program.temps_info) =
   _build_graph prog adj
 ;;
 
+let get_precolor (adj : Temp.Set.t Temp.Map.t) = 
+  Temp.Map.fold adj ~init:[] ~f:(fun ~key:k ~data:_ acc -> if Temp.value k < 0 then [k]@acc else acc)
+;;
+
 (* Table store info from temp to register index. *)
-let gen_reg_table prog = 
-  let hash_init = Temp.Map.empty in
+let gen_reg_table prog adj = 
   let rec helper prog hash = match prog with
     | [] -> hash
     | h :: t -> 
@@ -132,7 +138,20 @@ let gen_reg_table prog =
       | Some def_ ->
         let hash = Temp.Map.set hash ~key:def_ ~data:0 in
         helper t hash in 
-  helper prog hash_init
+  let hash_init = helper prog Temp.Map.empty in
+  let pre_color_l = get_precolor adj in
+  let reg_table = List.fold pre_color_l ~init:hash_init 
+      ~f:(fun acc pre_color -> 
+              let nbr = Temp.Map.find_exn adj pre_color in
+              Temp.Set.fold nbr ~init:acc 
+              ~f:(fun acc k -> let v = Temp.Map.find_exn acc k in
+                                Temp.Map.set acc ~key:k ~data:(v+1) 
+                )
+          )in
+  let reg_table = List.fold pre_color_l ~init:reg_table ~f:(fun acc x -> Temp.Map.remove acc x) in
+  (* let () = Temp.Map.iter_keys reg_table ~f:(fun k -> 
+    let v = Temp.Map.find_exn reg_table k in printf "%s %d\n" (Temp.name k) v) in  *)
+  reg_table
 ;;
 
 let rec _seo adj reg_table seq = 
@@ -167,9 +186,9 @@ let rec _seo adj reg_table seq =
 
 (* We need to consider the influence of pre-coloring, which is stored in tmp_to_reg *)
 let seo adj prog = 
-  let seq = [] in
-  let reg_table = gen_reg_table prog in
-  _seo adj reg_table seq
+  let seq = get_precolor adj in
+  let reg_table = gen_reg_table prog adj in
+  _seo adj reg_table seq 
 ;;
 
 (* Find register name with minimum free order that is greater than any register in its neighbor. 
@@ -201,8 +220,12 @@ let rec greedy seq adj tmp_to_reg  = match seq with
   | h :: t -> 
     let nbr = Temp.Map.find_exn adj h in
     let reg = alloc nbr tmp_to_reg in
-    let tmp_to_reg = Temp.Map.set tmp_to_reg ~key:h ~data:reg in
-    greedy t adj tmp_to_reg 
+    (* let () = printf "greedy %s -> %s\n" (Temp.name h) (Register.reg_to_str reg) in *)
+    if Temp.value h < 0 
+      then greedy t adj tmp_to_reg  
+      else let tmp_to_reg = Temp.Map.set tmp_to_reg ~key:h ~data:reg in
+      greedy t adj tmp_to_reg 
+    (* greedy t adj tmp_to_reg  *)
 ;;
 
 let rec gen_result (color : reg Temp.Map.t) prog  = match prog with
@@ -211,11 +234,13 @@ let rec gen_result (color : reg Temp.Map.t) prog  = match prog with
     match Program.get_def h with
     | None -> None :: (gen_result color t)
     | Some tmp ->
-      let reg = Temp.Map.find color tmp in
-      let tk = match reg with
-        | None -> None
-        | Some reg' -> Some (tmp, reg') 
-      in tk :: (gen_result color t)
+      if Temp.value tmp > 0 then
+        let reg = Temp.Map.find color tmp in
+        let tk = match reg with
+          | None -> None
+          | Some reg' -> Some (tmp, reg') 
+        in tk :: (gen_result color t)
+      else None :: (gen_result color t)
 ;;
 
 let print_tmp_to_reg (color : reg Temp.Map.t) = 
@@ -231,10 +256,30 @@ let print_tmp_to_reg (color : reg Temp.Map.t) =
   printf "Used %d register\n" (Register.Set.length s);
 ;;
 
+(* Generate hashtable from temp to register. 
+   We store pre-colored register here. *)
+let gen_tmp_to_reg_w_conv (prog : Reg_info.temps_info) = 
+  let rec helper (prog : Reg_info.temps_info) tmp_to_reg = match prog with
+    | [] -> tmp_to_reg
+    | h :: t -> 
+        let tmp_to_reg =  Temp.Set.fold h.define ~init:tmp_to_reg ~f:(fun acc tmp -> 
+          if Temp.value tmp < 0 then
+            let reg = Register.tmp_to_reg tmp in
+            Temp.Map.set acc ~key:tmp ~data:reg
+          else acc
+          ) in
+        helper t tmp_to_reg
+  in
+  let tmp_to_reg = Temp.Map.empty in
+  helper prog tmp_to_reg
+;;
+
 let regalloc (prog : Reg_info.temps_info) : (Temp.t * Register.t) option list =
   let adj = build_graph prog in
   let seq = seo adj prog in
-  let tmp_to_reg = Temp.Map.empty in
+  (* let tmp_to_reg = Temp.Map.empty in *)
+  let tmp_to_reg = gen_tmp_to_reg_w_conv prog in
+  (* let () = print_tmp_to_reg tmp_to_reg in *)
   let color = greedy seq adj tmp_to_reg in
   (* let () = print_adj adj in
   let () = printf "SEO order\n" in
