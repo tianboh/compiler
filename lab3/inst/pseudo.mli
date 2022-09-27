@@ -15,6 +15,7 @@ module Temp = Temp.Temp
 type operand =
   | Imm of Int32.t
   | Temp of Temp.t
+  | Reg of Register.t
 
 type bin_op =
   | Add
@@ -32,13 +33,13 @@ type instr =
   (* dest <- lhs op rhs *)
   | Binop of
       { op : bin_op
-      ; dest : Temp.t
+      ; dest : operand
       ; lhs : operand
       ; rhs : operand
       }
   (* dest <- src *)
   | Mov of
-      { dest : Temp.t
+      { dest : operand
       ; src : operand
       }
   (* Assembly directive. *)

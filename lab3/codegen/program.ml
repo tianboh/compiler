@@ -51,7 +51,8 @@ let gen_TempSet (l : AS.operand list)  =
     | h :: t ->
       match h with
       | Imm _ -> _filter_imm t res
-      | Temp temp -> _filter_imm t ([temp]@res) in
+      | Temp temp -> _filter_imm t ([temp]@res)
+      | Reg r -> _filter_imm t ([Register.reg_to_tmp r ]@res) in
   let l = _filter_imm l [] in
   Temp.Set.of_list l
 
@@ -65,13 +66,13 @@ let rec gen_forward (inst_list : AS.instr list)
     let line = empty_line line_num in
     match h with
     | AS.Binop binop -> 
-      let def = gen_TempSet [AS.Temp binop.dest] in
+      let def = gen_TempSet [binop.dest] in
       let uses = gen_TempSet [binop.lhs; binop.rhs] in
       let line = {line with define = def; uses = uses} in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward t inst_info (line_num + 1)
     | AS.Mov mov -> 
-      let def = gen_TempSet [AS.Temp mov.dest] in
+      let def = gen_TempSet [mov.dest] in
       let uses = gen_TempSet [mov.src] in
       let line = {line with define = def; uses = uses; move = true} in
       Hashtbl.set inst_info ~key:line_num ~data:line;

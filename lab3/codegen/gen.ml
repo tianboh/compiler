@@ -54,7 +54,7 @@ module Pseudo = struct
   *
   * Generates instructions for dest <-- exp.
   *)
-  let munch_exp : Temp.t -> T.exp -> AS.instr list =
+  let munch_exp : AS.operand -> T.exp -> AS.instr list =
     (* munch_exp_acc dest exp rev_acc
     *
     * Suppose we have the statement:
@@ -71,7 +71,7 @@ module Pseudo = struct
     * statements in linear time rather than quadratic time (for highly
     * nested expressions).
     *)
-    let rec munch_exp_acc (dest : Temp.t) (exp : T.exp) (rev_acc : AS.instr list) 
+    let rec munch_exp_acc (dest : AS.operand) (exp : T.exp) (rev_acc : AS.instr list) 
       : AS.instr list =
       match exp with
       | T.Const_int i -> AS.Mov { dest; src = AS.Imm i } :: rev_acc
@@ -88,7 +88,7 @@ module Pseudo = struct
     * instructions in reverse to the accumulator argument, rev_acc.
     *)
     and munch_binop_acc
-        (dest : Temp.t)
+        (dest : AS.operand)
         ((binop, e1, e2) : T.binop * T.exp * T.exp)
         (rev_acc : AS.instr list)
       : AS.instr list
@@ -97,7 +97,7 @@ module Pseudo = struct
       (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
       let t1 = Temp.create () in
       let t2 = Temp.create () in
-      let rev_acc' = rev_acc |> munch_exp_acc t1 e1 |> munch_exp_acc t2 e2 in
+      let rev_acc' = rev_acc |> munch_exp_acc (AS.Temp t1) e1 |> munch_exp_acc (AS.Temp t2) e2 in
       AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
     in
     fun dest exp  ->
@@ -109,11 +109,11 @@ module Pseudo = struct
   (* munch_stm : T.stm -> AS.instr list *)
   (* munch_stm stm generates code to execute stm *)
   let munch_stm stm  = match stm with
-    | T.Move mv -> munch_exp mv.dest mv.src 
+    | T.Move mv -> munch_exp (AS.Temp mv.dest) mv.src 
     | T.Return e ->
       (* return e is implemented as %eax <- e *)
       let t = Temp.create () in
-      munch_exp t e 
+      munch_exp (AS.Temp t) e 
   ;;
 
   (* To codegen a series of statements, just concatenate the results of
@@ -131,6 +131,7 @@ module X86 = struct
     match operand with
     | Imm i -> AS_x86.Imm i
     | Temp t -> AS_x86.Reg (Temp.Map.find_exn reg_alloc_info t)
+    | Reg r -> AS_x86.Reg r
   ;;
 
   let inst_bin_ps_to_x86 (op : AS.bin_op) : AS_x86.bin_op = 
@@ -153,14 +154,20 @@ module X86 = struct
     | h :: t -> 
       match h with
       | AS.Binop bin_op -> 
-        let dest = Temp.Map.find_exn reg_alloc_info bin_op.dest in
+        let dest = match bin_op.dest with 
+        | Reg r -> r 
+        | Temp t -> Temp.Map.find_exn reg_alloc_info t 
+        | Imm _ -> failwith "destination should not be imm" in
         let lhs = oprd_ps_to_x86 bin_op.lhs reg_alloc_info in
         let rhs = oprd_ps_to_x86 bin_op.rhs reg_alloc_info in
         let op = inst_bin_ps_to_x86 bin_op.op in
         let bin_op = AS_x86.Binop {op; dest; lhs; rhs} in
         _codegen_w_reg (res @ [bin_op]) t reg_alloc_info
       | AS.Mov mov -> 
-        let dest = Temp.Map.find_exn reg_alloc_info mov.dest in
+        let dest = match mov.dest with 
+        | Reg r -> r 
+        | Temp t -> Temp.Map.find_exn reg_alloc_info t
+        | Imm _ -> failwith "destination should not be imm" in
         let src = oprd_ps_to_x86 mov.src reg_alloc_info in
         let mov = AS_x86.Mov {dest; src} in
         _codegen_w_reg (res @ [mov]) t reg_alloc_info

@@ -21,6 +21,7 @@ module Temp = Temp.Temp
 type operand =
   | Imm of Int32.t
   | Temp of Temp.t
+  | Reg of Register.t
 
 type bin_op =
   | Add
@@ -37,12 +38,12 @@ type bin_op =
 type instr =
   | Binop of
       { op : bin_op
-      ; dest : Temp.t
+      ; dest : operand
       ; lhs : operand
       ; rhs : operand
       }
   | Mov of
-      { dest : Temp.t
+      { dest : operand
       ; src : operand
       }
   | Directive of string
@@ -67,17 +68,18 @@ let format_binop = function
 let format_operand = function
   | Imm n -> "$" ^ Int32.to_string n
   | Temp t -> Temp.name t
+  | Reg r -> Register.reg_to_str r
 ;;
 
 let format = function
   | Binop binop ->
     sprintf
       "%s <-- %s %s %s"
-      (format_operand (Temp binop.dest))
+      (format_operand binop.dest)
       (format_operand binop.lhs)
       (format_binop binop.op)
       (format_operand binop.rhs)
-  | Mov mv -> sprintf "%s <-- %s" (format_operand (Temp mv.dest)) (format_operand mv.src)
+  | Mov mv -> sprintf "%s <-- %s" (format_operand mv.dest) (format_operand mv.src)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
 ;;
