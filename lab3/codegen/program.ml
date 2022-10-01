@@ -196,7 +196,7 @@ let gen_regalloc_info (inst_list : AS.instr list) =
   let inst_list_rev = List.rev inst_list in
   let live_out = Temp.Set.empty in
   let inst_info = gen_backward inst_list_rev inst_info (Hashtbl.length inst_info -1) live_out in
-let inst_no_sort = List.sort (Hashtbl.keys inst_info) ~compare:Int.compare in
+  let inst_no_sort = List.sort (Hashtbl.keys inst_info) ~compare:Int.compare in
   List.map inst_no_sort ~f:(fun no -> Hashtbl.find_exn inst_info no)
   (* dump_json inst_info *)
 ;;

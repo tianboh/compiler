@@ -7,7 +7,9 @@ type operand =
 type instr =
   | Add of {src:operand; dest:operand}
   | Sub of {src:operand; dest:operand}
-  | Mul of {src:operand; dest:operand}
+  | Mul of {src:operand}
+  | Div of {src:operand}
+  | Mod of {src:operand}
     (* dest <- lhs op rhs *)
     (* | Binop of
         { op : bin_op

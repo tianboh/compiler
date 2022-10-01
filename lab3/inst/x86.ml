@@ -12,13 +12,15 @@ type operand =
 type instr =
   | Add of {src:operand; dest:operand}
   | Sub of {src:operand; dest:operand}
-  | Mul of {src:operand; dest:operand}
-  (* | Binop of
-      { op : bin_op
-      ; dest : [`Reg of Register.t]
-      ; lhs : operand
-      ; rhs : operand
-      } *)
+  | Mul of {src:operand} (* Destination is form of EDX:EAX by default. Only one operand required. *)
+  | Div of {src:operand} (* temp := EDX:EAX / SRC;
+                            IF temp > FFFFFFFFH
+                                THEN #DE; (* Divide error *)
+                            ELSE
+                                EAX := temp;
+                                EDX := EDX:EAX MOD SRC;
+                            FI; *)
+  | Mod of {src:operand} (* Similar as above, but use edx after div.*)
   | Mov of
       { dest : operand
       ; src : operand
@@ -55,9 +57,11 @@ let format = function
      dest <- dest(lhs_operand) bin_op rhs_operand equivalents to assembly code
      bin_op rhs_operand, dest
   *)
-  | Add add -> sprintf "Add %s, %s" (format_operand add.src) (format_operand add.dest)
-  | Sub sub -> sprintf "Sub %s, %s" (format_operand sub.src) (format_operand sub.dest)
-  | Mul mul -> sprintf "Mul %s, %s" (format_operand mul.src) (format_operand mul.dest)
+  | Add add -> sprintf "add %s, %s" (format_operand add.src) (format_operand add.dest)
+  | Sub sub -> sprintf "sub %s, %s" (format_operand sub.src) (format_operand sub.dest)
+  | Mul mul -> sprintf "mul %s" (format_operand mul.src)
+  | Div div -> sprintf "div %s" (format_operand div.src)
+  | Mod m -> sprintf "div %s" (format_operand m.src)
   (* | Binop binop ->
     sprintf
       "%s %s, %s"

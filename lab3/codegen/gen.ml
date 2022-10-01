@@ -134,6 +134,9 @@ module X86 = struct
     | Imm i -> AS_x86.Imm i
   ;;
 
+  (* let need_mov r1 r2 = if Register.compare r1 r2 = 0 then false else true
+  ;; *)
+
   let gen_x86_inst_bin 
       (op : AS.bin_op) 
       (dest : AS_x86.operand) 
@@ -145,12 +148,28 @@ module X86 = struct
                 AS_x86.Mov {dest=dest; src=lhs}]
       | Sub -> [AS_x86.Sub {dest=lhs; src=rhs};
                 AS_x86.Mov {dest=dest; src=lhs}]
-      | Mul -> let edx = AS_x86.Reg (Register.create_no 4) in
-                [AS_x86.Mov {dest=(AS_x86.Reg reg_swap); src=edx};
-                AS_x86.Mov {dest=edx; src=lhs};
-                AS_x86.Mul {dest=edx;src=rhs};
-                AS_x86.Mov {dest=dest; src=edx};
-                AS_x86.Mov {dest=edx; src=(AS_x86.Reg reg_swap)}]
+      | Mul -> let eax = AS_x86.Reg (Register.create_no 1) in
+               [AS_x86.Mov {dest=(AS_x86.Reg reg_swap); src=eax};
+                AS_x86.Mov {dest=eax; src=lhs};
+                AS_x86.Mul {src=rhs};
+                AS_x86.Mov {dest=dest; src=eax};
+                AS_x86.Mov {dest=eax; src=(AS_x86.Reg reg_swap)}]
+      | Div -> let eax = AS_x86.Reg (Register.create_no 1) in
+               let edx = AS_x86.Reg (Register.create_no 4) in
+               let reg_swap1 = AS_x86.Reg reg_swap in
+               let reg_swap2 = AS_x86.Reg (Register.create_pp reg_swap) in
+               let reg_swap3 = AS_x86.Reg (Register.create_pp (Register.create_pp reg_swap)) in
+               [AS_x86.Mov {dest=reg_swap1; src=edx};
+                AS_x86.Mov {dest=reg_swap2; src=eax};
+                AS_x86.Mov {dest=eax; src=lhs};
+                AS_x86.Mov {dest=reg_swap3; src=rhs};
+                AS_x86.Mov {dest=edx; src=AS_x86.Imm (Int32.of_int_exn 0)};
+                AS_x86.Div {src=reg_swap3};
+                AS_x86.Mov {dest=dest; src=eax};
+                AS_x86.Mov {dest=eax; src=reg_swap2};
+                AS_x86.Mov {dest=edx; src=reg_swap1}
+               ]
+      | Mod -> []
       | _ -> failwith ("not implemented yet " ^ (AS_x86.format_operand (dest:>AS_x86.operand)))
   ;;
 
@@ -180,7 +199,7 @@ module X86 = struct
         | None -> acc
         | Some x -> match x with (temp, reg) -> Temp.Map.set acc ~key:temp ~data:reg
       ) in
-    let reg_swap = Temp.Map.fold reg_alloc ~init:(Register.create_no 1) 
+    let reg_swap = Temp.Map.fold reg_alloc ~init:(Register.create_no 5) (* We do not use special reg like eax and edx for swap *)
                         ~f:(fun ~key:_ ~data:r acc -> if Register.compare r acc >= 0 then (Register.create_pp r) else acc) in
     _codegen_w_reg [] inst_list reg_alloc reg_swap
 

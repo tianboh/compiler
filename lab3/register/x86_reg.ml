@@ -31,7 +31,7 @@ module Register = struct
   ;;
 
   let name t = 
-    "%e" ^ string_of_int t
+    "%r" ^ string_of_int t ^ "d"
 
   let reg_to_str (idx : int) = match idx with
     | 1  -> "%eax"
@@ -40,7 +40,7 @@ module Register = struct
     | 4  -> "%edx"
     | 5  -> "%esi"
     | 6  -> "%edi"
-    | 7  -> "%edp"
+    | 7  -> "%ebp"
     | 8  -> "%esp"
     | _ -> name idx
   ;;
@@ -52,7 +52,7 @@ module Register = struct
   | "%edx" -> 4
   | "%esi" -> 5
   | "%edi" -> 6
-  | "%edp" -> 7
+  | "%ebp" -> 7
   | "%esp" -> 8
   | s -> 
     let str_l = String.split_on_chars ~on:['e'] s in
