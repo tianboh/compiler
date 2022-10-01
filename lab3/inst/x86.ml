@@ -6,8 +6,8 @@ open Core
 module Register = Register.X86_reg.Register
 
 type operand =
-  | Imm of Int32.t
-  | Reg of Register.t
+  [ `Imm of Int32.t
+  | `Reg of Register.t]
 
 type bin_op =
   | Add
@@ -22,15 +22,16 @@ type bin_op =
   | Pxor
 
 type instr =
+  (* | Add of {src:[`Reg of Register.t]; dest:[`Reg of Register.t]} *)
   | Binop of
       { op : bin_op
-      ; dest : Register.t
+      ; dest : [`Reg of Register.t]
       ; lhs : operand
       ; rhs : operand
       }
   | Mov of
-      { dest : Register.t
-      ; src : operand
+      { dest : [`Reg of Register.t]
+      ; src : [`Reg of Register.t]
       }
   | Ret
   | Directive of string
@@ -54,8 +55,9 @@ let format_binop = function
 ;;
 
 let format_operand = function
-  | Imm n -> "$" ^ Int32.to_string n
-  | Reg r -> Register.reg_to_str r
+  | `Imm n -> "$" ^ Int32.to_string n
+  | `Reg r -> Register.reg_to_str r
+  | _ -> failwith "not supported in x86 operand."
 ;;
 
 let format = function
@@ -68,8 +70,10 @@ let format = function
       "%s %s, %s"
       (format_binop binop.op)
       (format_operand binop.rhs)
-      (format_operand (Reg binop.dest))
-  | Mov mv -> sprintf "movl %s, %s"  (format_operand mv.src) (format_operand (Reg mv.dest))
+      (format_operand (binop.dest:>[`Imm of int32 | `Reg of Register.t]))
+  | Mov mv -> sprintf "movl %s, %s"  
+                (format_operand (mv.src:>[`Imm of int32 | `Reg of Register.t])) 
+                (format_operand (mv.dest:>[`Imm of int32 | `Reg of Register.t]))
   | Ret -> sprintf "ret"
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment

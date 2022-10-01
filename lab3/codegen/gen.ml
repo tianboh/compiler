@@ -127,11 +127,11 @@ end
 end *)
 
 module X86 = struct
-  let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t) : AS_x86.operand =
+  let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t) : [`Reg of Register.t] =
     match operand with
-    | Imm i -> AS_x86.Imm i
-    | Temp t -> AS_x86.Reg (Temp.Map.find_exn reg_alloc_info t)
-    | Reg r -> AS_x86.Reg r
+    | Temp t -> `Reg (Temp.Map.find_exn reg_alloc_info t)
+    | Reg r -> `Reg r
+    | _ -> failwith "oprd should not be imm."
   ;;
 
   let inst_bin_ps_to_x86 (op : AS.bin_op) : AS_x86.bin_op = 
@@ -154,20 +154,14 @@ module X86 = struct
     | h :: t -> 
       match h with
       | AS.Binop bin_op -> 
-        let dest = match bin_op.dest with 
-        | Reg r -> r 
-        | Temp t -> Temp.Map.find_exn reg_alloc_info t 
-        | Imm _ -> failwith "destination should not be imm" in
+        let dest = oprd_ps_to_x86 bin_op.dest reg_alloc_info in
         let lhs = oprd_ps_to_x86 bin_op.lhs reg_alloc_info in
         let rhs = oprd_ps_to_x86 bin_op.rhs reg_alloc_info in
         let op = inst_bin_ps_to_x86 bin_op.op in
-        let bin_op = AS_x86.Binop {op; dest; lhs; rhs} in
+        let bin_op = AS_x86.Binop {op; dest; lhs:>AS_x86.operand; rhs:>AS_x86.operand} in
         _codegen_w_reg (res @ [bin_op]) t reg_alloc_info
       | AS.Mov mov -> 
-        let dest = match mov.dest with 
-        | Reg r -> r 
-        | Temp t -> Temp.Map.find_exn reg_alloc_info t
-        | Imm _ -> failwith "destination should not be imm" in
+        let dest = oprd_ps_to_x86 mov.dest reg_alloc_info in
         let src = oprd_ps_to_x86 mov.src reg_alloc_info in
         let mov = AS_x86.Mov {dest; src} in
         _codegen_w_reg (res @ [mov]) t reg_alloc_info
