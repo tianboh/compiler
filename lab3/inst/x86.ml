@@ -6,32 +6,22 @@ open Core
 module Register = Register.X86_reg.Register
 
 type operand =
-  [ `Imm of Int32.t
-  | `Reg of Register.t]
-
-type bin_op =
-  | Add
-  | Sub
-  | Mul
-  | Div
-  | Mod
-  | And
-  | Or
-  | Pand
-  | Por
-  | Pxor
+  | Imm of Int32.t
+  | Reg of Register.t
 
 type instr =
-  (* | Add of {src:[`Reg of Register.t]; dest:[`Reg of Register.t]} *)
-  | Binop of
+  | Add of {src:operand; dest:operand}
+  | Sub of {src:operand; dest:operand}
+  | Mul of {src:operand; dest:operand}
+  (* | Binop of
       { op : bin_op
       ; dest : [`Reg of Register.t]
       ; lhs : operand
       ; rhs : operand
-      }
+      } *)
   | Mov of
-      { dest : [`Reg of Register.t]
-      ; src : [`Reg of Register.t]
+      { dest : operand
+      ; src : operand
       }
   | Ret
   | Directive of string
@@ -41,7 +31,7 @@ type instr =
 
 
 (* x <- x bin_op y *)
-let format_binop = function
+(* let format_binop = function
   | Add -> "addl"
   | Sub -> "subl"
   | Mul -> "mul"
@@ -52,12 +42,12 @@ let format_binop = function
   | Pand -> "and"
   | Por -> "or"
   | Pxor -> "xor"
-;;
+;; *)
 
-let format_operand = function
-  | `Imm n -> "$" ^ Int32.to_string n
-  | `Reg r -> Register.reg_to_str r
-  | _ -> failwith "not supported in x86 operand."
+let format_operand (oprd : operand) = match oprd with
+  | Imm n -> "$" ^ Int32.to_string n
+  | Reg r -> Register.reg_to_str r
+  (* | _ -> failwith "not supported in x86 operand." *)
 ;;
 
 let format = function
@@ -65,15 +55,18 @@ let format = function
      dest <- dest(lhs_operand) bin_op rhs_operand equivalents to assembly code
      bin_op rhs_operand, dest
   *)
-  | Binop binop ->
+  | Add add -> sprintf "Add %s, %s" (format_operand add.src) (format_operand add.dest)
+  | Sub sub -> sprintf "Sub %s, %s" (format_operand sub.src) (format_operand sub.dest)
+  | Mul mul -> sprintf "Mul %s, %s" (format_operand mul.src) (format_operand mul.dest)
+  (* | Binop binop ->
     sprintf
       "%s %s, %s"
       (format_binop binop.op)
       (format_operand binop.rhs)
-      (format_operand (binop.dest:>[`Imm of int32 | `Reg of Register.t]))
+      (format_operand (binop.dest:>[`Imm of int32 | `Reg of Register.t])) *)
   | Mov mv -> sprintf "movl %s, %s"  
-                (format_operand (mv.src:>[`Imm of int32 | `Reg of Register.t])) 
-                (format_operand (mv.dest:>[`Imm of int32 | `Reg of Register.t]))
+                (format_operand mv.src) 
+                (format_operand mv.dest)
   | Ret -> sprintf "ret"
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment

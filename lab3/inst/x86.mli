@@ -1,34 +1,24 @@
 module Register = Register.X86_reg.Register
 
 type operand =
-[ `Imm of Int32.t
-| `Reg of Register.t]
-
-type bin_op =
-| Add
-| Sub
-| Mul
-| Div
-| Mod
-| And
-| Or
-| Pand
-| Por
-| Pxor
+  | Imm of Int32.t
+  | Reg of Register.t
 
 type instr =
-    (* | Add of {src:[`Reg of Register.t]; dest:[`Reg of Register.t]} *)
+  | Add of {src:operand; dest:operand}
+  | Sub of {src:operand; dest:operand}
+  | Mul of {src:operand; dest:operand}
     (* dest <- lhs op rhs *)
-    | Binop of
+    (* | Binop of
         { op : bin_op
         ; dest : [`Reg of Register.t]
         ; lhs : operand
         ; rhs : operand
-        }
+        } *)
     (* dest <- src *)
     | Mov of
-        { dest : [`Reg of Register.t]
-        ; src : [`Reg of Register.t]
+        { dest : operand
+        ; src : operand
         }
     | Ret
     (* Assembly directive. *)
@@ -37,3 +27,5 @@ type instr =
     | Comment of string
 
 val format : instr -> string
+
+val format_operand : operand -> string

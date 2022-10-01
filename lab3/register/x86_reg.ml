@@ -58,6 +58,7 @@ module Register = struct
     let str_l = String.split_on_chars ~on:['e'] s in
     Int.of_string (List.last_exn str_l)
   ;;
+
   let reg_to_tmp idx = Temp.create_no (-idx)
 
   let tmp_to_reg (tmp : Temp.t) = -(Temp.value tmp)

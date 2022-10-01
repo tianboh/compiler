@@ -127,28 +127,34 @@ end
 end *)
 
 module X86 = struct
-  let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t) : [`Reg of Register.t] =
+  let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t) : AS_x86.operand =
     match operand with
-    | Temp t -> `Reg (Temp.Map.find_exn reg_alloc_info t)
-    | Reg r -> `Reg r
-    | _ -> failwith "oprd should not be imm."
+    | Temp t -> AS_x86.Reg (Temp.Map.find_exn reg_alloc_info t)
+    | Reg r -> AS_x86.Reg r
+    | Imm i -> AS_x86.Imm i
   ;;
 
-  let inst_bin_ps_to_x86 (op : AS.bin_op) : AS_x86.bin_op = 
+  let gen_x86_inst_bin 
+      (op : AS.bin_op) 
+      (dest : AS_x86.operand) 
+      (lhs : AS_x86.operand) 
+      (rhs : AS_x86.operand)
+      (reg_swap : Register.t) = 
     match op with
-    | Add -> AS_x86.Add
-    | Sub -> AS_x86.Sub
-    | Mul -> AS_x86.Mul
-    | Div -> AS_x86.Div
-    | Mod -> AS_x86.Mod
-    | And -> AS_x86.And
-    | Or -> AS_x86.Or
-    | Pand -> AS_x86.Pand
-    | Por -> AS_x86.Por
-    | Pxor -> AS_x86.Pxor
+      | Add -> [AS_x86.Add {dest=lhs; src=rhs};
+                AS_x86.Mov {dest=dest; src=lhs}]
+      | Sub -> [AS_x86.Sub {dest=lhs; src=rhs};
+                AS_x86.Mov {dest=dest; src=lhs}]
+      | Mul -> let edx = AS_x86.Reg (Register.create_no 4) in
+                [AS_x86.Mov {dest=(AS_x86.Reg reg_swap); src=edx};
+                AS_x86.Mov {dest=edx; src=lhs};
+                AS_x86.Mul {dest=edx;src=rhs};
+                AS_x86.Mov {dest=dest; src=edx};
+                AS_x86.Mov {dest=edx; src=(AS_x86.Reg reg_swap)}]
+      | _ -> failwith ("not implemented yet " ^ (AS_x86.format_operand (dest:>AS_x86.operand)))
   ;;
 
-  let rec _codegen_w_reg res inst_list (reg_alloc_info : Register.t Temp.Map.t) =
+  let rec _codegen_w_reg res inst_list (reg_alloc_info : Register.t Temp.Map.t) (reg_swap: Register.t) =
     match inst_list with
     | [] -> res @ [AS_x86.Ret]
     | h :: t -> 
@@ -157,15 +163,15 @@ module X86 = struct
         let dest = oprd_ps_to_x86 bin_op.dest reg_alloc_info in
         let lhs = oprd_ps_to_x86 bin_op.lhs reg_alloc_info in
         let rhs = oprd_ps_to_x86 bin_op.rhs reg_alloc_info in
-        let op = inst_bin_ps_to_x86 bin_op.op in
-        let bin_op = AS_x86.Binop {op; dest; lhs:>AS_x86.operand; rhs:>AS_x86.operand} in
-        _codegen_w_reg (res @ [bin_op]) t reg_alloc_info
+        (* let op = inst_bin_ps_to_x86 bin_op.op in *)
+        let insts = gen_x86_inst_bin bin_op.op dest lhs rhs reg_swap in
+        _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
       | AS.Mov mov -> 
         let dest = oprd_ps_to_x86 mov.dest reg_alloc_info in
         let src = oprd_ps_to_x86 mov.src reg_alloc_info in
         let mov = AS_x86.Mov {dest; src} in
-        _codegen_w_reg (res @ [mov]) t reg_alloc_info
-      | AS.Directive _ | AS.Comment _ -> _codegen_w_reg res t reg_alloc_info
+        _codegen_w_reg (res @ [mov]) t reg_alloc_info reg_swap
+      | AS.Directive _ | AS.Comment _ -> _codegen_w_reg res t reg_alloc_info reg_swap
   ;;
   let gen (inst_list : AS.instr list) 
               (reg_alloc_info : (Temp.t * Register.t) option list) : AS_x86.instr list = 
@@ -174,6 +180,8 @@ module X86 = struct
         | None -> acc
         | Some x -> match x with (temp, reg) -> Temp.Map.set acc ~key:temp ~data:reg
       ) in
-    _codegen_w_reg [] inst_list reg_alloc
+    let reg_swap = Temp.Map.fold reg_alloc ~init:(Register.create_no 1) 
+                        ~f:(fun ~key:_ ~data:r acc -> if Register.compare r acc >= 0 then (Register.create_pp r) else acc) in
+    _codegen_w_reg [] inst_list reg_alloc reg_swap
 
 end
