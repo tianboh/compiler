@@ -25,6 +25,7 @@ type instr =
       { dest : operand
       ; src : operand
       }
+  | Cdq
   | Ret
   | Directive of string
   | Comment of string
@@ -62,6 +63,7 @@ let format = function
   | Mul mul -> sprintf "mul %s" (format_operand mul.src)
   | Div div -> sprintf "idiv %s" (format_operand div.src)
   | Mod m -> sprintf "div %s" (format_operand m.src)
+  | Cdq -> sprintf "cdq"
   (* | Binop binop ->
     sprintf
       "%s %s, %s"

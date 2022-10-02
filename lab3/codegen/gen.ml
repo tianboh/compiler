@@ -99,11 +99,17 @@ module Pseudo = struct
       let t2 = Temp.create () in
       let rev_acc' = rev_acc |> munch_exp_acc (AS.Temp t1) e1 |> munch_exp_acc (AS.Temp t2) e2 in
       match op with 
-      | AS.Mul | AS.Div | AS.Mod -> 
+      | AS.Mul | AS.Div  -> 
         let eax = Register.create_no 1 in 
         let t_eax = Register.reg_to_tmp eax in
         AS.Mov {src=AS.Temp t_eax; dest=dest} :: 
         AS.Binop { op; dest = AS.Temp t_eax; lhs = AS.Temp t1; rhs = AS.Temp t2 } ::
+        rev_acc'
+      | AS.Mod -> 
+        let edx = Register.create_no 4 in 
+        let t_edx = Register.reg_to_tmp edx in
+        AS.Mov {src=AS.Temp t_edx; dest=dest} :: 
+        AS.Binop { op; dest = AS.Temp t_edx; lhs = AS.Temp t1; rhs = AS.Temp t2 } ::
         rev_acc'
       | _ -> AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
     in
@@ -118,8 +124,10 @@ module Pseudo = struct
   let munch_stm stm  = match stm with
     | T.Move mv -> munch_exp (AS.Temp mv.dest) mv.src 
     | T.Return e ->
-      (* return e is implemented as %eax <- e *)
-      let t = Temp.create () in
+      (* return e is implemented as %eax <- e 
+         %t-1 is %eax, which is our returned destination.
+      *)
+      let t = Temp.create_no (-1) in
       munch_exp (AS.Temp t) e 
   ;;
 
@@ -164,17 +172,22 @@ module X86 = struct
       | Div ->
               (* Notice that lhs and rhs may be allocated on edx. 
                  So we use reg_swap to avoid override in the edx <- 0. *)
-              [
-                AS_x86.Mov {dest=eax; src=lhs};
+              [ AS_x86.Mov {dest=eax; src=lhs};
                 AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=edx};
-                AS_x86.Mov {dest=edx; src=AS_x86.Imm (Int32.of_int_exn 0)};
-              ] 
+                AS_x86.Cdq;] 
               @ if same_reg (match rhs with | Reg r -> r | _ -> failwith "rhs should be reg") 
                             (match edx with | Reg r -> r | _ -> failwith "edx should be register.") 
               then [AS_x86.Div {src=AS_x86.Reg reg_swap};]
               else [AS_x86.Div {src=rhs};]
               @ [AS_x86.Mov {dest=edx; src=AS_x86.Reg reg_swap};]
-      | Mod -> []
+      | Mod -> 
+              [ 
+                AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=eax};
+                AS_x86.Mov {dest=eax; src=lhs};
+                AS_x86.Cdq;
+                AS_x86.Div {src=rhs};
+                AS_x86.Mov {dest=eax; src=AS_x86.Reg reg_swap};
+              ]
       | _ -> failwith ("not implemented yet " ^ (AS_x86.format_operand (dest:>AS_x86.operand)))
   ;;
 

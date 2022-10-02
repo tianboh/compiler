@@ -22,6 +22,7 @@ type instr =
         { dest : operand
         ; src : operand
         }
+    | Cdq
     | Ret
     (* Assembly directive. *)
     | Directive of string

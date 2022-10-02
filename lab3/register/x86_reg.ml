@@ -35,9 +35,9 @@ module Register = struct
 
   let reg_to_str (idx : int) = match idx with
     | 1  -> "%eax"
-    | 2  -> "%ebx"
-    | 3  -> "%ecx"
-    | 4  -> "%edx"
+    | 2  -> "%edx"
+    | 3  -> "%ebx"
+    | 4  -> "%ecx"
     | 5  -> "%esi"
     | 6  -> "%edi"
     | 7  -> "%ebp"
@@ -47,9 +47,9 @@ module Register = struct
 
   let str_to_reg (str : string) = match str with
   | "%eax" -> 1
-  | "%ebx" -> 2
-  | "%ecx" -> 3
-  | "%edx" -> 4
+  | "%edx" -> 2
+  | "%ebx" -> 3
+  | "%ecx" -> 4
   | "%esi" -> 5
   | "%edi" -> 6
   | "%ebp" -> 7
