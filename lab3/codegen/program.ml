@@ -56,7 +56,7 @@ let gen_TempSet (l : AS.operand list)  =
   let l = _filter_imm l [] in
   Temp.Set.of_list l
 
-(* Generate define, use, move, line number *)
+(* Generate define, use, move, line number. *)
 let rec gen_forward (inst_list : AS.instr list) 
                     (inst_info : (int, line) Base.Hashtbl.t) 
                     (line_num : int) = 
@@ -66,6 +66,9 @@ let rec gen_forward (inst_list : AS.instr list)
     let line = empty_line line_num in
     match h with
     | AS.Binop binop -> 
+      (* let def = match binop.op with
+      | Div | Mod | Mul -> gen_TempSet [AS.Temp (Register.reg_to_tmp (Register.create_no 1))]
+      | _ -> gen_TempSet [binop.dest] in *)
       let def = gen_TempSet [binop.dest] in
       let uses = gen_TempSet [binop.lhs; binop.rhs] in
       let line = {line with define = def; uses = uses} in
@@ -192,11 +195,14 @@ let dump_json (inst_info : (int, line) Base.Hashtbl.t) : Inst_reg_info.program =
 
 let gen_regalloc_info (inst_list : AS.instr list) = 
   let inst_info = Hashtbl.create (module Int) in
+  (* let () = List.iter inst_list ~f:(fun x -> printf "%s\n" (AS.format x)) in *)
   let inst_info = gen_forward (inst_list) (inst_info) (0) in
   let inst_list_rev = List.rev inst_list in
   let live_out = Temp.Set.empty in
   let inst_info = gen_backward inst_list_rev inst_info (Hashtbl.length inst_info -1) live_out in
   let inst_no_sort = List.sort (Hashtbl.keys inst_info) ~compare:Int.compare in
-  List.map inst_no_sort ~f:(fun no -> Hashtbl.find_exn inst_info no)
+  let ret = List.map inst_no_sort ~f:(fun no -> Hashtbl.find_exn inst_info no) in 
+  (* let () = print_lines ret in *)
+  ret
   (* dump_json inst_info *)
 ;;

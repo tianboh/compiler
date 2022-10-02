@@ -279,7 +279,6 @@ let regalloc (prog : Reg_info.temps_info) : (Temp.t * Register.t) option list =
   let seq = seo adj prog in
   (* let tmp_to_reg = Temp.Map.empty in *)
   let tmp_to_reg = gen_tmp_to_reg_w_conv prog in
-  (* let () = print_tmp_to_reg tmp_to_reg in *)
   let color = greedy seq adj tmp_to_reg in
   (* let () = print_adj adj in
   let () = printf "SEO order\n" in

@@ -98,7 +98,14 @@ module Pseudo = struct
       let t1 = Temp.create () in
       let t2 = Temp.create () in
       let rev_acc' = rev_acc |> munch_exp_acc (AS.Temp t1) e1 |> munch_exp_acc (AS.Temp t2) e2 in
-      AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
+      match op with 
+      | AS.Mul | AS.Div | AS.Mod -> 
+        let eax = Register.create_no 1 in 
+        let t_eax = Register.reg_to_tmp eax in
+        AS.Mov {src=AS.Temp t_eax; dest=dest} :: 
+        AS.Binop { op; dest = AS.Temp t_eax; lhs = AS.Temp t1; rhs = AS.Temp t2 } ::
+        rev_acc'
+      | _ -> AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
     in
     fun dest exp  ->
       (* Since munch_exp_acc returns the reversed accumulator, we must
@@ -129,13 +136,15 @@ end *)
 module X86 = struct
   let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t) : AS_x86.operand =
     match operand with
-    | Temp t -> AS_x86.Reg (Temp.Map.find_exn reg_alloc_info t)
+    | Temp t -> AS_x86.Reg (match Temp.Map.find reg_alloc_info t with | Some s -> s | None -> Register.tmp_to_reg t)
     | Reg r -> AS_x86.Reg r
     | Imm i -> AS_x86.Imm i
   ;;
+  let eax = AS_x86.Reg (Register.create_no 1);;
+  let edx = AS_x86.Reg (Register.create_no 4);;
 
-  (* let need_mov r1 r2 = if Register.compare r1 r2 = 0 then false else true
-  ;; *)
+  let same_reg r1 r2 = if Register.compare r1 r2 = 0 then true else false
+  ;;
 
   let gen_x86_inst_bin 
       (op : AS.bin_op) 
@@ -148,27 +157,23 @@ module X86 = struct
                 AS_x86.Mov {dest=dest; src=lhs}]
       | Sub -> [AS_x86.Sub {dest=lhs; src=rhs};
                 AS_x86.Mov {dest=dest; src=lhs}]
-      | Mul -> let eax = AS_x86.Reg (Register.create_no 1) in
-               [AS_x86.Mov {dest=(AS_x86.Reg reg_swap); src=eax};
+      | Mul -> [
                 AS_x86.Mov {dest=eax; src=lhs};
                 AS_x86.Mul {src=rhs};
-                AS_x86.Mov {dest=dest; src=eax};
-                AS_x86.Mov {dest=eax; src=(AS_x86.Reg reg_swap)}]
-      | Div -> let eax = AS_x86.Reg (Register.create_no 1) in
-               let edx = AS_x86.Reg (Register.create_no 4) in
-               let reg_swap1 = AS_x86.Reg reg_swap in
-               let reg_swap2 = AS_x86.Reg (Register.create_pp reg_swap) in
-               let reg_swap3 = AS_x86.Reg (Register.create_pp (Register.create_pp reg_swap)) in
-               [AS_x86.Mov {dest=reg_swap1; src=edx};
-                AS_x86.Mov {dest=reg_swap2; src=eax};
+                ]
+      | Div ->
+              (* Notice that lhs and rhs may be allocated on edx. 
+                 So we use reg_swap to avoid override in the edx <- 0. *)
+              [
                 AS_x86.Mov {dest=eax; src=lhs};
-                AS_x86.Mov {dest=reg_swap3; src=rhs};
+                AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=edx};
                 AS_x86.Mov {dest=edx; src=AS_x86.Imm (Int32.of_int_exn 0)};
-                AS_x86.Div {src=reg_swap3};
-                AS_x86.Mov {dest=dest; src=eax};
-                AS_x86.Mov {dest=eax; src=reg_swap2};
-                AS_x86.Mov {dest=edx; src=reg_swap1}
-               ]
+              ] 
+              @ if same_reg (match rhs with | Reg r -> r | _ -> failwith "rhs should be reg") 
+                            (match edx with | Reg r -> r | _ -> failwith "edx should be register.") 
+              then [AS_x86.Div {src=AS_x86.Reg reg_swap};]
+              else [AS_x86.Div {src=rhs};]
+              @ [AS_x86.Mov {dest=edx; src=AS_x86.Reg reg_swap};]
       | Mod -> []
       | _ -> failwith ("not implemented yet " ^ (AS_x86.format_operand (dest:>AS_x86.operand)))
   ;;

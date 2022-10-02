@@ -60,7 +60,7 @@ let format = function
   | Add add -> sprintf "add %s, %s" (format_operand add.src) (format_operand add.dest)
   | Sub sub -> sprintf "sub %s, %s" (format_operand sub.src) (format_operand sub.dest)
   | Mul mul -> sprintf "mul %s" (format_operand mul.src)
-  | Div div -> sprintf "div %s" (format_operand div.src)
+  | Div div -> sprintf "idiv %s" (format_operand div.src)
   | Mod m -> sprintf "div %s" (format_operand m.src)
   (* | Binop binop ->
     sprintf
