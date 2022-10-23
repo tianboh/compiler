@@ -7,7 +7,8 @@
   json_reader
   args
   inst
-  register
+  var
+  regalloc
   util
   parser
   type

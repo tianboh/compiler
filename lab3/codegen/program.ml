@@ -12,8 +12,8 @@
 open Core
 module Inst_reg_info = Json_reader.Lab1_checkpoint
 module AS = Inst.Pseudo
-module Temp = Temp.Temp
-module Register = Register.X86_reg.Register
+module Temp = Var.Temp
+module Register = Var.X86_reg
 (* module Temp.Set = Set.Make(Temp) *)
 type line =
   { uses : Temp.Set.t

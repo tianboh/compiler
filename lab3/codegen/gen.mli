@@ -8,8 +8,8 @@
  * Implements a "convenient munch" algorithm
  *)
  module AS = Inst.Pseudo
- module Temp = Temp.Temp
- module Register = Register.X86_reg.Register
+ module Temp = Var.Temp
+ module Register = Var.X86_reg
  module AS_x86 = Inst.X86
 
  module Pseudo : sig 

@@ -9,8 +9,8 @@
  * instructions and arbitrarily many temps
  *
 *)
-module Register = Register.X86_reg.Register
-module Temp = Temp.Temp
+module Register = Var.X86_reg
+module Temp = Var.Temp
 
 type operand =
   | Imm of Int32.t

@@ -1,4 +1,4 @@
-module Register = Register.X86_reg.Register
+module Register = Var.X86_reg
 
 type operand =
   | Imm of Int32.t

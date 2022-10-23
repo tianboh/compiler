@@ -32,9 +32,9 @@ open Core
 module T = Parser.Tree
 module AS = Inst.Pseudo
 module AS_x86 = Inst.X86
-module Register = Register.X86_reg.Register
 module Reg_info = Json_reader.Lab1_checkpoint
-module Temp = Temp.Temp
+module Temp = Var.Temp
+module Register = Var.X86_reg
 
 let munch_op = function
   | T.Add -> AS.Add
@@ -54,6 +54,26 @@ module Pseudo = struct
   *
   * Generates instructions for dest <-- exp.
   *)
+  let need_precolor (op : AS.bin_op) = match op with
+  | AS.Mul | AS.Div | AS.Mod -> true
+  | _ -> false
+
+  let precolor op dest t1 t2 rev_acc' = 
+    match op with 
+      | AS.Mul | AS.Div  -> 
+        let eax = Register.create_no 1 in 
+        let t_eax = Register.reg_to_tmp eax in
+        AS.Mov {src=AS.Temp t_eax; dest=dest} :: 
+        AS.Binop { op; dest = AS.Temp t_eax; lhs = AS.Temp t1; rhs = AS.Temp t2 } ::
+        rev_acc'
+      | AS.Mod -> 
+        let edx = Register.create_no 4 in 
+        let t_edx = Register.reg_to_tmp edx in
+        AS.Mov {src=AS.Temp t_edx; dest=dest} :: 
+        AS.Binop { op; dest = AS.Temp t_edx; lhs = AS.Temp t1; rhs = AS.Temp t2 } ::
+        rev_acc'
+      | _ -> failwith "not need for pre-color."
+  
   let munch_exp : AS.operand -> T.exp -> AS.instr list =
     (* munch_exp_acc dest exp rev_acc
     *
@@ -98,20 +118,9 @@ module Pseudo = struct
       let t1 = Temp.create () in
       let t2 = Temp.create () in
       let rev_acc' = rev_acc |> munch_exp_acc (AS.Temp t1) e1 |> munch_exp_acc (AS.Temp t2) e2 in
-      match op with 
-      | AS.Mul | AS.Div  -> 
-        let eax = Register.create_no 1 in 
-        let t_eax = Register.reg_to_tmp eax in
-        AS.Mov {src=AS.Temp t_eax; dest=dest} :: 
-        AS.Binop { op; dest = AS.Temp t_eax; lhs = AS.Temp t1; rhs = AS.Temp t2 } ::
-        rev_acc'
-      | AS.Mod -> 
-        let edx = Register.create_no 4 in 
-        let t_edx = Register.reg_to_tmp edx in
-        AS.Mov {src=AS.Temp t_edx; dest=dest} :: 
-        AS.Binop { op; dest = AS.Temp t_edx; lhs = AS.Temp t1; rhs = AS.Temp t2 } ::
-        rev_acc'
-      | _ -> AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
+      if need_precolor op 
+        then precolor op dest t1 t2 rev_acc'
+        else AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
     in
     fun dest exp  ->
       (* Since munch_exp_acc returns the reversed accumulator, we must
@@ -217,8 +226,7 @@ module X86 = struct
         | None -> acc
         | Some x -> match x with (temp, reg) -> Temp.Map.set acc ~key:temp ~data:reg
       ) in
-    let reg_swap = Temp.Map.fold reg_alloc ~init:(Register.create_no 5) (* We do not use special reg like eax and edx for swap *)
-                        ~f:(fun ~key:_ ~data:r acc -> if Register.compare r acc >= 0 then (Register.create_pp r) else acc) in
+    let reg_swap = Register.swap () in
     _codegen_w_reg [] inst_list reg_alloc reg_swap
 
 end

@@ -134,7 +134,7 @@ let process_checkpoint (cmd : cmd_line_args) =
       let input = Json_reader.Lab1_checkpoint.program_of_json input_json in
       let input_temp = Codegen.Program.transform_json_to_temp input in
       (* let () = Codegen.Program.print_lines input_temp in *)
-      let output = Codegen.Regalloc.regalloc input_temp in
+      let output = Regalloc.regalloc input_temp in
       let output' = Codegen.Program.transform_temps_to_json output in
       let filename = base_filename ^ ".out" in
       Out_channel.with_file filename ~f:(fun out ->
@@ -180,7 +180,7 @@ let compile (cmd : cmd_line_args) : unit =
     let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
     let program = Codegen.Program.gen_regalloc_info assem_ps in
-    let reg_alloc_info = Codegen.Regalloc.regalloc program in
+    let reg_alloc_info = Regalloc.regalloc program in
     let assem_x86 = Codegen.Gen.X86.gen assem_ps reg_alloc_info in
     File.dump_asm_x86 file assem_x86
     (* failwith "error" *)

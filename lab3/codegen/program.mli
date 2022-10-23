@@ -11,8 +11,8 @@
 
 module AS = Inst.Pseudo
 module Inst_reg_info = Json_reader.Lab1_checkpoint
-module Temp = Temp.Temp
-module Register = Register.X86_reg.Register
+module Temp = Var.Temp
+module Register = Var.X86_reg
 ;;
 
 type line =

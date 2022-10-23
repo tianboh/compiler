@@ -9,8 +9,8 @@
  * instructions and arbitrarily many temps
 *)
 open Core
-module Register = Register.X86_reg.Register
-module Temp = Temp.Temp
+module Register = Var.X86_reg
+module Temp = Var.Temp
 
 (* Notice that pure pseudo assembly does not assign register to each temp, so 
    operand does not contain register type. Register is assigned in x86 assemb. 

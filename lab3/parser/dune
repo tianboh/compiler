@@ -1,6 +1,6 @@
 (library
  (name parser)
- (libraries core cmdliner yojson json_reader args inst temp util)
+ (libraries core cmdliner yojson json_reader args inst var util)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))
