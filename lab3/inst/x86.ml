@@ -71,9 +71,14 @@ let format = function
   | Mod m -> sprintf "div %s" (format_operand m.src)
   | Cdq -> sprintf "cdq"
   | Mov mv -> 
-    sprintf "mov %s, %s"  
+    (match mv.src, mv.dest with
+    | (Imm _, Mem _) -> 
+                sprintf "movl %s, %s"  
                 (format_operand mv.src) 
                 (format_operand mv.dest)
+    | _ ->     sprintf "mov %s, %s"  
+                (format_operand mv.src) 
+                (format_operand mv.dest))
   | Ret -> format_epilogue ()
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
