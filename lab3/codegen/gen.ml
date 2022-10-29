@@ -172,33 +172,27 @@ module X86 = struct
       (rhs : AS_x86.operand)
       (reg_swap : Register.t) = 
     match op with
-      | Add -> [AS_x86.Add {dest=lhs; src=rhs};
-                AS_x86.Mov {dest=dest; src=lhs}]
-      | Sub -> [AS_x86.Sub {dest=lhs; src=rhs};
-                AS_x86.Mov {dest=dest; src=lhs}]
-      | Mul -> [
-                AS_x86.Mov {dest=eax; src=lhs};
-                AS_x86.Mul {src=rhs};
-                ]
+      | Add -> AS_x86.safe_add lhs rhs @ AS_x86.safe_mov dest lhs
+      | Sub -> AS_x86.safe_sub lhs rhs @ AS_x86.safe_mov dest lhs
+      | Mul -> [AS_x86.Mov {dest=eax; src=lhs};
+                AS_x86.Mul {src=rhs};]
       | Div ->
               (* Notice that lhs and rhs may be allocated on edx. 
                  So we use reg_swap to avoid override in the edx <- 0. *)
               [ AS_x86.Mov {dest=eax; src=lhs};
                 AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=edx};
                 AS_x86.Cdq;] 
-              @ if same_reg (match rhs with | Reg r -> r | _ -> failwith "rhs should be reg") 
+              @ if same_reg (match rhs with | Reg r -> r | _ -> failwith "rhs should be reg or tmp") 
                             (match edx with | Reg r -> r | _ -> failwith "edx should be register.") 
               then [AS_x86.Div {src=AS_x86.Reg reg_swap};]
               else [AS_x86.Div {src=rhs};]
               @ [AS_x86.Mov {dest=edx; src=AS_x86.Reg reg_swap};]
       | Mod -> 
-              [ 
-                AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=eax};
+              [ AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=eax};
                 AS_x86.Mov {dest=eax; src=lhs};
                 AS_x86.Cdq;
                 AS_x86.Div {src=rhs};
-                AS_x86.Mov {dest=eax; src=AS_x86.Reg reg_swap};
-              ]
+                AS_x86.Mov {dest=eax; src=AS_x86.Reg reg_swap};]
       | _ -> failwith ("not implemented yet " ^ (AS_x86.format_operand (dest:>AS_x86.operand)))
   ;;
 
@@ -217,8 +211,8 @@ module X86 = struct
       | AS.Mov mov -> 
         let dest = oprd_ps_to_x86 mov.dest reg_alloc_info in
         let src = oprd_ps_to_x86 mov.src reg_alloc_info in
-        let mov = AS_x86.Mov {dest; src} in
-        _codegen_w_reg (res @ [mov]) t reg_alloc_info reg_swap
+        let insts = AS_x86.safe_mov dest src in
+        _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
       | AS.Directive _ | AS.Comment _ -> _codegen_w_reg res t reg_alloc_info reg_swap
   ;;
   let gen (inst_list : AS.instr list) 

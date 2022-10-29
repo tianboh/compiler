@@ -1,5 +1,5 @@
 (* 
-  L1 x86 assembly   
+ * L1 x86 assembly   
 *)
 
 open Core
@@ -32,10 +32,28 @@ type instr =
   | Directive of string
   | Comment of string
 
+  (* Now we provide safe instruction to avoid source and destination are both memory. *)
+let safe_mov (dest:operand) (src:operand) = 
+  match dest, src with
+  | (Mem dest, Mem src) -> [Mov{dest=Reg (Register.swap ()); src=Mem src};
+                            Mov{dest=Mem dest; src=Reg (Register.swap ())}]
+  | _ -> [Mov{dest; src}]
+
+let safe_add (dest:operand) (src:operand) =
+  match dest, src with
+  | (Mem dest, Mem src) -> [Mov{dest=Reg (Register.swap ()); src=Mem src};
+                            Add{dest=Mem dest; src=Reg (Register.swap ())};]
+  | _ -> [Add{dest; src}]
+
+let safe_sub (dest:operand) (src:operand) =
+  match dest, src with
+  | (Mem dest, Mem src) -> [Mov{dest=Reg (Register.swap ()); src=Mem src};
+                            Sub{dest=Mem dest; src=Reg (Register.swap ())};]
+  | _ -> [Sub{dest; src}]
+
 (* prologue for a callee function. Handle callee-saved registers and allocate space for local variables *)
 let format_prologue (var_cnt : int) = 
   let var_size = var_cnt * 8 in
-  let () = printf "%d" var_size in
   let insts = ["\tpush %rbp";
                "mov %rsp, %rbp";
                sprintf "sub $%d, %%rsp" var_size;
@@ -73,12 +91,12 @@ let format = function
   | Mov mv -> 
     (match mv.src, mv.dest with
     | (Imm _, Mem _) -> 
-                sprintf "movl %s, %s"  
-                (format_operand mv.src) 
-                (format_operand mv.dest)
-    | _ ->     sprintf "mov %s, %s"  
-                (format_operand mv.src) 
-                (format_operand mv.dest))
+            sprintf "movl %s, %s"  
+            (format_operand mv.src) 
+            (format_operand mv.dest)
+    | _ ->  sprintf "mov %s, %s"  
+            (format_operand mv.src) 
+            (format_operand mv.dest))
   | Ret -> format_epilogue ()
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment

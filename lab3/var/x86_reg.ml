@@ -19,7 +19,7 @@ include Comparable.Make (T)
    We also preserver r16(16) as a swap register, and do not assign it for register allocation.
 *)
 let special_use = function
-| 7 | 8 | 16 -> true
+| 7 | 8 | 15 -> true
 | _ -> false
 ;;
 

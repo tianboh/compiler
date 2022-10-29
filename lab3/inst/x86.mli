@@ -38,3 +38,9 @@ val format_epilogue : unit -> string
 val format : instr -> string
 
 val format_operand : operand -> string
+
+val safe_mov : operand -> operand -> instr list
+
+val safe_add : operand -> operand -> instr list
+
+val safe_sub : operand -> operand -> instr list
