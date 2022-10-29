@@ -25,6 +25,8 @@ let special_use = function
 
 let alloc_cnt = ref 0
 
+let num_gen_reg = 15
+
 let create_no (n : int) : t = 
   incr alloc_cnt;
   let t = n in
@@ -41,44 +43,82 @@ let find_min_available (nbr : Set.t) : int =
           then helper (idx + 1) nbr
           else idx
   in
-  helper 3 nbr
+  helper 5 nbr
 ;;
 
-let name t = 
-  "%r" ^ string_of_int t ^ "d"
+(* We only have 15 general purpose register, and we obey x86 64bit register name format.
+   For register greater than 15, we spill them to memory, and we name them as %sxxx where
+   xxx is index of that register. So xxx is >= 16.   
+*)
+let name (t : int) = 
+  if t < 16 
+    then "%r" ^ string_of_int t
+  else
+    "%s" ^ string_of_int t
 
 let reg_to_str (idx : int) = match idx with
-  | 1  -> "%eax"
-  | 2  -> "%edx"
-  | 3  -> "%ebx"
-  | 4  -> "%ecx"
-  | 5  -> "%esi"
-  | 6  -> "%edi"
-  | 7  -> "%ebp"
-  | 8  -> "%esp"
+  | 1  -> "%rax"
+  | 2  -> "%rbx"
+  | 3  -> "%rcx"
+  | 4  -> "%rdx"
+  | 5  -> "%rsi"
+  | 6  -> "%rdi"
+  | 7  -> "%rbp"
+  | 8  -> "%rsp"
   | _ -> name idx
 ;;
 
 let str_to_reg (str : string) = match str with
-| "%eax" -> 1
-| "%edx" -> 2
-| "%ebx" -> 3
-| "%ecx" -> 4
-| "%esi" -> 5
-| "%edi" -> 6
-| "%ebp" -> 7
-| "%esp" -> 8
-| s -> 
-  let str_l = String.split_on_chars ~on:['e'] s in
+| "%rax" -> 1
+| "%rbx" -> 2
+| "%rcx" -> 3
+| "%rdx" -> 4
+| "%rsi" -> 5
+| "%rdi" -> 6
+| "%rbp" -> 7
+| "%rsp" -> 8
+| "%r9"  -> 9
+| "%r10" -> 10
+| "%r11" -> 11
+| "%r12" -> 12
+| "%r13" -> 13
+| "%r14" -> 14
+| "%r15" -> 15
+| s ->
+  let str_l = String.split_on_chars ~on:['s'] s in
   Int.of_string (List.last_exn str_l)
 ;;
 
-let swap () = 16
+let swap () = 15
+;;
+
+(* 
+  callee-saved registers are EBX(2), EDI(6), and ESI(5) 
+  ESP(8) and EBP(7) will also be preserved by the calling convention, 
+  but need not be pushed on the stack during calling a function.   
+*)
+let callee_saved () = Set.of_list [2; 6; 5; 8; 7]
+;;
+
+(* Caller-saved register are EAX(1), ECX(3), and EDX(4) *)
+let caller_saved () = Set.of_list [1; 3; 4]
 ;;
 
 let reg_to_tmp idx = Temp.create_no (-idx)
-
-let tmp_to_reg (tmp : Temp.t) = -(Temp.value tmp)
-
 ;;
 
+let tmp_to_reg (tmp : Temp.t) = -(Temp.value tmp)
+;;
+
+(* number of spilled register so far *)
+let num_spill_reg () =
+  if !alloc_cnt < 16 then 0
+  else !alloc_cnt - 15
+;;
+
+let need_spill t = if t <= num_gen_reg then false else true
+;;
+
+let get_base_pointer () = 7
+
+let spilled_idx (t : t) : int = t - num_gen_reg

@@ -1,8 +1,10 @@
 module Register = Var.X86_reg
+module Memory = Var.Memory
 
 type operand =
   | Imm of Int32.t
   | Reg of Register.t
+  | Mem of Memory.t
 
 type instr =
   | Add of {src:operand; dest:operand}
@@ -28,6 +30,10 @@ type instr =
     | Directive of string
     (* Human-friendly comment. *)
     | Comment of string
+
+val format_prologue : int -> string
+
+val format_epilogue : unit -> string
 
 val format : instr -> string
 

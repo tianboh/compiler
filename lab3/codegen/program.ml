@@ -114,7 +114,7 @@ let gen_TempSet (l : string list) =
         let idx = Int.of_string (List.last_exn str_l) in
         let temp = Temp.create_no idx in
         _gen_TempList t ([temp]@res)
-      | 'e' -> 
+      | 'r' | 's' -> 
         let reg = Register.str_to_reg h in
         let temp = Register.reg_to_tmp reg in
         _gen_TempList t ([temp] @ res)

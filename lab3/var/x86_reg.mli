@@ -10,8 +10,6 @@ val create_no : int -> t
 
 val find_min_available : Set.t -> int
 
-val name : t -> string
-
 (* returns the name of a temp *)
 val reg_to_str : t -> string
 
@@ -23,4 +21,16 @@ val special_use : t -> bool
 
 val swap : unit -> t
 
+val callee_saved : unit -> Set.t
+
+val caller_saved : unit -> Set.t
+
 val tmp_to_reg : Temp.t -> t
+
+val num_spill_reg : unit -> int
+
+val need_spill : t -> bool
+
+val get_base_pointer : unit -> t
+
+val spilled_idx : t -> int

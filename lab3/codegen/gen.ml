@@ -35,6 +35,7 @@ module AS_x86 = Inst.X86
 module Reg_info = Json_reader.Lab1_checkpoint
 module Temp = Var.Temp
 module Register = Var.X86_reg
+module Memory = Var.Memory
 
 let munch_op = function
   | T.Add -> AS.Add
@@ -134,8 +135,7 @@ module Pseudo = struct
     | T.Move mv -> munch_exp (AS.Temp mv.dest) mv.src 
     | T.Return e ->
       (* return e is implemented as %eax <- e 
-         %t-1 is %eax, which is our returned destination.
-      *)
+        %t-1 is %eax, which is our returned destination. *)
       let t = Temp.create_no (-1) in
       munch_exp (AS.Temp t) e 
   ;;
@@ -153,7 +153,9 @@ end *)
 module X86 = struct
   let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t) : AS_x86.operand =
     match operand with
-    | Temp t -> AS_x86.Reg (match Temp.Map.find reg_alloc_info t with | Some s -> s | None -> Register.tmp_to_reg t)
+    | Temp t -> 
+      let reg = (match Temp.Map.find reg_alloc_info t with | Some s -> s | None -> Register.tmp_to_reg t) in
+      if Register.need_spill reg then AS_x86.Mem (Memory.from_reg reg) else AS_x86.Reg reg
     | Reg r -> AS_x86.Reg r
     | Imm i -> AS_x86.Imm i
   ;;

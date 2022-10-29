@@ -4,10 +4,12 @@
 
 open Core
 module Register = Var.X86_reg
+module Memory = Var.Memory
 
 type operand =
   | Imm of Int32.t
   | Reg of Register.t
+  | Mem of Memory.t
 
 type instr =
   | Add of {src:operand; dest:operand}
@@ -30,29 +32,33 @@ type instr =
   | Directive of string
   | Comment of string
 
-(* functions that format assembly output *)
+(* prologue for a callee function. Handle callee-saved registers and allocate space for local variables *)
+let format_prologue (var_cnt : int) = 
+  let var_size = var_cnt * 8 in
+  let () = printf "%d" var_size in
+  let insts = ["\tpush %rbp";
+               "mov %rsp, %rbp";
+               sprintf "sub $%d, %%rsp" var_size;
+               ] in
+  String.concat ~sep:"\n\t" insts
+;;
 
-
-(* x <- x bin_op y *)
-(* let format_binop = function
-  | Add -> "addl"
-  | Sub -> "subl"
-  | Mul -> "mul"
-  | Div -> "div"
-  | Mod -> "div"
-  | And -> "&&"
-  | Or -> "||"
-  | Pand -> "and"
-  | Por -> "or"
-  | Pxor -> "xor"
-;; *)
+(* epilogue for a callee function. Restore callee-saved registers and deallocate local variables. *)
+let format_epilogue () = 
+  let insts = ["mov %rbp, %rsp";
+               "pop %rbp";
+               "ret"] in
+  String.concat ~sep:"\n\t" insts
+;;
 
 let format_operand (oprd : operand) = match oprd with
   | Imm n -> "$" ^ Int32.to_string n
   | Reg r -> Register.reg_to_str r
+  | Mem m -> Memory.mem_to_str m
   (* | _ -> failwith "not supported in x86 operand." *)
 ;;
 
+(* functions that format assembly output *)
 let format = function
   (* It's quite tricky for the order of binary operand here. 
      dest <- dest(lhs_operand) bin_op rhs_operand equivalents to assembly code
@@ -64,16 +70,11 @@ let format = function
   | Div div -> sprintf "idiv %s" (format_operand div.src)
   | Mod m -> sprintf "div %s" (format_operand m.src)
   | Cdq -> sprintf "cdq"
-  (* | Binop binop ->
-    sprintf
-      "%s %s, %s"
-      (format_binop binop.op)
-      (format_operand binop.rhs)
-      (format_operand (binop.dest:>[`Imm of int32 | `Reg of Register.t])) *)
-  | Mov mv -> sprintf "movl %s, %s"  
+  | Mov mv -> 
+    sprintf "mov %s, %s"  
                 (format_operand mv.src) 
                 (format_operand mv.dest)
-  | Ret -> sprintf "ret"
+  | Ret -> format_epilogue ()
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
 ;;
