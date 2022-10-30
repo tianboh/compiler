@@ -84,10 +84,15 @@ let format = function
   *)
   | Add add -> sprintf "add %s, %s" (format_operand add.src) (format_operand add.dest)
   | Sub sub -> sprintf "sub %s, %s" (format_operand sub.src) (format_operand sub.dest)
-  | Mul mul -> sprintf "mul %s" (format_operand mul.src)
-  | Div div -> sprintf "idiv %s" (format_operand div.src)
+  | Mul mul -> (match mul.src with
+    | Mem _ -> sprintf "mull %s" (format_operand mul.src)
+    | _ -> sprintf "mul %s" (format_operand mul.src))
+  | Div div -> 
+    (match div.src with
+    | Mem _ -> sprintf "idivl %s" (format_operand div.src)
+    | _ -> sprintf "idiv %s" (format_operand div.src))
   | Mod m -> sprintf "div %s" (format_operand m.src)
-  | Cdq -> sprintf "cdq"
+  | Cdq -> sprintf "cqo"
   | Mov mv -> 
     (match mv.src, mv.dest with
     | (Imm _, Mem _) -> 

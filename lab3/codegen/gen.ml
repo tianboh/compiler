@@ -162,7 +162,10 @@ module X86 = struct
   let eax = AS_x86.Reg (Register.create_no 1);;
   let edx = AS_x86.Reg (Register.create_no 4);;
 
-  let same_reg r1 r2 = if Register.compare r1 r2 = 0 then true else false
+  let same_reg (r1:AS_x86.operand) (r2:AS_x86.operand) = 
+    match r1, r2 with
+    | (Reg r1, Reg r2) -> if Register.compare r1 r2 = 0 then true else false
+    | _ -> false
   ;;
 
   let gen_x86_inst_bin 
@@ -182,8 +185,9 @@ module X86 = struct
               [ AS_x86.Mov {dest=eax; src=lhs};
                 AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=edx};
                 AS_x86.Cdq;] 
-              @ if same_reg (match rhs with | Reg r -> r | _ -> failwith "rhs should be reg or tmp") 
-                            (match edx with | Reg r -> r | _ -> failwith "edx should be register.") 
+              (* @ if same_reg (match rhs with | Reg r -> r | _ -> failwith "rhs should be reg or mem") 
+                            (match edx with | Reg r -> r | _ -> failwith "edx should be register.")  *)
+              @ if same_reg rhs edx
               then [AS_x86.Div {src=AS_x86.Reg reg_swap};]
               else [AS_x86.Div {src=rhs};]
               @ [AS_x86.Mov {dest=edx; src=AS_x86.Reg reg_swap};]
