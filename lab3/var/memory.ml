@@ -7,6 +7,7 @@
  *)
 
  open Core
+ open Layout
 
  module T = struct
    type t = 
@@ -24,7 +25,7 @@
    }
  ;;
  
- let mem_to_str t = Printf.sprintf "%d(%s)" (-t.offset * t.size) (X86_reg.reg_to_str t.base)
+ let mem_to_str t = Printf.sprintf "%d(%s)" (-t.offset * t.size) (X86_reg.reg_to_str ~layout:QWORD t.base)
  
  let from_reg reg = 
   if X86_reg.need_spill reg

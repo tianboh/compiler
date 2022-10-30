@@ -1,10 +1,10 @@
 (* 
-   This file is a register module. 
-   It will create register by sequence after the first 16 x86 determined register.
+ * This file is a register module. 
+ * It will create register by sequence after the first 16 x86 determined register.
 *)
 
 open Core
-(* module Temp = Temp.Temp *)
+open Layout
 
 module T = struct
   type t = int [@@deriving sexp, compare, hash]
@@ -50,40 +50,70 @@ let find_min_available (nbr : Set.t) : int =
    For register greater than 15, we spill them to memory, and we name them as %sxxx where
    xxx is index of that register. So xxx is >= 16.   
 *)
-let name (t : int) = 
+let name (t : int) (layout : layout) = 
   if t < 16 
-    then "%r" ^ string_of_int t
+    then match layout with
+      | BYTE -> "%r" ^ string_of_int t ^ "b"
+      | WORD -> "%r" ^ string_of_int t ^ "w"
+      | DWORD -> "%r" ^ string_of_int t ^ "d"
+      | QWORD -> "%r" ^ string_of_int t
   else
     "%s" ^ string_of_int t
 
-let reg_to_str (idx : int) = match idx with
-  | 1  -> "%rax"
-  | 2  -> "%rbx"
-  | 3  -> "%rcx"
-  | 4  -> "%rdx"
-  | 5  -> "%rsi"
-  | 6  -> "%rdi"
-  | 7  -> "%rbp"
-  | 8  -> "%rsp"
-  | _ -> name idx
+let reg_to_str ?(layout=DWORD) (idx : int) = match idx, layout with
+  | 1, BYTE  -> "%al"
+  | 2, BYTE  -> "%bl"
+  | 3, BYTE  -> "%cl"
+  | 4, BYTE  -> "%dl"
+  | 5, BYTE  -> failwith "cannot access low 8-bit in %rsi"
+  | 6, BYTE  -> failwith "cannot access low 8-bit in %rdi"
+  | 7, BYTE  -> failwith "cannot access low 8-bit in %rbp"
+  | 8, BYTE  -> failwith "cannot access low 8-bit in %rsp"
+  | 1, WORD  -> "%ax"
+  | 2, WORD  -> "%bx"
+  | 3, WORD  -> "%cx"
+  | 4, WORD  -> "%dx"
+  | 5, WORD  -> "%si"
+  | 6, WORD  -> "%di"
+  | 7, WORD  -> "%bp"
+  | 8, WORD  -> "%sp"
+  | 1, DWORD  -> "%eax"
+  | 2, DWORD  -> "%ebx"
+  | 3, DWORD  -> "%ecx"
+  | 4, DWORD  -> "%edx"
+  | 5, DWORD  -> "%esi"
+  | 6, DWORD  -> "%edi"
+  | 7, DWORD  -> "%ebp"
+  | 8, DWORD  -> "%esp"
+  | 1, QWORD  -> "%rax"
+  | 2, QWORD  -> "%rbx"
+  | 3, QWORD  -> "%rcx"
+  | 4, QWORD  -> "%rdx"
+  | 5, QWORD  -> "%rsi"
+  | 6, QWORD  -> "%rdi"
+  | 7, QWORD  -> "%rbp"
+  | 8, QWORD  -> "%rsp"
+  | _ -> name idx layout
 ;;
 
+let reg_idx (t : t) : int = t
+
 let str_to_reg (str : string) = match str with
-| "%rax" -> 1
-| "%rbx" -> 2
-| "%rcx" -> 3
-| "%rdx" -> 4
-| "%rsi" -> 5
-| "%rdi" -> 6
-| "%rbp" -> 7
-| "%rsp" -> 8
-| "%r9"  -> 9
-| "%r10" -> 10
-| "%r11" -> 11
-| "%r12" -> 12
-| "%r13" -> 13
-| "%r14" -> 14
-| "%r15" -> 15
+| "%rax" | "%eax" | "%ax" | "%al" -> 1
+| "%rbx" | "%ebx" | "%bx" | "%bl" -> 2
+| "%rcx" | "%ecx" | "%cx" | "%cl" -> 3
+| "%rdx" | "%edx" | "%dx" | "%dl" -> 4
+| "%rsi" | "%esi" | "%si" -> 5
+| "%rdi" | "%edi" | "%di" -> 6
+| "%rbp" | "%ebp" | "%bp" -> 7
+| "%rsp" | "%esp" | "%sp" -> 8
+| "%r9"  | "%r9d" | "%r9w" | "%r9b" -> 9
+| "%r10" | "%r10d"| "%r10w"| "%r10b"-> 10
+| "%r11" | "%r11d"| "%r11w"| "%r11b"-> 11
+| "%r12" | "%r12d"| "%r12w"| "%r12b"-> 12
+| "%r13" | "%r13d"| "%r13w"| "%r13b"-> 13
+| "%r14" | "%r14d"| "%r14w"| "%r14b"-> 14
+| "%r15" | "%r15d"| "%r15w"| "%r15b"-> 15
 | s ->
   let str_l = String.split_on_chars ~on:['s'] s in
   Int.of_string (List.last_exn str_l)

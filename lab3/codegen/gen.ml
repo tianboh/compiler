@@ -36,6 +36,7 @@ module Reg_info = Json_reader.Lab1_checkpoint
 module Temp = Var.Temp
 module Register = Var.X86_reg
 module Memory = Var.Memory
+open Var.Layout
 
 let munch_op = function
   | T.Add -> AS.Add
@@ -175,29 +176,29 @@ module X86 = struct
       (rhs : AS_x86.operand)
       (reg_swap : Register.t) = 
     match op with
-      | Add -> AS_x86.safe_add lhs rhs @ AS_x86.safe_mov dest lhs
-      | Sub -> AS_x86.safe_sub lhs rhs @ AS_x86.safe_mov dest lhs
-      | Mul -> [AS_x86.Mov {dest=eax; src=lhs};
-                AS_x86.Mul {src=rhs};]
+      | Add -> AS_x86.safe_add lhs rhs DWORD @ AS_x86.safe_mov dest lhs DWORD
+      | Sub -> AS_x86.safe_sub lhs rhs DWORD @ AS_x86.safe_mov dest lhs DWORD
+      | Mul -> [AS_x86.Mov {dest=eax; src=lhs; layout=DWORD};
+                AS_x86.Mul {src=rhs; layout=DWORD};]
       | Div ->
               (* Notice that lhs and rhs may be allocated on edx. 
                  So we use reg_swap to avoid override in the edx <- 0. *)
-              [ AS_x86.Mov {dest=eax; src=lhs};
-                AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=edx};
-                AS_x86.Cdq;] 
+              [ AS_x86.Mov {dest=eax; src=lhs; layout=DWORD};
+                AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=edx; layout=DWORD};
+                AS_x86.Cvt {layout=DWORD};] 
               (* @ if same_reg (match rhs with | Reg r -> r | _ -> failwith "rhs should be reg or mem") 
                             (match edx with | Reg r -> r | _ -> failwith "edx should be register.")  *)
               @ if same_reg rhs edx
-              then [AS_x86.Div {src=AS_x86.Reg reg_swap};]
-              else [AS_x86.Div {src=rhs};]
-              @ [AS_x86.Mov {dest=edx; src=AS_x86.Reg reg_swap};]
+              then [AS_x86.Div {src=AS_x86.Reg reg_swap; layout=DWORD};]
+              else [AS_x86.Div {src=rhs; layout=DWORD};]
+              @ [AS_x86.Mov {dest=edx; src=AS_x86.Reg reg_swap; layout=DWORD};]
       | Mod -> 
-              [ AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=eax};
-                AS_x86.Mov {dest=eax; src=lhs};
-                AS_x86.Cdq;
-                AS_x86.Div {src=rhs};
-                AS_x86.Mov {dest=eax; src=AS_x86.Reg reg_swap};]
-      | _ -> failwith ("not implemented yet " ^ (AS_x86.format_operand (dest:>AS_x86.operand)))
+              [ AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=eax; layout=DWORD};
+                AS_x86.Mov {dest=eax; src=lhs; layout=DWORD};
+                AS_x86.Cvt{layout=DWORD};
+                AS_x86.Div {src=rhs; layout=DWORD};
+                AS_x86.Mov {dest=eax; src=AS_x86.Reg reg_swap; layout=DWORD};]
+      | _ -> failwith ("inst not implemented yet " ^ (AS_x86.format_operand (dest:>AS_x86.operand) DWORD))
   ;;
 
   let rec _codegen_w_reg res inst_list (reg_alloc_info : Register.t Temp.Map.t) (reg_swap: Register.t) =
@@ -209,13 +210,12 @@ module X86 = struct
         let dest = oprd_ps_to_x86 bin_op.dest reg_alloc_info in
         let lhs = oprd_ps_to_x86 bin_op.lhs reg_alloc_info in
         let rhs = oprd_ps_to_x86 bin_op.rhs reg_alloc_info in
-        (* let op = inst_bin_ps_to_x86 bin_op.op in *)
         let insts = gen_x86_inst_bin bin_op.op dest lhs rhs reg_swap in
         _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
       | AS.Mov mov -> 
         let dest = oprd_ps_to_x86 mov.dest reg_alloc_info in
         let src = oprd_ps_to_x86 mov.src reg_alloc_info in
-        let insts = AS_x86.safe_mov dest src in
+        let insts = AS_x86.safe_mov dest src DWORD in
         _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
       | AS.Directive _ | AS.Comment _ -> _codegen_w_reg res t reg_alloc_info reg_swap
   ;;

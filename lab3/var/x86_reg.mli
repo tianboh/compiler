@@ -1,5 +1,7 @@
 
 open Core
+open Layout
+
 (* module Temp = Temp.Temp *)
 type t [@@deriving compare, sexp, hash]
 
@@ -11,7 +13,9 @@ val create_no : int -> t
 val find_min_available : Set.t -> int
 
 (* returns the name of a temp *)
-val reg_to_str : t -> string
+val reg_to_str : ?layout:layout -> t -> string
+
+val reg_idx : t -> int
 
 val reg_to_tmp : t -> Temp.t
 

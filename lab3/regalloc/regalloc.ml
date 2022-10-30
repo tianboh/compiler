@@ -216,12 +216,10 @@ let rec greedy seq adj tmp_to_reg  = match seq with
   | h :: t -> 
     let nbr = Temp.Map.find_exn adj h in
     let reg = alloc nbr tmp_to_reg in
-    (* let () = printf "greedy %s -> %s\n" (Temp.name h) (Register.reg_to_str reg) in *)
     if Temp.value h < 0 
       then greedy t adj tmp_to_reg  
       else let tmp_to_reg = Temp.Map.set tmp_to_reg ~key:h ~data:reg in
       greedy t adj tmp_to_reg 
-    (* greedy t adj tmp_to_reg  *)
 ;;
 
 let rec gen_result (color : reg Temp.Map.t) prog  = match prog with
@@ -244,8 +242,8 @@ let print_tmp_to_reg (color : reg Temp.Map.t) =
   let sorted_keys = List.sort (Temp.Map.keys color) ~compare:Temp.compare in
   List.iter sorted_keys ~f:(fun k -> 
     let t = Temp.name k in
-    let r = Register.reg_to_str (Temp.Map.find_exn color k) in
-    printf "%s -> %s\n" t r
+    let r = Register.reg_idx (Temp.Map.find_exn color k) in
+    printf "%s -> %d\n" t r
     );
   let l = List.map (Temp.Map.data color) ~f:(fun x -> x) in
   let s = Register.Set.of_list l in

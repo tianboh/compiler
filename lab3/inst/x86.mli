@@ -1,5 +1,6 @@
 module Register = Var.X86_reg
 module Memory = Var.Memory
+open Var.Layout
 
 type operand =
   | Imm of Int32.t
@@ -7,11 +8,11 @@ type operand =
   | Mem of Memory.t
 
 type instr =
-  | Add of {src:operand; dest:operand}
-  | Sub of {src:operand; dest:operand}
-  | Mul of {src:operand}
-  | Div of {src:operand}
-  | Mod of {src:operand}
+  | Add of {src:operand; dest:operand; layout:layout}
+  | Sub of {src:operand; dest:operand; layout:layout}
+  | Mul of {src:operand; layout:layout}
+  | Div of {src:operand; layout:layout}
+  | Mod of {src:operand; layout:layout}
     (* dest <- lhs op rhs *)
     (* | Binop of
         { op : bin_op
@@ -20,11 +21,8 @@ type instr =
         ; rhs : operand
         } *)
     (* dest <- src *)
-    | Mov of
-        { dest : operand
-        ; src : operand
-        }
-    | Cdq
+    | Mov of {dest:operand; src:operand; layout:layout}
+    | Cvt of {layout:layout}
     | Ret
     (* Assembly directive. *)
     | Directive of string
@@ -37,10 +35,10 @@ val format_epilogue : unit -> string
 
 val format : instr -> string
 
-val format_operand : operand -> string
+val format_operand : operand -> layout -> string
 
-val safe_mov : operand -> operand -> instr list
+val safe_mov : operand -> operand -> layout -> instr list
 
-val safe_add : operand -> operand -> instr list
+val safe_add : operand -> operand -> layout -> instr list
 
-val safe_sub : operand -> operand -> instr list
+val safe_sub : operand -> operand -> layout -> instr list

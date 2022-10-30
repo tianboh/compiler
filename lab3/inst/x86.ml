@@ -5,6 +5,7 @@
 open Core
 module Register = Var.X86_reg
 module Memory = Var.Memory
+open Var.Layout
 
 type operand =
   | Imm of Int32.t
@@ -12,44 +13,42 @@ type operand =
   | Mem of Memory.t
 
 type instr =
-  | Add of {src:operand; dest:operand}
-  | Sub of {src:operand; dest:operand}
-  | Mul of {src:operand} (* Destination is form of EDX:EAX by default. Only one operand required. *)
-  | Div of {src:operand} (* temp := EDX:EAX / SRC;
+  | Add of {src:operand; dest:operand; layout:layout}
+  | Sub of {src:operand; dest:operand; layout:layout}
+  | Mul of {src:operand; layout:layout} (* Destination is form of EDX:EAX by default. Only one operand required. *)
+  | Div of {src:operand; layout:layout} (* temp := EDX:EAX / SRC;
                             IF temp > FFFFFFFFH
                                 THEN #DE; (* Divide error *)
                             ELSE
                                 EAX := temp;
                                 EDX := EDX:EAX MOD SRC;
                             FI; *)
-  | Mod of {src:operand} (* Similar as above, but use edx after div.*)
+  | Mod of {src:operand; layout:layout} (* Similar as above, but use edx after div.*)
   | Mov of
-      { dest : operand
-      ; src : operand
-      }
-  | Cdq
+      { dest:operand; src:operand; layout:layout}
+  | Cvt of {layout:layout} (*could be cdq, cqo, etc based on size it wants to extend.*)
   | Ret
   | Directive of string
   | Comment of string
 
   (* Now we provide safe instruction to avoid source and destination are both memory. *)
-let safe_mov (dest:operand) (src:operand) = 
+let safe_mov (dest:operand) (src:operand) (layout:layout) = 
   match dest, src with
-  | (Mem dest, Mem src) -> [Mov{dest=Reg (Register.swap ()); src=Mem src};
-                            Mov{dest=Mem dest; src=Reg (Register.swap ())}]
-  | _ -> [Mov{dest; src}]
+  | (Mem dest, Mem src) -> [Mov{dest=Reg (Register.swap ()); src=Mem src; layout};
+                            Mov{dest=Mem dest; src=Reg (Register.swap ()); layout}]
+  | _ -> [Mov{dest; src;layout}]
 
-let safe_add (dest:operand) (src:operand) =
+let safe_add (dest:operand) (src:operand) (layout:layout) =
   match dest, src with
-  | (Mem dest, Mem src) -> [Mov{dest=Reg (Register.swap ()); src=Mem src};
-                            Add{dest=Mem dest; src=Reg (Register.swap ())};]
-  | _ -> [Add{dest; src}]
+  | (Mem dest, Mem src) -> [Mov{dest=Reg (Register.swap ()); src=Mem src; layout};
+                            Add{dest=Mem dest; src=Reg (Register.swap ()); layout};]
+  | _ -> [Add{dest; src; layout}]
 
-let safe_sub (dest:operand) (src:operand) =
+let safe_sub (dest:operand) (src:operand) (layout:layout) =
   match dest, src with
-  | (Mem dest, Mem src) -> [Mov{dest=Reg (Register.swap ()); src=Mem src};
-                            Sub{dest=Mem dest; src=Reg (Register.swap ())};]
-  | _ -> [Sub{dest; src}]
+  | (Mem dest, Mem src) -> [Mov{dest=Reg (Register.swap ()); src=Mem src; layout};
+                            Sub{dest=Mem dest; src=Reg (Register.swap ()); layout};]
+  | _ -> [Sub{dest; src; layout}]
 
 (* prologue for a callee function. Handle callee-saved registers and allocate space for local variables *)
 let format_prologue (var_cnt : int) = 
@@ -69,12 +68,18 @@ let format_epilogue () =
   String.concat ~sep:"\n\t" insts
 ;;
 
-let format_operand (oprd : operand) = match oprd with
+let format_operand (oprd : operand) (layout:layout) = match oprd with
   | Imm n -> "$" ^ Int32.to_string n
-  | Reg r -> Register.reg_to_str r
+  | Reg r -> Register.reg_to_str ~layout:layout r 
   | Mem m -> Memory.mem_to_str m
   (* | _ -> failwith "not supported in x86 operand." *)
 ;;
+
+let format_inst (layout:layout) = match layout with
+| BYTE -> "b"
+| WORD -> "w"
+| DWORD -> "l"
+| QWORD -> ""
 
 (* functions that format assembly output *)
 let format = function
@@ -82,26 +87,34 @@ let format = function
      dest <- dest(lhs_operand) bin_op rhs_operand equivalents to assembly code
      bin_op rhs_operand, dest
   *)
-  | Add add -> sprintf "add %s, %s" (format_operand add.src) (format_operand add.dest)
-  | Sub sub -> sprintf "sub %s, %s" (format_operand sub.src) (format_operand sub.dest)
-  | Mul mul -> (match mul.src with
-    | Mem _ -> sprintf "mull %s" (format_operand mul.src)
-    | _ -> sprintf "mul %s" (format_operand mul.src))
+  | Add add -> sprintf "add%s %s, %s"(format_inst add.layout) (format_operand add.src add.layout) (format_operand add.dest add.layout)
+  | Sub sub -> sprintf "sub%s %s, %s"(format_inst sub.layout) (format_operand sub.src sub.layout) (format_operand sub.dest sub.layout)
+  (* | Mul mul -> (match mul.src with
+    | Mem _ -> sprintf "mull %s" (format_operand mul.src mul.layout)
+    | _ -> sprintf "mul %s" (format_operand mul.src mul.layout))
   | Div div -> 
     (match div.src with
-    | Mem _ -> sprintf "idivl %s" (format_operand div.src)
-    | _ -> sprintf "idiv %s" (format_operand div.src))
-  | Mod m -> sprintf "div %s" (format_operand m.src)
-  | Cdq -> sprintf "cqo"
+    | Mem _ -> sprintf "idivl %s" (format_operand div.src div.layout)
+    | _ -> sprintf "idiv %s" (format_operand div.src div.layout))
+  | Mod m -> sprintf "div %s" (format_operand m.src m.layout)
+  | Cvt _ -> sprintf "cqo"
   | Mov mv -> 
     (match mv.src, mv.dest with
     | (Imm _, Mem _) -> 
             sprintf "movl %s, %s"  
-            (format_operand mv.src) 
-            (format_operand mv.dest)
+            (format_operand mv.src mv.layout) 
+            (format_operand mv.dest mv.layout)
     | _ ->  sprintf "mov %s, %s"  
-            (format_operand mv.src) 
-            (format_operand mv.dest))
+            (format_operand mv.src mv.layout) 
+            (format_operand mv.dest mv.layout)) *)
+    | Mul mul -> sprintf "mul%s %s"(format_inst mul.layout) (format_operand mul.src mul.layout)
+    | Div div -> sprintf "idiv%s %s"(format_inst div.layout) (format_operand div.src div.layout)
+    | Mod m -> sprintf "div %s" (format_operand m.src m.layout)
+    | Cvt cvt -> (match cvt.layout with |BYTE-> failwith "nothing to extend for byte" |WORD->"cwd"|DWORD->"cdq"|QWORD->"cqo")
+    | Mov mv -> sprintf "mov%s %s, %s"  
+                (format_inst mv.layout)
+                (format_operand mv.src mv.layout) 
+                (format_operand mv.dest mv.layout)
   | Ret -> format_epilogue ()
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment

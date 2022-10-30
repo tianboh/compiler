@@ -11,6 +11,7 @@
 open Core
 module Register = Var.X86_reg
 module Temp = Var.Temp
+open Var.Layout
 
 (* Notice that pure pseudo assembly does not assign register to each temp, so 
    operand does not contain register type. Register is assigned in x86 assemb. 
@@ -68,7 +69,7 @@ let format_binop = function
 let format_operand = function
   | Imm n -> "$" ^ Int32.to_string n
   | Temp t -> Temp.name t
-  | Reg r -> Register.reg_to_str r
+  | Reg r -> Register.reg_to_str ~layout:DWORD r 
 ;;
 
 let format = function

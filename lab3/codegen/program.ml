@@ -14,6 +14,8 @@ module Inst_reg_info = Json_reader.Lab1_checkpoint
 module AS = Inst.Pseudo
 module Temp = Var.Temp
 module Register = Var.X86_reg
+open Var.Layout
+
 (* module Temp.Set = Set.Make(Temp) *)
 type line =
   { uses : Temp.Set.t
@@ -149,7 +151,7 @@ let print_TempSet (ts : Temp.Set.t) =
 
 let transform_temp_to_json (temp : (Temp.t * Register.t) option) = match temp with
   | None -> None
-  | Some (tmp, reg) -> Some ((Temp.name tmp), (Register.reg_to_str reg))
+  | Some (tmp, reg) -> Some ((Temp.name tmp), (Register.reg_to_str ~layout:DWORD reg ))
 ;;
 
 let transform_temps_to_json (temps : (Temp.t * Register.t) option list) = 
