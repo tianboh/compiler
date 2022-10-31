@@ -69,12 +69,12 @@ let expand_asnop ~lhs ~op ~rhs
 (* Below are binary operators *) 
 %token Plus Minus Star Slash Percent
 %token Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq
-%token Minus_minus Plus_plus
+// %token Minus_minus Plus_plus
 %token Logic_and Logic_or           (* Logic op: && || *)
 %token Bit_and Bit_or Bit_xor       (* Bitwise op: & | ^ *)
 (* Others *)
-%token <Int32.t> Dbg_line
-%token <Int32.t> Dbg_col
+// %token <Int32.t> Dbg_line
+// %token <Int32.t> Dbg_col
 
 (* Unary is a dummy terminal.
  * We need dummy terminals if we wish to assign a precedence
@@ -164,10 +164,10 @@ decl :
       { Ast.New_var { t = t; name = ident } }
   | t = dtype; ident = Ident; Assign; e = m(exp);
       { Ast.Init { t = t; name = ident; value = e } }
-  // | Int; Main;
-  //     { Ast.New_var (Symbol.symbol "main") }
-  // | Int; Main; Assign; e = m(exp);
-  //     { Ast.Init (Symbol.symbol "main", e) }
+  | Int; Main;
+      { Ast.New_var {t = Int; name = Symbol.symbol "main"} }
+  | Int; Main; Assign; e = m(exp);
+      { Ast.Init {t = Int; name = Symbol.symbol "main"; value = e} }
   ;
 
 simp :
@@ -175,16 +175,16 @@ simp :
     op = asnop;
     rhs = m(exp);
       { expand_asnop ~lhs ~op ~rhs $startpos(lhs) $endpos(rhs) }
-  // | lhs = m(lvalue);
+  // | lhs = m(lvalue)
   //   op = postop;
-  //     { expand_}
+  //   { expand_}
   ;
 
 lvalue :
   | ident = Ident;
       { ident }
-  // | Main;
-  //     { Symbol.symbol "main" }
+  | Main;
+      { Symbol.symbol "main" }
   | L_paren; lhs = lvalue; R_paren;
       { lhs }
   ;
@@ -194,6 +194,8 @@ exp :
       { e }
   | c = int_const;
       { Ast.Const_int c }
+  | Main;
+      { Ast.Var (Symbol.symbol "main") }
   | b = bool_const;
       { Ast.Const_bool b }
   | ident = Ident;

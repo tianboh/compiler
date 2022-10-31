@@ -106,8 +106,8 @@ rule initial = parse
   | '~'  { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
          initial lexbuf }
-  | "--" { T.Minus_minus }
-  | "++" { T.Plus_plus }
+  (* | "--" { T.Minus_minus } *)
+  (* | "++" { T.Plus_plus } *)
 
   | '*' { T.Star }
   | '/' { T.Slash }
