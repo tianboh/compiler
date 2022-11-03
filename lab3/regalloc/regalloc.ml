@@ -148,9 +148,9 @@ let gen_reg_table prog adj =
       ~f:(fun acc pre_color -> 
               let nbr = Temp.Map.find_exn adj pre_color in
               Temp.Set.fold nbr ~init:acc 
-              ~f:(fun acc k -> let v = Temp.Map.find_exn acc k in
-                                Temp.Map.set acc ~key:k ~data:(v+1) 
-                )
+              ~f:(fun acc k -> match Temp.Map.find acc k with
+                      | Some s -> Temp.Map.set acc ~key:k ~data:(s+1) 
+                      | None -> Temp.Map.set acc ~key:k ~data:5 )
           )in
   let reg_table = List.fold pre_color_l ~init:reg_table ~f:(fun acc x -> Temp.Map.remove acc x) in
   (* let () = Temp.Map.iter_keys reg_table ~f:(fun k -> 

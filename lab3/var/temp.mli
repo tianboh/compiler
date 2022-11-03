@@ -21,3 +21,4 @@ val create_no_t : int -> t -> t
 (* returns the name of a temp *)
 val name : t -> string
 val value : t -> int
+val is_reg : t -> bool

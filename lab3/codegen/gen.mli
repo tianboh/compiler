@@ -16,6 +16,7 @@
      val gen : Parser.Tree.stm list -> AS.instr list
      val const_propagation : AS.instr list -> AS.instr list
      val optimize : AS.instr list -> AS.instr list
+     val coalesce : AS.instr list -> AS.instr list
  end
 
  (* module Pseudo_x86 : sig

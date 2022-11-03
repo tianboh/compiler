@@ -10,7 +10,7 @@ type operand =
 type instr =
   | Add of {src:operand; dest:operand; layout:layout}
   | Sub of {src:operand; dest:operand; layout:layout}
-  | Mul of {src:operand; layout:layout}
+  | Mul of {src:operand; dest:operand; layout:layout}
   | Div of {src:operand; layout:layout}
   | Mod of {src:operand; layout:layout}
     (* dest <- lhs op rhs *)

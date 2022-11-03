@@ -15,7 +15,7 @@ type operand =
 type instr =
   | Add of {src:operand; dest:operand; layout:layout}
   | Sub of {src:operand; dest:operand; layout:layout}
-  | Mul of {src:operand; layout:layout} (* Destination is form of EDX:EAX by default. Only one operand required. *)
+  | Mul of {src:operand; dest:operand; layout:layout} (* Destination is form of EDX:EAX by default. Only one operand required. *)
   | Div of {src:operand; layout:layout} (* temp := EDX:EAX / SRC;
                             IF temp > FFFFFFFFH
                                 THEN #DE; (* Divide error *)
@@ -107,7 +107,7 @@ let format = function
     | _ ->  sprintf "mov %s, %s"  
             (format_operand mv.src mv.layout) 
             (format_operand mv.dest mv.layout)) *)
-    | Mul mul -> sprintf "mul%s %s"(format_inst mul.layout) (format_operand mul.src mul.layout)
+    | Mul mul -> sprintf "imul%s %s, %s"(format_inst mul.layout) (format_operand mul.src mul.layout) (format_operand mul.dest mul.layout)
     | Div div -> sprintf "idiv%s %s"(format_inst div.layout) (format_operand div.src div.layout)
     | Mod m -> sprintf "div %s" (format_operand m.src m.layout)
     | Cvt cvt -> (match cvt.layout with |BYTE-> failwith "nothing to extend for byte" |WORD->"cwd"|DWORD->"cdq"|QWORD->"cqo")
