@@ -205,6 +205,7 @@ let gen_regalloc_info (inst_list : AS.instr list) =
   let inst_no_sort = List.sort (Hashtbl.keys inst_info) ~compare:Int.compare in
   let ret = List.map inst_no_sort ~f:(fun no -> Hashtbl.find_exn inst_info no) in 
   (* let () = print_lines ret in *)
+  (* let () = dump_json inst_info in *)
   ret
-  (* dump_json inst_info *)
+
 ;;

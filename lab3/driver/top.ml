@@ -25,7 +25,6 @@ module Dfana = Flow.Dfana
 module Tree = Parser.Tree
 module Trans = Parser.Trans
 
-
 (* Command line arguments *)
 
 type cmd_line_args =
@@ -168,7 +167,11 @@ let compile (cmd : cmd_line_args) : unit =
   say_if cmd.dump_ir (fun () -> Tree.Print.pp_program ir);
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
+  (* let start = Unix.gettimeofday () in *)
   let assem_ps = Codegen.Gen.Pseudo.gen ir in
+  let assem_ps = Codegen.Gen.Pseudo.optimize assem_ps in
+  (* let stop = Unix.gettimeofday () in *)
+  (* let () = Printf.printf "Execution time assem_ps: %fs\n%!" (stop -. start) in *)
   say_if cmd.dump_assem (fun () -> List.to_string ~f:AS_psu.format assem_ps);
   match cmd.emit with
   (* Output: abstract 3-address assem *)
@@ -179,8 +182,14 @@ let compile (cmd : cmd_line_args) : unit =
   | X86_64 ->
     let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
+    (* let start = Unix.gettimeofday () in *)
     let program = Codegen.Program.gen_regalloc_info assem_ps in
+    (* let stop = Unix.gettimeofday () in *)
+    (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
+    (* let start = Unix.gettimeofday () in *)
     let reg_alloc_info = Regalloc.regalloc program in
+    (* let stop = Unix.gettimeofday () in *)
+    (* let () = Printf.printf "Execution time reg_alloc_info: %fs\n%!" (stop -. start) in *)
     let assem_x86 = Codegen.Gen.X86.gen assem_ps reg_alloc_info in
     File.dump_asm_x86 file assem_x86
     (* failwith "error" *)

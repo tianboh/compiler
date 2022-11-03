@@ -106,9 +106,14 @@ rule initial = parse
   | '~'  { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
          initial lexbuf }
-  (* | "--" { T.Minus_minus } *)
-  (* | "++" { T.Plus_plus } *)
-
+  (* | "--" { T.Minus_minus }
+  | "++" { T.Plus_plus } *)
+  | "++" { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+           initial lexbuf }
+  | "--" { error lexbuf
+           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+           initial lexbuf }
   | '*' { T.Star }
   | '/' { T.Slash }
   | '%' { T.Percent }
@@ -117,32 +122,32 @@ rule initial = parse
   | '-'  { T.Minus }
 
   | ">>"  { error lexbuf
-              ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
             initial lexbuf
           }
   | "<<"  { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
 
   | '<'   { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
   | '>'   { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
   | ">="  { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
   | "<="  { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
   
   | "=="  { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
          initial lexbuf }
   | "!="  { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
 
   | '&'   { T.Bit_and }
 
@@ -156,10 +161,10 @@ rule initial = parse
   
   | '?'   { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
   | ':'   { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
 
   | '='  { T.Assign }
   | "+=" { T.Plus_eq }
@@ -169,76 +174,76 @@ rule initial = parse
   | "%=" { T.Percent_eq }
   | "&="  { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
   | "^="  { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
   | "|="  { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
   | "<<=" { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
   | ">>=" { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
 
   | "assert" { error lexbuf
            ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+           initial lexbuf }
   | "main"   { T.Main }
   | "return" { T.Return }
 
   | "bool"    { T.Bool }
   | "char"    { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+                ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+                initial lexbuf }
   | "int"     { T.Int }
   | "void"    { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+                ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+                initial lexbuf }
   | "struct"  { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+                ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+                initial lexbuf }
   | "typedef" { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+                ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+                initial lexbuf }
 
   | "if"    { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+              ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+              initial lexbuf }
   | "else"  { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+              ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+              initial lexbuf }
   | "while" { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+              ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+              initial lexbuf }
   | "for"   { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+              ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+              initial lexbuf }
 
   | "true"  { T.Bool_const true }
   | "false" { T.Bool_const false }
 
   | "NULL"  { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+              ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+              initial lexbuf }
   | "alloc" { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+              ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+              initial lexbuf }
   | "alloc_array" { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+                    ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+                    initial lexbuf }
 
   | "string"   { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+                 ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+                 initial lexbuf }
   | "continue" { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+                 ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+                 initial lexbuf }
   | "break"    { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-         initial lexbuf }
+                 ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+                 initial lexbuf }
 
   | dec_num as n { dec_constant n lexbuf }
   | hex_num as n { hex_constant n lexbuf }
@@ -254,7 +259,7 @@ rule initial = parse
   | eof { T.Eof }
 
   | _  { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
+         ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
          initial lexbuf
        }
 
