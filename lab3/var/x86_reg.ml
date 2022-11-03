@@ -14,12 +14,13 @@ include T
 include Comparable.Make (T)
 
 (* 
-   ESP(7) and EBP(8) are used to store stack pointer and base pointer respectively, 
-   we should not assign these two registers for general purpose use like register allocation. 
-   We also preserver r16(16) as a swap register, and do not assign it for register allocation.
+ * ESP(7) and EBP(8) are used to store stack pointer and base pointer respectively, 
+ * we should not assign these two registers for general purpose use like register allocation. 
+ * We also preserver r16(16) as a swap register, and do not assign it for register allocation.
+ * We also preserve EAX(1) and EDX(4) because they are treated special in mul, mod, and mul op.
 *)
 let special_use = function
-| 7 | 8 | 15 -> true
+| 1 | 4 | 7 | 8 | 15 -> true
 | _ -> false
 ;;
 
@@ -43,7 +44,7 @@ let find_min_available (nbr : Set.t) : int =
           then helper (idx + 1) nbr
           else idx
   in
-  helper 5 nbr
+  helper 1 nbr
 ;;
 
 (* We only have 15 general purpose register, and we obey x86 64bit register name format.

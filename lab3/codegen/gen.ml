@@ -53,29 +53,9 @@ let munch_op = function
 
 module Pseudo = struct
   (* munch_exp dest exp
-  *
   * Generates instructions for dest <-- exp.
   *)
-  let need_precolor (op : AS.bin_op) = match op with
-  | AS.Mul | AS.Div | AS.Mod -> true
-  | _ -> false
 
-  let precolor op dest t1 t2 rev_acc' = 
-    match op with 
-      | AS.Mul | AS.Div  -> 
-        let eax = Register.create_no 1 in 
-        let t_eax = Register.reg_to_tmp eax in
-        AS.Mov {src=AS.Temp t_eax; dest=dest} :: 
-        AS.Binop { op; dest = AS.Temp t_eax; lhs = AS.Temp t1; rhs = AS.Temp t2 } ::
-        rev_acc'
-      | AS.Mod -> 
-        let edx = Register.create_no 4 in 
-        let t_edx = Register.reg_to_tmp edx in
-        AS.Mov {src=AS.Temp t_edx; dest=dest} :: 
-        AS.Binop { op; dest = AS.Temp t_edx; lhs = AS.Temp t1; rhs = AS.Temp t2 } ::
-        rev_acc'
-      | _ -> failwith "not need for pre-color."
-  
   let munch_exp : AS.operand -> T.exp -> AS.instr list =
     (* munch_exp_acc dest exp rev_acc
     *
@@ -120,9 +100,7 @@ module Pseudo = struct
       let t1 = Temp.create () in
       let t2 = Temp.create () in
       let rev_acc' = rev_acc |> munch_exp_acc (AS.Temp t1) e1 |> munch_exp_acc (AS.Temp t2) e2 in
-      if need_precolor op 
-        then precolor op dest t1 t2 rev_acc'
-        else AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
+      AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
     in
     fun dest exp  ->
       (* Since munch_exp_acc returns the reversed accumulator, we must
@@ -169,17 +147,26 @@ module Pseudo = struct
         | AS.Binop bin -> 
           (match bin.op with
           (* | AS.Add | AS.Sub | AS.Mul | AS.Div | AS.Mod ->  *)
-          | AS.Add | AS.Sub -> 
+          | AS.Add | AS.Sub | AS.Mul -> 
             (let new_l = const_cache const_map bin.lhs in
              let new_r = const_cache const_map bin.rhs in
              helper t (res @ [AS.Binop{op=bin.op;lhs=new_l;rhs=new_r;dest=bin.dest}]) const_map)
-          | _ -> helper t (res @ [h]) const_map)
+          | AS.Div -> 
+            let divisor = AS.Temp (Temp.create()) in
+            helper t (res @ [AS.Mov{dest=divisor;src=bin.rhs};
+                             AS.Binop{op=AS.Div;dest=bin.dest;lhs=bin.lhs;rhs=divisor}]) const_map
+          | AS.Mod -> 
+            let divisor = AS.Temp (Temp.create()) in
+            helper t (res @ [AS.Mov{dest=divisor;src=bin.rhs};
+                             AS.Binop{op=AS.Mod;dest=bin.dest;lhs=bin.lhs;rhs=divisor}]) const_map
+          | _ -> helper t (res @ [h]) const_map
+          )
         | AS.Mov mov -> 
           (match mov.dest, mov.src with
           | AS.Temp tmp, AS.Imm i -> 
             (* let () = printf "set %s to %d\n" (Temp.name tmp) (Int32.to_int_exn i) in *)
             let const_map = Temp.Map.set const_map ~key:tmp ~data:i in
-            helper t (res @ [h]) const_map
+            helper t res const_map
           | AS.Temp tmp1, AS.Temp tmp2 -> 
             (if Temp.Map.mem const_map tmp2 
               then 
@@ -249,11 +236,11 @@ module Pseudo = struct
   ;; *)
   let optimize (ori_insts : AS.instr list) : AS.instr list = 
     (* let () = print_insts ori_insts in *)
-    let ret = const_propagation ori_insts in
+    (* let ret = const_propagation ori_insts in *)
     (* let ret = coalesce ret in *)
-    ret
+    (* ret *)
     (* let () = print_insts ret in *)
-    (* ori_insts *)
+    ori_insts
   ;;
 
 end
@@ -274,42 +261,29 @@ module X86 = struct
   let eax = AS_x86.Reg (Register.create_no 1);;
   let edx = AS_x86.Reg (Register.create_no 4);;
 
-  let same_reg (r1:AS_x86.operand) (r2:AS_x86.operand) = 
-    match r1, r2 with
-    | (Reg r1, Reg r2) -> if Register.compare r1 r2 = 0 then true else false
-    | _ -> false
-  ;;
-
   let gen_x86_inst_bin 
       (op : AS.bin_op) 
       (dest : AS_x86.operand) 
       (lhs : AS_x86.operand) 
-      (rhs : AS_x86.operand)
-      (reg_swap : Register.t) = 
+      (rhs : AS_x86.operand) = 
     match op with
       | Add -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_add dest rhs DWORD
       | Sub -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_sub dest rhs DWORD
       | Mul -> [AS_x86.Mov {dest=eax; src=lhs; layout=DWORD};
-                AS_x86.Mul {src=rhs; dest=dest; layout=DWORD};]
+                AS_x86.Mul {src=rhs; dest=eax; layout=DWORD};
+                AS_x86.Mov {dest=dest; src=eax; layout=DWORD}]
       | Div ->
               (* Notice that lhs and rhs may be allocated on edx. 
                  So we use reg_swap to avoid override in the edx <- 0. *)
               [ AS_x86.Mov {dest=eax; src=lhs; layout=DWORD};
-                AS_x86.Mov {dest=lhs; src=rhs; layout=DWORD};
-                AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=edx; layout=DWORD};
-                AS_x86.Cvt {layout=DWORD};] 
-              (* @ if same_reg (match rhs with | Reg r -> r | _ -> failwith "rhs should be reg or mem") 
-                            (match edx with | Reg r -> r | _ -> failwith "edx should be register.")  *)
-              @ if same_reg rhs edx
-              then [AS_x86.Div {src=AS_x86.Reg reg_swap; layout=DWORD};]
-              else [AS_x86.Div {src=lhs; layout=DWORD};]
-              @ [AS_x86.Mov {dest=edx; src=AS_x86.Reg reg_swap; layout=DWORD};]
+                AS_x86.Cvt {layout=DWORD};
+                AS_x86.Div {src=rhs; layout=DWORD};
+                AS_x86.Mov {dest=dest; src=eax; layout=DWORD};] 
       | Mod -> 
-              [ AS_x86.Mov {dest=AS_x86.Reg reg_swap; src=eax; layout=DWORD};
-                AS_x86.Mov {dest=eax; src=lhs; layout=DWORD};
+              [ AS_x86.Mov {dest=eax; src=lhs; layout=DWORD};
                 AS_x86.Cvt{layout=DWORD};
                 AS_x86.Div {src=rhs; layout=DWORD};
-                AS_x86.Mov {dest=eax; src=AS_x86.Reg reg_swap; layout=DWORD};]
+                AS_x86.Mov {dest=dest; src=edx; layout=DWORD};]
       | _ -> failwith ("inst not implemented yet " ^ (AS_x86.format_operand (dest:>AS_x86.operand) DWORD))
   ;;
 
@@ -323,7 +297,7 @@ module X86 = struct
         let dest = oprd_ps_to_x86 bin_op.dest reg_alloc_info in
         let lhs = oprd_ps_to_x86 bin_op.lhs reg_alloc_info in
         let rhs = oprd_ps_to_x86 bin_op.rhs reg_alloc_info in
-        let insts = gen_x86_inst_bin bin_op.op dest lhs rhs reg_swap in
+        let insts = gen_x86_inst_bin bin_op.op dest lhs rhs in
         _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
       | AS.Mov mov -> 
         let dest = oprd_ps_to_x86 mov.dest reg_alloc_info in
