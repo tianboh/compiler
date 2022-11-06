@@ -135,8 +135,8 @@ module Pseudo = struct
   ;;
 
   (* We store the map from Temp.t to Imm when read mov instruction.
-   * When seeing operand in binop, we check whether its left/right hand operand
-   * has already been stored in map. If so, we replace the temp with Imm.*)
+   * We will replace right hand side operand temp in mov and binop 
+   * with Imm if the temporary has already been stored.*)
   let const_propagation (pseudo_assembly : AS.instr list) : AS.instr list = 
     let const_map = Temp.Map.empty in
     let rec helper (pseudo_assembly : AS.instr list) (res : AS.instr list) (const_map : Int32.t Temp.Map.t) = 
@@ -146,57 +146,48 @@ module Pseudo = struct
         match h with
         | AS.Binop bin -> 
           (match bin.op with
-          (* | AS.Add | AS.Sub | AS.Mul | AS.Div | AS.Mod ->  *)
-          | AS.Add | AS.Sub | AS.Mul -> 
+          | AS.Add | AS.Sub | AS.Mul | AS.Div | AS.Mod -> 
             (let new_l = const_cache const_map bin.lhs in
              let new_r = const_cache const_map bin.rhs in
              helper t (res @ [AS.Binop{op=bin.op;lhs=new_l;rhs=new_r;dest=bin.dest}]) const_map)
-          | AS.Div -> 
-            let divisor = AS.Temp (Temp.create()) in
-            helper t (res @ [AS.Mov{dest=divisor;src=bin.rhs};
-                             AS.Binop{op=AS.Div;dest=bin.dest;lhs=bin.lhs;rhs=divisor}]) const_map
-          | AS.Mod -> 
-            let divisor = AS.Temp (Temp.create()) in
-            helper t (res @ [AS.Mov{dest=divisor;src=bin.rhs};
-                             AS.Binop{op=AS.Mod;dest=bin.dest;lhs=bin.lhs;rhs=divisor}]) const_map
           | _ -> helper t (res @ [h]) const_map
           )
         | AS.Mov mov -> 
           (match mov.dest, mov.src with
           | AS.Temp tmp, AS.Imm i -> 
-            (* let () = printf "set %s to %d\n" (Temp.name tmp) (Int32.to_int_exn i) in *)
             let const_map = Temp.Map.set const_map ~key:tmp ~data:i in
-            helper t res const_map
-          | AS.Temp tmp1, AS.Temp tmp2 -> 
-            (if Temp.Map.mem const_map tmp2 
-              then 
-                let v = Temp.Map.find_exn const_map tmp2 in
-                let const_map = Temp.Map.set const_map ~key:tmp1 ~data:v in
-                helper t (res @ [AS.Mov {dest=mov.dest; src=AS.Imm v}]) const_map
-              else 
-                helper t (res @ [h]) const_map
-            )
+            if Temp.is_reg tmp 
+              then helper t (res @ [h]) const_map
+              else helper t res const_map
+          | AS.Temp _, AS.Temp src -> 
+            (match Temp.Map.find const_map src with
+            | None -> helper t (res @ [h]) const_map
+            | Some s -> helper t (res @ [AS.Mov{dest=mov.dest;src=AS.Imm s}]) const_map)
           | _ -> helper t (res @ [h]) const_map)
         | _ -> helper t (res @ [h]) const_map
     in helper pseudo_assembly [] const_map
   ;;
 
   (* Check whether temporary key is mapped to a value in coalesce map. *)
-  let coalesce_cache (map : Temp.t Temp.Map.t) (key : AS.operand) : AS.operand = 
+  let temp_cache (map : Temp.t Temp.Map.t) (key : AS.operand) : AS.operand = 
     match key with 
     | AS.Imm i -> AS.Imm i
     | AS.Reg r -> AS.Reg r
     | AS.Temp t -> 
       (match Temp.Map.find map t with
-       | Some v -> AS.Temp v
-       | None -> AS.Temp t )
+       | Some v -> 
+        (* let () = printf "find %s\n" (Temp.name v) in  *)
+        AS.Temp v
+       | None ->
+        (* let () = printf "find %s\n" (Temp.name t) in  *)
+        AS.Temp t )
   ;;
 
   (* When read mov t1 t2, we will generate t3 and use t3 to replace t1 and t2 in the following insts. 
    * Then we build a map to store the mapping relation {t1 : t3} and {t2 : t3} where t1 and t2 are key
    * and t3 is the value. *)
-  let coalesce (ori_insts : AS.instr list) : AS.instr list = 
-    let coalesce_map = Temp.Map.empty in
+  let temp_propagation (ori_insts : AS.instr list) : AS.instr list = 
+    let temp_map = Temp.Map.empty in
     let rec helper (ori_insts : AS.instr list) (ret : AS.instr list) (map : Temp.t Temp.Map.t) : AS.instr list = 
       match ori_insts with
       | [] -> ret
@@ -204,23 +195,24 @@ module Pseudo = struct
         match h with 
         | AS.Mov mov -> (match mov.dest, mov.src with
           | AS.Temp dest, AS.Temp src -> (
-            if Temp.is_reg dest || Temp.is_reg src
-              then helper t (ret@[h]) map
+            if Temp.is_reg dest
+              then 
+                let src = match Temp.Map.find map src with | None -> src | Some s -> s in
+                helper t (ret@[AS.Mov{dest=AS.Temp dest; src=AS.Temp src}]) map
               else 
-                let coalesced_t = Temp.create () in
-                let map = Temp.Map.set map ~key:dest ~data:coalesced_t in
-                let map = Temp.Map.set map ~key:src ~data:coalesced_t in
+                let root = match Temp.Map.find map src with | None -> src | Some s -> s in
+                let map = Temp.Map.set map ~key:dest ~data:root in
                 helper t ret map)
           | _ -> helper t (ret@[h]) map)
         | AS.Binop bin -> 
-          (let new_dest = coalesce_cache map bin.dest in
-           let new_lhs = coalesce_cache map bin.lhs in
-           let new_rhs = coalesce_cache map bin.rhs in
+          (let new_dest = temp_cache map bin.dest in
+           let new_lhs = temp_cache map bin.lhs in
+           let new_rhs = temp_cache map bin.rhs in
            helper t (ret @ [AS.Binop{op=bin.op;dest=new_dest;lhs=new_lhs;rhs=new_rhs}]) map
           )
         | _ -> helper t (ret@[h]) map
       in
-    helper ori_insts [] coalesce_map
+    helper ori_insts [] temp_map
   ;;
 
   (* To codegen a series of statements, just concatenate the results of
@@ -236,11 +228,11 @@ module Pseudo = struct
   ;; *)
   let optimize (ori_insts : AS.instr list) : AS.instr list = 
     (* let () = print_insts ori_insts in *)
-    (* let ret = const_propagation ori_insts in *)
-    (* let ret = coalesce ret in *)
-    (* ret *)
+    let ret = temp_propagation ori_insts in
+    let ret = const_propagation ret in
+    ret
     (* let () = print_insts ret in *)
-    ori_insts
+    (* ori_insts *)
   ;;
 
 end
@@ -265,7 +257,8 @@ module X86 = struct
       (op : AS.bin_op) 
       (dest : AS_x86.operand) 
       (lhs : AS_x86.operand) 
-      (rhs : AS_x86.operand) = 
+      (rhs : AS_x86.operand)
+      (swap : Register.t) = 
     match op with
       | Add -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_add dest rhs DWORD
       | Sub -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_sub dest rhs DWORD
@@ -276,13 +269,15 @@ module X86 = struct
               (* Notice that lhs and rhs may be allocated on edx. 
                  So we use reg_swap to avoid override in the edx <- 0. *)
               [ AS_x86.Mov {dest=eax; src=lhs; layout=DWORD};
+                AS_x86.Mov {dest=AS_x86.Reg swap; src=rhs; layout=DWORD};
                 AS_x86.Cvt {layout=DWORD};
-                AS_x86.Div {src=rhs; layout=DWORD};
+                AS_x86.Div {src=AS_x86.Reg swap; layout=DWORD};
                 AS_x86.Mov {dest=dest; src=eax; layout=DWORD};] 
       | Mod -> 
               [ AS_x86.Mov {dest=eax; src=lhs; layout=DWORD};
+                AS_x86.Mov {dest=AS_x86.Reg swap; src=rhs; layout=DWORD};
                 AS_x86.Cvt{layout=DWORD};
-                AS_x86.Div {src=rhs; layout=DWORD};
+                AS_x86.Div {src=AS_x86.Reg swap; layout=DWORD};
                 AS_x86.Mov {dest=dest; src=edx; layout=DWORD};]
       | _ -> failwith ("inst not implemented yet " ^ (AS_x86.format_operand (dest:>AS_x86.operand) DWORD))
   ;;
@@ -297,7 +292,7 @@ module X86 = struct
         let dest = oprd_ps_to_x86 bin_op.dest reg_alloc_info in
         let lhs = oprd_ps_to_x86 bin_op.lhs reg_alloc_info in
         let rhs = oprd_ps_to_x86 bin_op.rhs reg_alloc_info in
-        let insts = gen_x86_inst_bin bin_op.op dest lhs rhs in
+        let insts = gen_x86_inst_bin bin_op.op dest lhs rhs reg_swap in
         _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
       | AS.Mov mov -> 
         let dest = oprd_ps_to_x86 mov.dest reg_alloc_info in

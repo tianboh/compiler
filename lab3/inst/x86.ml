@@ -72,7 +72,6 @@ let format_operand (oprd : operand) (layout:layout) = match oprd with
   | Imm n -> "$" ^ Int32.to_string n
   | Reg r -> Register.reg_to_str ~layout:layout r 
   | Mem m -> Memory.mem_to_str m
-  (* | _ -> failwith "not supported in x86 operand." *)
 ;;
 
 let format_inst (layout:layout) = match layout with
@@ -83,38 +82,17 @@ let format_inst (layout:layout) = match layout with
 
 (* functions that format assembly output *)
 let format = function
-  (* It's quite tricky for the order of binary operand here. 
-     dest <- dest(lhs_operand) bin_op rhs_operand equivalents to assembly code
-     bin_op rhs_operand, dest
-  *)
+  (* We use AT&T x86 convention to generate x86 assembly code. *)
   | Add add -> sprintf "add%s %s, %s"(format_inst add.layout) (format_operand add.src add.layout) (format_operand add.dest add.layout)
   | Sub sub -> sprintf "sub%s %s, %s"(format_inst sub.layout) (format_operand sub.src sub.layout) (format_operand sub.dest sub.layout)
-  (* | Mul mul -> (match mul.src with
-    | Mem _ -> sprintf "mull %s" (format_operand mul.src mul.layout)
-    | _ -> sprintf "mul %s" (format_operand mul.src mul.layout))
-  | Div div -> 
-    (match div.src with
-    | Mem _ -> sprintf "idivl %s" (format_operand div.src div.layout)
-    | _ -> sprintf "idiv %s" (format_operand div.src div.layout))
+  | Mul mul -> sprintf "imul%s %s, %s"(format_inst mul.layout) (format_operand mul.src mul.layout) (format_operand mul.dest mul.layout)
+  | Div div -> sprintf "idiv%s %s"(format_inst div.layout) (format_operand div.src div.layout)
   | Mod m -> sprintf "div %s" (format_operand m.src m.layout)
-  | Cvt _ -> sprintf "cqo"
-  | Mov mv -> 
-    (match mv.src, mv.dest with
-    | (Imm _, Mem _) -> 
-            sprintf "movl %s, %s"  
-            (format_operand mv.src mv.layout) 
-            (format_operand mv.dest mv.layout)
-    | _ ->  sprintf "mov %s, %s"  
-            (format_operand mv.src mv.layout) 
-            (format_operand mv.dest mv.layout)) *)
-    | Mul mul -> sprintf "imul%s %s, %s"(format_inst mul.layout) (format_operand mul.src mul.layout) (format_operand mul.dest mul.layout)
-    | Div div -> sprintf "idiv%s %s"(format_inst div.layout) (format_operand div.src div.layout)
-    | Mod m -> sprintf "div %s" (format_operand m.src m.layout)
-    | Cvt cvt -> (match cvt.layout with |BYTE-> failwith "nothing to extend for byte" |WORD->"cwd"|DWORD->"cdq"|QWORD->"cqo")
-    | Mov mv -> sprintf "mov%s %s, %s"  
-                (format_inst mv.layout)
-                (format_operand mv.src mv.layout) 
-                (format_operand mv.dest mv.layout)
+  | Cvt cvt -> (match cvt.layout with |BYTE-> failwith "nothing to extend for byte" |WORD->"cwd"|DWORD->"cdq"|QWORD->"cqo")
+  | Mov mv -> sprintf "mov%s %s, %s"  
+              (format_inst mv.layout)
+              (format_operand mv.src mv.layout) 
+              (format_operand mv.dest mv.layout)
   | Ret -> format_epilogue ()
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
