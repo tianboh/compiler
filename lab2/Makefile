@@ -4,7 +4,7 @@ c0c: ../bin/c0c
 ../bin/c0c: always
 	dune build
 	mkdir -p ../bin
-	install ../_build/default/lab2/bin/c0c.exe $@
+	install ../_build/default/lab1/bin/c0c.exe $@
 	cp ../bin/c0c bin/
 
 always:

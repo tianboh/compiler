@@ -1,0 +1,6 @@
+(library
+ (name var)
+ (libraries core json_reader)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))

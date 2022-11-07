@@ -1,0 +1,26 @@
+(library
+ (name compiler)
+ (libraries
+  core
+  cmdliner
+  yojson
+  json_reader
+  args
+  inst
+  var
+  regalloc
+  util
+  parser
+  type
+  flow
+  codegen
+  file)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))
+
+(env
+ ; For lab 1, Minus_minus is unused, so we suppress that warning here.
+ ; Feel free to remove that for future labs.
+ (_
+  (menhir_flags --unused-token Minus_minus)))
