@@ -1,0 +1,6 @@
+(library
+ (name args)
+ (libraries core cmdliner yojson)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))
