@@ -20,11 +20,11 @@ let trans_binop = function
   | A.Times -> T.Mul
   | A.Divided_by -> T.Div
   | A.Modulo -> T.Mod
-  | A.Logic_and -> T.Logic_and
-  | A.Logic_or -> T.Logic_or
-  | A.Bit_and -> T.Bit_and
-  | A.Bit_or -> T.Bit_or
-  | A.Bit_xor -> T.Bit_xor
+  | A.And_and -> T.Logic_and
+  | A.Or_or -> T.Logic_or
+  | A.And -> T.Bit_and
+  | A.Or -> T.Bit_or
+  | A.Hat -> T.Bit_xor
 ;;
 
 let trans_unop = function
@@ -36,7 +36,8 @@ let rec trans_exp env = function
   (* after type-checking, id must be declared; do not guard lookup *)
   | A.Var id -> T.Temp (S.find_exn env id)
   | A.Const_int c -> T.Const_int c
-  | A.Const_bool b -> T.Const_bool b
+  | A.True -> T.Const_bool true
+  | A.False -> T.Const_bool false
   | A.Binop binop ->
     T.Binop
       { op = trans_binop binop.op
@@ -46,6 +47,7 @@ let rec trans_exp env = function
   | A.Unop { op = A.Negative; operand = e } ->
     T.Binop
       { op = trans_unop A.Negative; lhs = T.Const_int Int32.zero; rhs = trans_mexp env e }
+  | A.Ter _ ->  failwith "not imp yet"
 
 and trans_mexp env mexp = trans_exp env (Mark.data mexp)
 
@@ -75,7 +77,6 @@ and trans_mexp env mexp = trans_exp env (Mark.data mexp)
 let rec trans_block (env : Temp.t S.t) (ast : A.program) : T.program =
   match ast with
   | [] -> []
-  | Block blk -> trans_block env blk
   | Concat cnt -> 
     match Mark.data cnt.head with
     | A.Declare d ->
@@ -90,5 +91,9 @@ let rec trans_block (env : Temp.t S.t) (ast : A.program) : T.program =
       (* ignore code after return *)
       [ T.Return (trans_mexp env e) ]
 ;;
+
+(* let trans_block (env : Temp.t S.t) (ast : A.program) : T.program = match ast with
+  | []
+  | Concat of {head : mstm; tail : stms} *)
 
 let translate (stms : A.program) : T.program = trans_block S.empty stms

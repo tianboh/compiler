@@ -46,14 +46,14 @@
    | Times
    | Divided_by
    | Modulo
-   | Logic_and
-   | Logic_or
-   | Bit_and
-   | Bit_or
-   | Bit_xor
+   | And_and
+   | Or_or
+   | And
+   | Or
+   | Hat
  
  type unop = Negative
- 
+
  (* Notice that the subexpressions of an expression are marked.
   * (That is, the subexpressions are of type exp Mark.t, not just
   * type exp.) This means that source code location (a src_span) is
@@ -76,7 +76,8 @@
  type exp =
    | Var of Symbol.t
    | Const_int of Int32.t
-   | Const_bool of Bool.t
+   | True
+   | False
    | Binop of
        { op : binop
        ; lhs : mexp
@@ -85,6 +86,11 @@
    | Unop of
        { op : unop
        ; operand : mexp
+       }
+   | Ter of 
+       { cond : mexp;
+         true_exp : mexp;
+         false_exp : mexp;
        }
  
  and mexp = exp Mark.t
@@ -111,15 +117,25 @@
 *)
 
  type stm =
-   | Declare of decl
-   | Assign of {name : Symbol.t ; value : mexp}
-   | Return of mexp
+   | Simp of simp
+   | Control of control
+   | Block of block
+
+ and simp = 
+    | Assign of {name : Symbol.t ; value : mexp}
+    | Declare of decl
+    | Exp of mexp
  
+ and control = 
+    | If of {cond : mexp; s_t : stm; s_f : stm option}
+    | While of {cond : mexp; body : stm}
+    | For of {init : simp option; cond : mexp; iter : simp option; body : stm}
+    | Return of mexp
+
  and mstm = stm Mark.t
 
  and stms = 
     | []
-    | Block of block
     | Concat of {head : mstm; tail : stms}
  
  and block = stms
@@ -133,11 +149,11 @@
      | Times -> "*"
      | Divided_by -> "/"
      | Modulo -> "%"
-     | Logic_and -> "&&"
-     | Logic_or -> "||"
-     | Bit_and -> "&"
-     | Bit_or -> "|"
-     | Bit_xor -> "^"
+     | And_and -> "&&"
+     | Or_or -> "||"
+     | And -> "&"
+     | Or -> "|"
+     | Hat -> "^"
    ;;
  
    let pp_unop = function
@@ -147,10 +163,13 @@
    let rec pp_exp = function
      | Var id -> Symbol.name id
      | Const_int c -> Int32.to_string c
-     | Const_bool b -> Bool.to_string b
+     | True -> "True"
+     | False -> "False"
      | Unop unop -> sprintf "%s(%s)" (pp_unop unop.op) (pp_mexp unop.operand)
      | Binop binop ->
        sprintf "(%s %s %s)" (pp_mexp binop.lhs) (pp_binop binop.op) (pp_mexp binop.rhs)
+     | Ter ter_exp -> 
+       sprintf "%s ? %s : %s" (pp_mexp ter_exp.cond) (pp_mexp ter_exp.true_exp) (pp_mexp ter_exp.false_exp)
  
    and pp_mexp e = pp_exp (Mark.data e)
  
@@ -162,21 +181,43 @@
      | New_var id -> sprintf "%s %s;" (pp_dtype id.t) (Symbol.name id.name)
      | Init id -> sprintf "%s %s = %s;" (pp_dtype id.t) (Symbol.name id.name) (pp_mexp id.value)
    ;;
- 
-   let rec pp_stm = function
-     | Declare d -> pp_decl d
-     | Assign id -> sprintf "%s = %s;" (Symbol.name id.name) (pp_mexp id.value)
-     | Return e -> sprintf "return %s;" (pp_mexp e)
+
+  let pp_simp = function
+    | Assign id -> sprintf "%s = %s;" (Symbol.name id.name) (pp_mexp id.value)
+    | Declare d -> pp_decl d
+    | Exp e -> pp_mexp e
+
+  let rec pp_stm = function
+    | Simp s -> pp_simp s
+    | Control c -> pp_ctl c
+    | Block b -> pp_blk b
+
+  and pp_ctl = function
+  | If if_stm -> 
+    let else_stm = (match if_stm.s_f with | Some s -> sprintf "%s" (pp_stm s) | None -> "" ) in
+    sprintf "if(%s){%s}else{%s}" (pp_mexp if_stm.cond) (pp_stm if_stm.s_t) else_stm
+  | While while_stm -> 
+    sprintf "while(%s){%s}" (pp_mexp while_stm.cond) (pp_stm while_stm.body)
+  | For for_stm -> 
+    let init, iter = (
+      match for_stm.init, for_stm.iter with 
+      | None, None -> "", ""
+      | Some init, None -> pp_simp init, ""
+      | None, Some iter -> "", pp_simp iter
+      | Some init, Some iter -> pp_simp init, pp_simp iter
+      ) in
+    sprintf "for(%s; %s; %s){%s}" init (pp_mexp for_stm.cond) iter (pp_stm for_stm.body)
+  | Return e -> sprintf "return %s;" (pp_mexp e)
+
+  and pp_blk = function
+  | [] -> ""
+  | Concat concat -> 
+    sprintf "%s" (pp_mstm concat.head) ^ pp_blk concat.tail
  
    and pp_mstm stm = pp_stm (Mark.data stm)
    (* and pp_stms stms = String.concat (List.map ~f:(fun stm -> pp_mstm stm ^ "\n") stms) *)
- 
-   and pp_mstms mstms = match mstms with
-    | [] -> ""
-    | Block blk -> pp_block blk
-    | Concat cnt -> pp_mstm cnt.head ^ pp_mstms cnt.tail 
 
-   and pp_block mstms = "{\n" ^ pp_mstms mstms ^ "}"
+   and pp_block stms = "{\n" ^ pp_blk stms ^ "}"
    let pp_program block = pp_block block
  end
  

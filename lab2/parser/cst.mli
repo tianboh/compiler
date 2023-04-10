@@ -13,16 +13,16 @@
  
  (* Operator *)
  type binop =
-   | Plus
-   | Minus
-   | Times
-   | Divided_by
-   | Modulo
-   | Logic_and
-   | Logic_or
-   | Bit_and
-   | Bit_or
-   | Bit_xor
+ | Plus
+ | Minus
+ | Times
+ | Divided_by
+ | Modulo
+ | And_and
+ | Or_or
+ | And
+ | Or
+ | Hat
  
  type unop = Negative
  
@@ -30,7 +30,8 @@
  type exp =
    | Var of Symbol.t
    | Const_int of Int32.t
-   | Const_bool of Bool.t
+   | True
+   | False
    | Binop of
        { op : binop
        ; lhs : mexp
@@ -39,6 +40,11 @@
    | Unop of
        { op : unop
        ; operand : mexp
+       }
+   | Ter of 
+       { cond : mexp;
+         true_exp : mexp;
+         false_exp : mexp;
        }
  
  (* Expression plus src file location *)
@@ -67,16 +73,26 @@
  type program = mstm list
   *)
 
-type stm =
-  | Declare of decl
-  | Assign of {name : Symbol.t ; value : mexp}
-  | Return of mexp
+  type stm =
+  | Simp of simp
+  | Control of control
+  | Block of block
+
+and simp = 
+   | Assign of {name : Symbol.t ; value : mexp}
+   | Declare of decl
+   | Exp of mexp
+
+and control = 
+   | If of {cond : mexp; s_t : stm; s_f : stm option}
+   | While of {cond : mexp; body : stm}
+   | For of {init : simp option; cond : mexp; iter : simp option; body : stm}
+   | Return of mexp
 
 and mstm = stm Mark.t
 
 and stms = 
    | []
-   | Block of block
    | Concat of {head : mstm; tail : stms}
 
 and block = stms
@@ -87,6 +103,8 @@ type program = block
  module Print : sig
    val pp_exp : exp -> string
    val pp_stm : stm -> string
+   val pp_ctl : control -> string
+   val pp_simp : simp -> string
    val pp_program : program -> string
  end
  
