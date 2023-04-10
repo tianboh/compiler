@@ -14,4 +14,4 @@
  *)
 
 (* prints error message and raises ErrorMsg.error if error found *)
-val typecheck : Parser.Ast.program -> unit
+val typecheck : Parser.Cst.program -> unit

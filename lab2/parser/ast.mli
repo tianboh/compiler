@@ -1,4 +1,4 @@
-(* L1 Compiler
+(* (* L2 Compiler
  * Abstract Syntax Trees
  * Author: Alex Vaynberg
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
@@ -49,17 +49,28 @@ type dtype =
 | Bool
 
 (* Declaration *)
-type decl =
+(* type decl =
   (* int/bool x; *)
   | New_var of { t : dtype; name : Symbol.t }
   (* int/bool x = e; *)
-  | Init of { t : dtype; name : Symbol.t; value : mexp}
+  | Init of { t : dtype; name : Symbol.t; value : mexp} *)
 
-(* Statement *)
+(* Statement 
+* 1) Asign(x,e)
+* 2) if(e,s,s)
+* 3) while(e,s)
+* 4) return(e)
+* 5) nop
+* 6) seq(s,s)
+* 7) declare(x,t,s) *)
 type stm =
-  | Declare of decl
   | Assign of {name : Symbol.t ; value : mexp}
+  | If of {cond : mexp; true_stm : mstm; false_stm : mstm}
+  | While of {cond : mexp; body : mstm}
   | Return of mexp
+  | Nop
+  | Seq of {head_stm : mstm; tail_stm : mstm}
+  | Declare of {t : dtype; name : Symbol.t; tail_stm : mstm}
 
 (* Statement plus src file location *)
 and mstm = stm Mark.t
@@ -71,4 +82,4 @@ module Print : sig
   val pp_exp : exp -> string
   val pp_stm : stm -> string
   val pp_program : program -> string
-end
+end *)

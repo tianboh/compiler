@@ -1,4 +1,4 @@
-(* L1 Compiler
+(* (* L1 Compiler
  * Abstract Syntax Trees
  * Author: Alex Vaynberg
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
@@ -67,14 +67,18 @@ type dtype =
 | Int
 | Bool
 
-type decl =
+(* type decl =
   | New_var of { t : dtype; name : Symbol.t }
-  | Init of { t : dtype; name : Symbol.t; value : mexp}
+  | Init of { t : dtype; name : Symbol.t; value : mexp} *)
 
 type stm =
-  | Declare of decl
   | Assign of {name : Symbol.t ; value : mexp}
+  | If of {cond : mexp; true_stm : mstm; false_stm : mstm}
+  | While of {cond : mexp; body : mstm}
   | Return of mexp
+  | Nop
+  | Seq of {head_stm : mstm; tail_stm : mstm}
+  | Declare of {t : dtype; name : Symbol.t; tail_stm : mstm}
 
 and mstm = stm Mark.t
 
@@ -126,4 +130,4 @@ module Print = struct
   and pp_stms stms = String.concat (List.map ~f:(fun stm -> pp_mstm stm ^ "\n") stms)
 
   let pp_program stms = "{\n" ^ pp_stms stms ^ "}"
-end
+end *)

@@ -1,4 +1,4 @@
-(* L1 Compiler
+(* L2 Compiler
  * Parsing
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
@@ -10,4 +10,4 @@
 (* parse filename = ast
  * will raise Error_msg.Error in case of lexing or parsing error
  *)
-val parse : string -> Ast.program
+val parse : string -> Cst.program

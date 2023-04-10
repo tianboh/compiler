@@ -1,7 +1,7 @@
 %{
 (* L2 Compiler
  * L2 grammar
- * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
+ * Author: Tianbo Hao, Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  *
  * Modified: Anand Subramanian <asubrama@andrew.cmu.edu> Fall 2010
@@ -15,7 +15,7 @@
  *
  * Modified: Nick Roberts <nroberts@alumni.cmu.edu>
  *   - Update to use menhir instead of ocamlyacc.
- *   - Improve presentation of marked asts.
+ *   - Improve presentation of marked Csts.
  *
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  *)
@@ -37,14 +37,14 @@ let expand_asnop ~lhs ~op ~rhs
   (start_pos : Lexing.position)
   (end_pos : Lexing.position) =
     match lhs, op, rhs with
-    | id, None, exp -> Ast.Assign {name = Mark.data id; value = exp}
+    | id, None, exp -> Cst.Assign {name = Mark.data id; value = exp}
     | id, Some op, exp ->
-      let binop = Ast.Binop {
+      let binop = Cst.Binop {
         op;
-        lhs = Mark.map lhs ~f:(fun id -> Ast.Var id);
+        lhs = Mark.map lhs ~f:(fun id -> Cst.Var id);
         rhs = exp;
       } in
-      Ast.Assign {name = Mark.data id; value = mark binop start_pos end_pos}
+      Cst.Assign {name = Mark.data id; value = mark binop start_pos end_pos}
 
 %}
 
@@ -96,20 +96,26 @@ let expand_asnop ~lhs ~op ~rhs
 (* It's only necessary to provide the type of the start rule,
  * but it can improve the quality of parser type errors to annotate
  * the types of other rules.
+ *
+ * The way we organize below types is based on the grammer
+ * Check https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf
+ * Page 3 for more details.
+ *
  *)
-%type <Ast.mstm list> program
-%type <Ast.dtype> dtype
-%type <Ast.mstm list> stms
-%type <Ast.stm> stm
-%type <Ast.decl> decl
-%type <Ast.stm> simp
+%type <Cst.block> program
+%type <Cst.block> block
+%type <Cst.dtype> dtype
+%type <Cst.stms> stms
+%type <Cst.stm> stm
+%type <Cst.decl> decl
+%type <Cst.stm> simp
 %type <Symbol.t> lvalue
-%type <Ast.exp> exp
+%type <Cst.exp> exp
 %type <Core.Int32.t> int_const
 %type <Core.Bool.t> bool_const
-%type <Ast.binop option> asnop
-%type <Ast.binop> binop
-// %type <Ast.postop> postop
+%type <Cst.binop option> asnop
+%type <Cst.binop> binop
+// %type <Cst.postop> postop
 
 %%
 
@@ -117,12 +123,16 @@ program :
   | Int;
     Main;
     L_paren R_paren;
-    L_brace;
-    body = stms;
-    R_brace;
+    block = block
     Eof;
-      { body }
+      { block }
   ;
+
+block : 
+   | L_brace;
+     body = stms;
+     R_brace;
+      { body }
 
 (* This higher-order rule produces a marked result of whatever the
  * rule passed as argument will produce.
@@ -138,36 +148,36 @@ m(x) :
 stms :
   | (* empty *)
       { [] }
-  | L_brace; body = stms; R_brace;
-      { body }
+  | block = block;
+      { block }
   | hd = m(stm); tl = stms;
-      { hd :: tl }
+      { Cst.Concat{head = hd; tail = tl} }
   ;
 
 stm :
   | d = decl; Semicolon;
-      { Ast.Declare d }
+      { Cst.Declare d }
   | s = simp; Semicolon;
       { s }
   | Return; e = m(exp); Semicolon;
-      { Ast.Return e }
+      { Cst.Return e }
   ;
 
 dtype : 
   | Int;
-      { Ast.Int }
+      { Cst.Int }
   | Bool;
-      {Ast.Bool}
+      {Cst.Bool}
 
 decl :
   | t = dtype; ident = Ident;
-      { Ast.New_var { t = t; name = ident } }
+      { Cst.New_var { t = t; name = ident } }
   | t = dtype; ident = Ident; Assign; e = m(exp);
-      { Ast.Init { t = t; name = ident; value = e } }
+      { Cst.Init { t = t; name = ident; value = e } }
   | Int; Main;
-      { Ast.New_var {t = Int; name = Symbol.symbol "main"} }
+      { Cst.New_var {t = Int; name = Symbol.symbol "main"} }
   | Int; Main; Assign; e = m(exp);
-      { Ast.Init {t = Int; name = Symbol.symbol "main"; value = e} }
+      { Cst.Init {t = Int; name = Symbol.symbol "main"; value = e} }
   ;
 
 simp :
@@ -193,19 +203,19 @@ exp :
   | L_paren; e = exp; R_paren;
       { e }
   | c = int_const;
-      { Ast.Const_int c }
+      { Cst.Const_int c }
   | Main;
-      { Ast.Var (Symbol.symbol "main") }
+      { Cst.Var (Symbol.symbol "main") }
   | b = bool_const;
-      { Ast.Const_bool b }
+      { Cst.Const_bool b }
   | ident = Ident;
-      { Ast.Var ident }
+      { Cst.Var ident }
   | lhs = m(exp);
     op = binop;
     rhs = m(exp);
-      { Ast.Binop { op; lhs; rhs; } }
+      { Cst.Binop { op; lhs; rhs; } }
   | Minus; e = m(exp); %prec Unary
-      { Ast.Unop { op = Ast.Negative; operand = e; } }
+      { Cst.Unop { op = Cst.Negative; operand = e; } }
   ;
 
 int_const :
@@ -227,40 +237,40 @@ bool_const :
 %inline
 binop :
   | Plus;
-      { Ast.Plus }
+      { Cst.Plus }
   | Minus;
-      { Ast.Minus }
+      { Cst.Minus }
   | Star;
-      { Ast.Times }
+      { Cst.Times }
   | Slash;
-      { Ast.Divided_by }
+      { Cst.Divided_by }
   | Percent;
-      { Ast.Modulo }
+      { Cst.Modulo }
   | Logic_and;
-      { Ast.Logic_and }
+      { Cst.Logic_and }
   | Logic_or;
-      { Ast.Logic_or }
+      { Cst.Logic_or }
   | Bit_and;
-      { Ast.Bit_and }
+      { Cst.Bit_and }
   | Bit_or;
-      { Ast.Bit_or }
+      { Cst.Bit_or }
   | Bit_xor;
-      { Ast.Bit_xor }
+      { Cst.Bit_xor }
   ;
 
 asnop :
   | Assign
       { None }
   | Plus_eq
-      { Some Ast.Plus }
+      { Some Cst.Plus }
   | Minus_eq
-      { Some Ast.Minus }
+      { Some Cst.Minus }
   | Star_eq
-      { Some Ast.Times }
+      { Some Cst.Times }
   | Slash_eq
-      { Some Ast.Divided_by }
+      { Some Cst.Divided_by }
   | Percent_eq
-      { Some Ast.Modulo }
+      { Some Cst.Modulo }
   ;
 
 %%

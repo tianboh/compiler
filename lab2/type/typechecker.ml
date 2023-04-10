@@ -21,7 +21,8 @@
  *)
 
 open Core
-module A = Parser.Ast
+(* module A = Parser.Ast *)
+module A = Parser.Cst
 module S = Util.Symbol.Map
 module Symbol = Util.Symbol
 
@@ -67,19 +68,20 @@ let rec tc_exp (ast : A.mexp) (vars : init_status S.t) : unit =
  *
  *   ast: the sequence of statements to typecheck.
  *)
-let rec tc_stms (ast : A.mstm list) (env : env) : env =
+let rec tc_stms (ast : A.program) (env : env) : env =
   match ast with
   | [] -> env
-  | stm :: stms ->
+  | A.Block blk -> tc_stms blk env
+  | A.Concat cat ->
     let error ~msg =
-      Util.Error_msg.error tc_errors (Util.Mark.src_span stm) ~msg;
+      Util.Error_msg.error tc_errors (Util.Mark.src_span cat.head) ~msg;
       raise Util.Error_msg.Error
     in
-    (match Util.Mark.data stm with
+    (match Util.Mark.data cat.head with
     | A.Declare (A.New_var id) ->
       (match S.find env.vars id.name with
       | Some _ -> error ~msg:(sprintf "Already declared: `%s`" (Symbol.name id.name))
-      | None -> tc_stms stms { env with vars = S.set env.vars ~key:id.name ~data:Decl })
+      | None -> tc_stms cat.tail { env with vars = S.set env.vars ~key:id.name ~data:Decl })
     | A.Declare (A.Init {t=t; name=name; value=value}) ->
       (* Since we're creating new statements, we just maintain the
        * source location of the original statement `stm`. This is just
@@ -87,7 +89,7 @@ let rec tc_stms (ast : A.mstm list) (env : env) : env =
        * Mark.naked to create a marked expression with no src location
        * information.
        *)
-      let remark exp = Util.Mark.map stm ~f:(fun _ -> exp) in
+      (* let remark exp = Util.Mark.map cat.head ~f:(fun _ -> exp) in *)
       (* The following translation is sound:
        *
        * int x = expr;  ===>   int x;
@@ -96,9 +98,16 @@ let rec tc_stms (ast : A.mstm list) (env : env) : env =
        * This is because the expression can't legally contain the identifier x.
        * NB: This property will no longer hold when function calls are introduced.
        *)
-      let stms' =
-        remark (A.Declare (A.New_var {t; name})) :: remark (A.Assign {name = name; value = value}) :: stms
+      (* let stms' =
+        remark (A.Declare (A.New_var {t; name})) :: 
+        remark (A.Assign {name = name; value = value}) :: 
+        stms
+      in *)
+      let stms' = 
+        A.Concat {head = Util.Mark.naked (A.Declare (A.New_var {t; name})); tail = 
+        A.Concat {head = Util.Mark.naked (A.Assign {name = name; value = value}); tail = cat.tail}}
       in
+      
       tc_stms stms' env
     | A.Assign {name = id; value = e} ->
       tc_exp e env.vars;
@@ -106,13 +115,13 @@ let rec tc_stms (ast : A.mstm list) (env : env) : env =
       | None ->
         error ~msg:(sprintf "Not declared before initialization: `%s`" (Symbol.name id))
       (* just got initialized *)
-      | Some Decl -> tc_stms stms { env with vars = S.set env.vars ~key:id ~data:Init }
+      | Some Decl -> tc_stms cat.tail { env with vars = S.set env.vars ~key:id ~data:Init }
       (* already initialized *)
-      | Some Init -> tc_stms stms env)
+      | Some Init -> tc_stms cat.tail env)
     | A.Return e ->
       tc_exp e env.vars;
       (* Define all variables declared before return *)
-      tc_stms stms { vars = S.map env.vars ~f:(fun _ -> Init); returns = true })
+      tc_stms cat.tail { vars = S.map env.vars ~f:(fun _ -> Init); returns = true })
 ;;
 
 let typecheck prog =
