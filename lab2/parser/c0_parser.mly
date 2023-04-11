@@ -51,7 +51,7 @@ let expand_asnop ~lhs ~op ~rhs
  *)
 let expand_postop lhs op 
   (start_pos : Lexing.position) =
-    let op = match op with | Cst.Plus_plus -> Cst.Plus | Cst.Minus_minus -> Cst.Minus in
+    let op = match op with | Cst.Plus_plus -> Cst.Plus  | Cst.Minus_minus -> Cst.Minus in
     match lhs, op with
     | id, op ->
       let binop = Cst.Binop {
@@ -130,8 +130,6 @@ let expand_postop lhs op
 %left Plus Minus
 %left Star Slash Percent
 %right Negative Excalmation_mark Dash_mark Plus_plus Minus_minus
-
-
 
 %start program
 
@@ -287,7 +285,7 @@ exp :
   | Minus; e = m(exp); %prec Negative
     { Cst.Unop { op = Cst.Negative; operand = e; } }
   | cond = m(exp); Question_mark; true_exp = m(exp); Colon; false_exp = m(exp);
-    { Cst.Ter {cond = cond; true_exp = true_exp; false_exp = false_exp} }
+    { Cst.Terop {cond = cond; true_exp = true_exp; false_exp = false_exp} }
   ;
 
 int_const :
