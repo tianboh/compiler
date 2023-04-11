@@ -41,18 +41,27 @@
  module Symbol = Util.Symbol
  
  type binop =
-   | Plus
-   | Minus
-   | Times
-   | Divided_by
-   | Modulo
-   | And_and
-   | Or_or
-   | And
-   | Or
-   | Hat
+  | Plus
+  | Minus
+  | Times
+  | Divided_by
+  | Modulo
+  | And_and
+  | Or_or
+  | And
+  | Or
+  | Hat
+  | Right_shift
+  | Left_shift
  
- type unop = Negative
+ type unop = 
+  | Negative
+  | Excalmation_mark (* ! *)
+  | Dash_mark (* ~ *)
+
+ type postop = 
+  | Plus_plus
+  | Minus_minus
 
  (* Notice that the subexpressions of an expression are marked.
   * (That is, the subexpressions are of type exp Mark.t, not just
@@ -74,25 +83,25 @@
   * it will be harder to figure out typechecking errors for later labs.
   *)
  type exp =
-   | Var of Symbol.t
-   | Const_int of Int32.t
-   | True
-   | False
-   | Binop of
-       { op : binop
-       ; lhs : mexp
-       ; rhs : mexp
-       }
-   | Unop of
-       { op : unop
-       ; operand : mexp
-       }
-   | Ter of 
-       { cond : mexp;
-         true_exp : mexp;
-         false_exp : mexp;
-       }
- 
+  | Var of Symbol.t
+  | Const_int of Int32.t
+  | True
+  | False
+  | Binop of
+      { op : binop
+      ; lhs : mexp
+      ; rhs : mexp
+      }
+  | Unop of
+      { op : unop
+      ; operand : mexp
+      }
+  | Ter of 
+      { cond : mexp;
+        true_exp : mexp;
+        false_exp : mexp;
+      }
+
  and mexp = exp Mark.t
  
  type dtype = 
@@ -100,26 +109,13 @@
  | Bool
  
  type decl =
-   | New_var of { t : dtype; name : Symbol.t }
-   | Init of { t : dtype; name : Symbol.t; value : mexp}
- 
-
-(* Statement
- type stm =
-   | Declare of decl
-   | Assign of {name : Symbol.t ; value : mexp}
-   | Return of mexp
- 
- (* Statement plus src file location *)
- and mstm = stm Mark.t
- 
- type program = mstm list
-*)
+  | New_var of { t : dtype; name : Symbol.t }
+  | Init of { t : dtype; name : Symbol.t; value : mexp}
 
  type stm =
-   | Simp of simp
-   | Control of control
-   | Block of block
+    | Simp of simp
+    | Control of control
+    | Block of block
 
  and simp = 
     | Assign of {name : Symbol.t ; value : mexp}
@@ -134,11 +130,11 @@
 
  and mstm = stm Mark.t
 
- and stms = 
-    | []
-    | Concat of {head : mstm; tail : stms}
+ and stms = stm list
+
+ and mstms = mstm list
  
- and block = stms
+ and block = mstms
 
  type program = block
  
@@ -211,11 +207,9 @@
 
   and pp_blk = function
   | [] -> ""
-  | Concat concat -> 
-    sprintf "%s" (pp_mstm concat.head) ^ pp_blk concat.tail
+  | h :: t ->  sprintf "%s" (pp_mstm h) ^ pp_blk t
  
    and pp_mstm stm = pp_stm (Mark.data stm)
-   (* and pp_stms stms = String.concat (List.map ~f:(fun stm -> pp_mstm stm ^ "\n") stms) *)
 
    and pp_block stms = "{\n" ^ pp_blk stms ^ "}"
    let pp_program block = pp_block block

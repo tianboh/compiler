@@ -49,18 +49,17 @@ let expand_asnop ~lhs ~op ~rhs
 (* expand_postop (id, "postop") region = "id = id postop 1"
  * syntactically expands a compound post operator
  *)
-let expand_postop ~lhs ~op 
-  (start_pos : Lexing.position)
-  (end_pos : Lexing.position) =
+let expand_postop lhs op 
+  (start_pos : Lexing.position) =
+    let op = match op with | Cst.Plus_plus -> Cst.Plus | Cst.Minus_minus -> Cst.Minus in
     match lhs, op with
-    | id, None -> Cst.Assign {name = Mark.data id; value = 1}
-    | id, Some op ->
+    | id, op ->
       let binop = Cst.Binop {
         op;
         lhs = Mark.map lhs ~f:(fun id -> Cst.Var id);
-        rhs = 1;
+        rhs = Mark.naked (Cst.Const_int Int32.one);
       } in
-      Cst.Assign {name = Mark.data id; value = mark binop start_pos end_pos}
+      Cst.Assign {name = Mark.data id; value = mark binop start_pos start_pos}
 
 
 %}
@@ -90,11 +89,11 @@ let expand_postop ~lhs ~op
 %token Unary
 (* Binary operators *) 
 %token Plus Minus Star Slash Percent Less Less_eq Greater Greater_eq Equal_eq Not_eq
-        And_and Or_or And Or Hat Left_shift Right_shift
+        And_and Or_or And Or Left_shift Right_shift
 (* postop *)
 %token Minus_minus Plus_plus
 (* unop *)
-%token Excalmation_mark Dash_mark
+%token Excalmation_mark Dash_mark Hat
 (* assign op *)
 %token Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq And_eq Or_eq Hat_eq Left_shift_eq Right_shift_eq
 (* Ternary op *)
@@ -133,11 +132,12 @@ let expand_postop ~lhs ~op
 %type <Cst.block> block
 %type <Cst.dtype> dtype
 %type <Cst.decl> decl
-%type <Cst.stms> stms
+// %type <Cst.stms> stms
 %type <Cst.stm> stm
+%type <Cst.mstms> mstms
 %type <Cst.simp> simp
 %type <Symbol.t> lvalue
-%type <Cst.ctl> control
+%type <Cst.control> control
 %type <Cst.exp> exp
 %type <Core.Int32.t> int_const
 %type <Cst.binop option> asnop
@@ -158,7 +158,7 @@ program :
 
 block : 
    | L_brace;
-     body = stms;
+     body = mstms;
      R_brace;
       { body }
 
@@ -194,35 +194,32 @@ decl :
       { Cst.Init {t = Bool; name = Symbol.symbol "main"; value = e} }
   ;
 
-stms :
+mstms :
   | (* empty *)
       { [] }
-  | hd = m(stm); tl = stms;
-      { Cst.Concat{head = hd; tail = tl} }
+  | hd = m(stm); tl = mstms;
+      { hd :: tl }
   ;
 
 stm :
   | s = simp; Semicolon;
-      { s }
+      { Cst.Simp s }
   | c = control;
-      { c }
+      { Cst.Control c }
   | b = block;
-      { b }
+      { Cst.Block b }
 
   ;
 
 simp :
-  | lhs = m(lvalue);
-    op = asnop;
-    rhs = m(exp);
+  | lhs = m(lvalue); op = asnop; rhs = m(exp);
       { expand_asnop ~lhs ~op ~rhs $startpos(lhs) $endpos(rhs) }
-  | lhs = m(lvalue)
-    op = postop;
-      { expand_postop ~lhs ~op $startpos(lhs) $endpos(rhs)}
+  | lhs = m(lvalue); op = postop;
+      { expand_postop lhs op $startpos(lhs)}
   | d = decl; Semicolon;
       { Cst.Declare d }
   | e = m(exp);
-      { e }
+      { Cst.Exp e }
   ;
 
 lvalue :
@@ -238,17 +235,17 @@ control :
   | If; L_paren; e = m(exp); R_paren; s = stm;
       { Cst.If {cond = e; s_t = s; s_f = None} }
   | If; L_paren; e = m(exp); R_paren; s_t = stm; Else; s_f = stm;
-      { Cst.If {cond = e; s_t = s_t; s_f = Some s_t} }
+      { Cst.If {cond = e; s_t = s_t; s_f = Some s_f} }
   | While; L_paren; e = m(exp); R_paren; s = stm;
       { Cst.While {cond = e; body = s} }
   | For; L_paren; e = m(exp); s = stm;
       { Cst.For {init = None; cond = e; iter = None; body = s} }
   | For; L_paren; init = simp; e = m(exp); s = stm;
-      { Cst.For {init = init; cond = e; iter = None; body = s} }
+      { Cst.For {init = Some init; cond = e; iter = None; body = s} }
   | For; L_paren; e = m(exp); iter = simp; s = stm;
-      { Cst.For {init = None; cond = e; iter = iter; body = s} }
+      { Cst.For {init = None; cond = e; iter = Some iter; body = s} }
   | For; L_paren; init = simp; e = m(exp); iter = simp; s = stm;
-      { Cst.For {init = None; cond = e; iter = None; body = s} }
+      { Cst.For {init = Some init; cond = e; iter = Some iter; body = s} }
   | Return; e = m(exp); Semicolon;
       { Cst.Return e }
 
@@ -300,16 +297,30 @@ binop :
       { Cst.Divided_by }
   | Percent;
       { Cst.Modulo }
-  | Logic_and;
+  | And_and;
       { Cst.And_and }
-  | Logic_or;
+  | Or_or;
       { Cst.Or_or }
-  | Bit_and;
+  | And;
       { Cst.And }
-  | Bit_or;
+  | Or;
       { Cst.Or }
-  | Bit_xor;
-      { Cst.Bit_xor }
+  | Hat;
+      { Cst.Hat }
+  ;
+
+unop : 
+  | Excalmation_mark
+    { Cst.Excalmation_mark }
+  | Dash_mark
+    { Cst.Dash_mark }
+  ;
+
+postop : 
+  | Plus_plus
+    { Cst.Plus_plus }
+  | Minus_minus
+    { Cst.Minus_minus }
   ;
 
 asnop :
@@ -337,11 +348,4 @@ asnop :
       { Some Cst.Right_shift }
   ;
 
-unop : 
-  | Excalmation_mark
-  | Dash_mark
-
-postop : 
-  | Plus_plus
-  | Minus_minus
 %%

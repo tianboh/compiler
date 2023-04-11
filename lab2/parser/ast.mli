@@ -1,6 +1,9 @@
-(* (* L2 Compiler
+(* L2 Compiler
  * Abstract Syntax Trees
- * Author: Alex Vaynberg
+ *
+ * Author: Tianbo Hao
+ *
+ * Created: Alex Vaynberg
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  *
  * Modified: Anand Subramanian <asubrama@andrew.cmu.edu> Fall 2010
@@ -8,7 +11,7 @@
  *
  * Forward compatible fragment of C0
  *)
-module Mark = Util.Mark
+(* module Mark = Util.Mark *)
 module Symbol = Util.Symbol
 
 (* Operator *)
@@ -32,21 +35,21 @@ type exp =
   | Const_int of Int32.t
   | Const_bool of Bool.t
   | Binop of
-      { op : binop
-      ; lhs : mexp
-      ; rhs : mexp
-      }
+    { op : binop
+    ; lhs : exp
+    ; rhs : exp
+    }
   | Unop of
-      { op : unop
-      ; operand : mexp
-      }
+    { op : unop
+    ; operand : exp
+    }
 
 (* Expression plus src file location *)
-and mexp = exp Mark.t
+(* and mexp = exp Mark.t *)
 
 type dtype = 
-| Int
-| Bool
+  | Int
+  | Bool
 
 (* Declaration *)
 (* type decl =
@@ -64,21 +67,18 @@ type dtype =
 * 6) seq(s,s)
 * 7) declare(x,t,s) *)
 type stm =
-  | Assign of {name : Symbol.t ; value : mexp}
-  | If of {cond : mexp; true_stm : mstm; false_stm : mstm}
-  | While of {cond : mexp; body : mstm}
-  | Return of mexp
+  | Assign of {name : Symbol.t ; value : exp}
+  | If of {cond : exp; true_stm : stm; false_stm : stm}
+  | While of {cond : exp; body : stm}
+  | Return of exp
   | Nop
-  | Seq of {head_stm : mstm; tail_stm : mstm}
-  | Declare of {t : dtype; name : Symbol.t; tail_stm : mstm}
+  | Seq of {head_stm : stm; tail_stm : stm}
+  | Declare of {t : dtype; name : Symbol.t; tail_stm : stm}
 
-(* Statement plus src file location *)
-and mstm = stm Mark.t
-
-type program = mstm list
+type program = stm
 
 (* Print as source, with redundant parentheses *)
-module Print : sig
+(* module Print : sig
   val pp_exp : exp -> string
   val pp_stm : stm -> string
   val pp_program : program -> string
