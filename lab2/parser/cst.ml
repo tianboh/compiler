@@ -113,20 +113,20 @@
   | Init of { t : dtype; name : Symbol.t; value : mexp}
 
  type stm =
-    | Simp of simp
-    | Control of control
-    | Block of block
+  | Simp of simp
+  | Control of control
+  | Block of block
 
  and simp = 
-    | Assign of {name : Symbol.t ; value : mexp}
-    | Declare of decl
-    | Exp of mexp
+  | Assign of {name : Symbol.t ; value : mexp}
+  | Declare of decl
+  | Exp of mexp
  
  and control = 
-    | If of {cond : mexp; s_t : stm; s_f : stm option}
-    | While of {cond : mexp; body : stm}
-    | For of {init : simp option; cond : mexp; iter : simp option; body : stm}
-    | Return of mexp
+  | If of {cond : mexp; true_stm : stm; false_stm : stm option}
+  | While of {cond : mexp; body : stm}
+  | For of {init : simp option; cond : mexp; iter : simp option; body : stm}
+  | Return of mexp
 
  and mstm = stm Mark.t
 
@@ -194,8 +194,8 @@
 
   and pp_ctl = function
   | If if_stm -> 
-    let else_stm = (match if_stm.s_f with | Some s -> sprintf "%s" (pp_stm s) | None -> "" ) in
-    sprintf "if(%s){%s}else{%s}" (pp_mexp if_stm.cond) (pp_stm if_stm.s_t) else_stm
+    let else_stm = (match if_stm.false_stm with | Some s -> sprintf "%s" (pp_stm s) | None -> "" ) in
+    sprintf "if(%s){%s}else{%s}" (pp_mexp if_stm.cond) (pp_stm if_stm.true_stm) else_stm
   | While while_stm -> 
     sprintf "while(%s){%s}" (pp_mexp while_stm.cond) (pp_stm while_stm.body)
   | For for_stm -> 

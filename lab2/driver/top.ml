@@ -160,7 +160,7 @@ let compile (cmd : cmd_line_args) : unit =
   let cst = Parse.parse cmd.filename in
   say_if cmd.dump_ast (fun () -> Cst.Print.pp_program cst);
   (* Elaborate *)
-  let ast = Elab.elab cst in
+  let ast = Elab.elaborate cst in
   (* Typecheck *)
   say_if cmd.verbose (fun () -> "Checking...");
   Typechecker.typecheck ast;

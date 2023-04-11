@@ -25,7 +25,7 @@
   | Hat
   | Right_shift
   | Left_shift
-  
+
 type unop = 
   | Negative
   | Excalmation_mark (* ! *)
@@ -80,7 +80,7 @@ and simp =
   | Exp of mexp
 
 and control = 
-  | If of {cond : mexp; s_t : stm; s_f : stm option}
+  | If of {cond : mexp; true_stm : stm; false_stm : stm option}
   | While of {cond : mexp; body : stm}
   | For of {init : simp option; cond : mexp; iter : simp option; body : stm}
   | Return of mexp

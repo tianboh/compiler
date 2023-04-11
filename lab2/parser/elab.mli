@@ -1,4 +1,4 @@
-(* (* Notice the difference between CST and AST
+(* Notice the difference between CST and AST
 * CST is basically transferred from source code literaly.
 * AST add more structure statement unit based on CST, and it looks like a tree.
 *
@@ -27,4 +27,4 @@
 * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
 *)
 
-val elab : Cst.program -> Ast.program *)
+val elaborate : Cst.program -> Ast.program

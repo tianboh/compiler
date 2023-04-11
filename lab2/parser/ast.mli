@@ -72,8 +72,9 @@ type stm =
   | While of {cond : exp; body : stm}
   | Return of exp
   | Nop
-  | Seq of {head_stm : stm; tail_stm : stm}
-  | Declare of {t : dtype; name : Symbol.t; tail_stm : stm}
+  | Seq of {head : stm; tail : stm}
+  | Declare of {t : dtype; name : Symbol.t; tail : stm}
+  | Sexp of exp (* This is used for special case in elaboration from CST simp case. *)
 
 type program = stm
 

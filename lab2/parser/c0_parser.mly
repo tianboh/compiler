@@ -233,9 +233,9 @@ lvalue :
 
 control : 
   | If; L_paren; e = m(exp); R_paren; s = stm;
-      { Cst.If {cond = e; s_t = s; s_f = None} }
-  | If; L_paren; e = m(exp); R_paren; s_t = stm; Else; s_f = stm;
-      { Cst.If {cond = e; s_t = s_t; s_f = Some s_f} }
+      { Cst.If {cond = e; true_stm = s; false_stm = None} }
+  | If; L_paren; e = m(exp); R_paren; true_stm = stm; Else; false_stm = stm;
+      { Cst.If {cond = e; true_stm = true_stm; false_stm = Some false_stm} }
   | While; L_paren; e = m(exp); R_paren; s = stm;
       { Cst.While {cond = e; body = s} }
   | For; L_paren; e = m(exp); s = stm;
