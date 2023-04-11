@@ -7,22 +7,22 @@
  *
  * Implements a "convenient munch" algorithm
  *)
- module AS = Inst.Pseudo
- module Temp = Var.Temp
- module Register = Var.X86_reg
- module AS_x86 = Inst.X86
+module AS = Inst.Pseudo
+module Temp = Var.Temp
+module Register = Var.X86_reg
+module AS_x86 = Inst.X86
 
- module Pseudo : sig 
-     val gen : Parser.Tree.stm list -> AS.instr list
-     val const_propagation : AS.instr list -> AS.instr list
-     val optimize : AS.instr list -> AS.instr list
-     val temp_propagation : AS.instr list -> AS.instr list
- end
+module Pseudo : sig
+  val gen : Parser.Tree.stm list -> AS.instr list
+  val const_propagation : AS.instr list -> AS.instr list
+  val optimize : AS.instr list -> AS.instr list
+  val temp_propagation : AS.instr list -> AS.instr list
+end
 
- (* module Pseudo_x86 : sig
+(* module Pseudo_x86 : sig
     val gen : Parser.Tree.stm list -> AS.instr list
  end *)
 
- module X86 : sig
-     val gen : AS.instr list -> (Temp.t * Register.t) option list -> AS_x86.instr list
- end
+module X86 : sig
+  val gen : AS.instr list -> (Temp.t * Register.t) option list -> AS_x86.instr list
+end

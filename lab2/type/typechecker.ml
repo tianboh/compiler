@@ -21,6 +21,7 @@
  *)
 
 open Core
+
 (* module A = Parser.Ast *)
 module A = Parser.Cst
 module S = Util.Symbol.Map
@@ -81,8 +82,9 @@ let rec tc_stms (ast : A.program) (env : env) : env =
     | A.Declare (A.New_var id) ->
       (match S.find env.vars id.name with
       | Some _ -> error ~msg:(sprintf "Already declared: `%s`" (Symbol.name id.name))
-      | None -> tc_stms cat.tail { env with vars = S.set env.vars ~key:id.name ~data:Decl })
-    | A.Declare (A.Init {t=t; name=name; value=value}) ->
+      | None ->
+        tc_stms cat.tail { env with vars = S.set env.vars ~key:id.name ~data:Decl })
+    | A.Declare (A.Init { t; name; value }) ->
       (* Since we're creating new statements, we just maintain the
        * source location of the original statement `stm`. This is just
        * for debugging and pretty error messages; we could just use
@@ -103,19 +105,23 @@ let rec tc_stms (ast : A.program) (env : env) : env =
         remark (A.Assign {name = name; value = value}) :: 
         stms
       in *)
-      let stms' = 
-        A.Concat {head = Util.Mark.naked (A.Declare (A.New_var {t; name})); tail = 
-        A.Concat {head = Util.Mark.naked (A.Assign {name = name; value = value}); tail = cat.tail}}
+      let stms' =
+        A.Concat
+          { head = Util.Mark.naked (A.Declare (A.New_var { t; name }))
+          ; tail =
+              A.Concat
+                { head = Util.Mark.naked (A.Assign { name; value }); tail = cat.tail }
+          }
       in
-      
       tc_stms stms' env
-    | A.Assign {name = id; value = e} ->
+    | A.Assign { name = id; value = e } ->
       tc_exp e env.vars;
       (match S.find env.vars id with
       | None ->
         error ~msg:(sprintf "Not declared before initialization: `%s`" (Symbol.name id))
       (* just got initialized *)
-      | Some Decl -> tc_stms cat.tail { env with vars = S.set env.vars ~key:id ~data:Init }
+      | Some Decl ->
+        tc_stms cat.tail { env with vars = S.set env.vars ~key:id ~data:Init }
       (* already initialized *)
       | Some Init -> tc_stms cat.tail env)
     | A.Return e ->
@@ -128,6 +134,6 @@ let typecheck prog =
   let env = tc_stms prog { vars = S.empty; returns = false } in
   if not env.returns
   then (
-  Util.Error_msg.error tc_errors None ~msg:"main does not return";
+    Util.Error_msg.error tc_errors None ~msg:"main does not return";
     raise Util.Error_msg.Error)
 ;;

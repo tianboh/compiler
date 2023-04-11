@@ -10,14 +10,18 @@
 open Core
 
 type t [@@deriving compare, sexp, hash]
+
 (* include Hashtbl.S with type t := t *)
 include Comparable.S with type t := t
+
 (* resets temp numbering *)
 val reset : unit -> unit
+
 (* returns a unique new temp *)
 val create : unit -> t
 val create_no : int -> t
 val create_no_t : int -> t -> t
+
 (* returns the name of a temp *)
 val name : t -> string
 val value : t -> int

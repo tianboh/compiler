@@ -14,49 +14,76 @@
  *)
 
 open Core
+
 (* module Mark = Util.Mark *)
 module Symbol = Util.Symbol
 
 type binop =
+  (* II *)
   | Plus
   | Minus
   | Times
   | Divided_by
   | Modulo
-  | Logic_and
-  | Logic_or
-  | Bit_and
-  | Bit_or
-  | Bit_xor
-
-type unop = Negative
+  | And
+  | Or
+  | Hat
+  | Right_shift
+  | Left_shift
+  (* IB *)
+  | Equal_eq
+  | Greater
+  | Greater_eq
+  | Less
+  | Less_eq
+  | Not_eq
 
 type exp =
   | Var of Symbol.t
   | Const_int of Int32.t
-  | Const_bool of Bool.t
+  | True
+  | False
   | Binop of
-    { op : binop
-    ; lhs : exp
-    ; rhs : exp
-    }
-  | Unop of
-    { op : unop
-    ; operand : exp
-    }
+      { op : binop
+      ; lhs : exp
+      ; rhs : exp
+      }
+  | Terop of
+      { cond : exp
+      ; true_exp : exp
+      ; false_exp : exp
+      }
 
-type dtype = 
+type dtype =
   | Int
   | Bool
 
 type stm =
-  | Assign of {name : Symbol.t ; value : exp}
-  | If of {cond : exp; true_stm : stm; false_stm : stm}
-  | While of {cond : exp; body : stm}
+  | Assign of
+      { name : Symbol.t
+      ; value : exp
+      }
+  | If of
+      { cond : exp
+      ; true_stm : stm
+      ; false_stm : stm
+      }
+  | While of
+      { cond : exp
+      ; body : stm
+      }
   | Return of exp
   | Nop
-  | Seq of {head : stm; tail : stm}
-  | Declare of {t : dtype; name : Symbol.t; tail : stm}
-  | Sexp of exp (* This is used for special case in elaboration from CST simp case. *)
+  | Seq of
+      { head : stm
+      ; tail : stm
+      }
+  | Declare of
+      { t : dtype
+      ; name : Symbol.t
+      ; tail : stm
+      }
+  | Sexp of exp
+(* This is used for special case in elaboration from CST simp case. *)
 
 type program = stm

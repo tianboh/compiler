@@ -7,7 +7,7 @@
  *
  * Currently just a pseudo language with 3-operand
  * instructions and arbitrarily many temps
-*)
+ *)
 open Core
 module Register = Var.X86_reg
 module Temp = Var.Temp
@@ -52,7 +52,6 @@ type instr =
 
 (* functions that format assembly output *)
 
-
 let format_binop = function
   | Add -> "+"
   | Sub -> "-"
@@ -69,7 +68,7 @@ let format_binop = function
 let format_operand = function
   | Imm n -> "$" ^ Int32.to_string n
   | Temp t -> Temp.name t
-  | Reg r -> Register.reg_to_str ~layout:DWORD r 
+  | Reg r -> Register.reg_to_str ~layout:DWORD r
 ;;
 
 let format = function
@@ -103,5 +102,3 @@ let format = function
       }
   | Directive dir -> of string
   | Comment cmt -> of string *)
-
-;;

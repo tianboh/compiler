@@ -6,6 +6,7 @@
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  *)
 open Core
+
 (* module A = Ast *)
 module A = Cst
 module S = Util.Symbol.Map
@@ -47,53 +48,32 @@ let rec trans_exp env = function
   | A.Unop { op = A.Negative; operand = e } ->
     T.Binop
       { op = trans_unop A.Negative; lhs = T.Const_int Int32.zero; rhs = trans_mexp env e }
-  | A.Ter _ ->  failwith "not imp yet"
+  | A.Ter _ -> failwith "not imp yet"
 
 and trans_mexp env mexp = trans_exp env (Mark.data mexp)
-
-(* translate the statement *)
-(* let rec trans_stms (env : Temp.t S.t) (ast : A.stm list) : T.stm list =
-  match ast with
-  | A.Declare d :: stms ->
-    (match d with
-    | A.New_var _ -> trans_stms env stms
-    | A.Init id -> trans_stms env (A.Assign {name = id.name; value = id.value} :: stms))
-  | A.Assign {name=id; value=e} :: stms ->
-    let t = Temp.create () in
-    let env' = S.set env ~key:id ~data:t in
-    T.Move { dest = t; src = trans_mexp env e } :: trans_stms env' stms
-  | A.Return e :: _ ->
-    (* ignore code after return *)
-    [ T.Return (trans_mexp env e) ]
-  | [] ->
-    (* There must be a return. *)
-    assert false
-;; *)
-
-(* let trans_mstms (env : Temp.t S.t) (ast : A.program) : T.program =
-  trans_stms env (List.map ~f:Mark.data ast)
-;; *)
 
 let rec trans_block (env : Temp.t S.t) (ast : A.program) : T.program =
   match ast with
   | [] -> []
-  | Concat cnt -> 
-    match Mark.data cnt.head with
+  | Concat cnt ->
+    (match Mark.data cnt.head with
     | A.Declare d ->
       (match d with
       | A.New_var _ -> trans_block env cnt.tail
-      | A.Init id -> trans_block env (A.Concat {head = Mark.naked (A.Assign {name = id.name; value = id.value}); tail = cnt.tail}))
-    | A.Assign {name=id; value=e} ->
+      | A.Init id ->
+        trans_block
+          env
+          (A.Concat
+             { head = Mark.naked (A.Assign { name = id.name; value = id.value })
+             ; tail = cnt.tail
+             }))
+    | A.Assign { name = id; value = e } ->
       let t = Temp.create () in
       let env' = S.set env ~key:id ~data:t in
       T.Move { dest = t; src = trans_mexp env e } :: trans_block env' cnt.tail
     | A.Return e ->
       (* ignore code after return *)
-      [ T.Return (trans_mexp env e) ]
+      [ T.Return (trans_mexp env e) ])
 ;;
-
-(* let trans_block (env : Temp.t S.t) (ast : A.program) : T.program = match ast with
-  | []
-  | Concat of {head : mstm; tail : stms} *)
 
 let translate (stms : A.program) : T.program = trans_block S.empty stms

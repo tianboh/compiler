@@ -47,7 +47,9 @@ type unop =
   | Dash_mark
 (* ~ *)
 
-type postop = Plus_plus | Minus_minus
+type postop =
+  | Plus_plus
+  | Minus_minus
 
 (* Expression *)
 type exp =
@@ -55,33 +57,71 @@ type exp =
   | Const_int of Int32.t
   | True
   | False
-  | Binop of { op : binop; lhs : mexp; rhs : mexp }
-  | Unop of { op : unop; operand : mexp }
-  | Terop of { cond : mexp; true_exp : mexp; false_exp : mexp }
+  | Binop of
+      { op : binop
+      ; lhs : mexp
+      ; rhs : mexp
+      }
+  | Unop of
+      { op : unop
+      ; operand : mexp
+      }
+  | Terop of
+      { cond : mexp
+      ; true_exp : mexp
+      ; false_exp : mexp
+      }
 
 (* Expression plus src file location *)
 and mexp = exp Mark.t
 
-type dtype = Int | Bool
+type dtype =
+  | Int
+  | Bool
 
 (* Declaration *)
 type decl =
   (* int/bool x; *)
-  | New_var of { t : dtype; name : Symbol.t }
+  | New_var of
+      { t : dtype
+      ; name : Symbol.t
+      }
   (* int/bool x = e; *)
-  | Init of { t : dtype; name : Symbol.t; value : mexp }
+  | Init of
+      { t : dtype
+      ; name : Symbol.t
+      ; value : mexp
+      }
 
-type stm = Simp of simp | Control of control | Block of block
+type stm =
+  | Simp of simp
+  | Control of control
+  | Block of block
 
 and simp =
-  | Assign of { name : Symbol.t; value : mexp }
+  | Assign of
+      { name : Symbol.t
+      ; value : mexp
+      }
   | Declare of decl
   | Exp of mexp
 
 and control =
-  | If of { cond : mexp; true_stm : stm; false_stm : stm option }
-  | While of { cond : mexp; body : stm }
-  | For of { init : simp option; cond : mexp; iter : simp option; body : stm }
+  | If of
+      { cond : mexp
+      ; true_stm : stm
+      ; false_stm : stm option
+      }
+  | While of
+      { cond : mexp
+      ; body : stm
+      }
+  | For of
+      { init : simp option
+      ; cond : mexp
+      ; iter : simp option
+      ; body : stm
+      }
   | Return of mexp
 
 and mstm = stm Mark.t
@@ -97,12 +137,8 @@ type program = block
 (* Print as source, with redundant parentheses *)
 module Print : sig
   val pp_exp : exp -> string
-
   val pp_stm : stm -> string
-
   val pp_ctl : control -> string
-
   val pp_simp : simp -> string
-
   val pp_program : program -> string
 end

@@ -13,7 +13,6 @@ module AS = Inst.Pseudo
 module Inst_reg_info = Json_reader.Lab1_checkpoint
 module Temp = Var.Temp
 module Register = Var.X86_reg
-;;
 
 type line =
   { uses : Temp.Set.t
@@ -22,29 +21,30 @@ type line =
   ; move : bool
   ; line_number : int
   }
-;;
 
 type temps_info = line list
-;;
 
 (* Return None if define field is empty else Some Temp.t *)
 val get_def : line -> Temp.t option
-;;
 
-val gen_forward : AS.instr list ->
-  (int, line) Base.Hashtbl.t -> int -> (int, line) Base.Hashtbl.t
-;;
+val gen_forward
+  :  AS.instr list
+  -> (int, line) Base.Hashtbl.t
+  -> int
+  -> (int, line) Base.Hashtbl.t
 
-val gen_backward : AS.instr list ->
-  (int, line) Base.Hashtbl.t -> int -> Temp.Set.t -> (int, line) Base.Hashtbl.t
-;;
-  
+val gen_backward
+  :  AS.instr list
+  -> (int, line) Base.Hashtbl.t
+  -> int
+  -> Temp.Set.t
+  -> (int, line) Base.Hashtbl.t
+
 val transform_json_to_temp : Inst_reg_info.program -> line list
-;;
 
-val transform_temps_to_json : (Temp.t * Register.t) option list -> Inst_reg_info.allocations
-;;
+val transform_temps_to_json
+  :  (Temp.t * Register.t) option list
+  -> Inst_reg_info.allocations
 
 val print_lines : line list -> unit
-
-val gen_regalloc_info: AS.instr list -> line list
+val gen_regalloc_info : AS.instr list -> line list

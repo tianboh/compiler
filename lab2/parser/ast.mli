@@ -16,71 +16,97 @@ module Symbol = Util.Symbol
 
 (* Operator *)
 type binop =
+  (* II *)
   | Plus
   | Minus
   | Times
   | Divided_by
   | Modulo
-  | Logic_and
-  | Logic_or
-  | Bit_and
-  | Bit_or
-  | Bit_xor
-
-type unop = Negative
+  | And
+  | Or
+  | Hat
+  | Right_shift
+  | Left_shift
+  (* IB *)
+  | Equal_eq
+  | Greater
+  | Greater_eq
+  | Less
+  | Less_eq
+  | Not_eq
 
 (* Expression *)
 type exp =
   | Var of Symbol.t
   | Const_int of Int32.t
-  | Const_bool of Bool.t
+  | True
+  | False
   | Binop of
-    { op : binop
-    ; lhs : exp
-    ; rhs : exp
-    }
-  | Unop of
-    { op : unop
-    ; operand : exp
-    }
+      { op : binop
+      ; lhs : exp
+      ; rhs : exp
+      }
+  | Terop of
+      { cond : exp
+      ; true_exp : exp
+      ; false_exp : exp
+      }
 
 (* Expression plus src file location *)
 (* and mexp = exp Mark.t *)
 
-type dtype = 
+type dtype =
   | Int
   | Bool
 
 (* Declaration *)
 (* type decl =
-  (* int/bool x; *)
-  | New_var of { t : dtype; name : Symbol.t }
-  (* int/bool x = e; *)
-  | Init of { t : dtype; name : Symbol.t; value : mexp} *)
+   (* int/bool x; *)
+   | New_var of { t : dtype; name : Symbol.t }
+   (* int/bool x = e; *)
+   | Init of { t : dtype; name : Symbol.t; value : mexp} *)
 
-(* Statement 
-* 1) Asign(x,e)
-* 2) if(e,s,s)
-* 3) while(e,s)
-* 4) return(e)
-* 5) nop
-* 6) seq(s,s)
-* 7) declare(x,t,s) *)
+(* Statement
+   * 1) Asign(x,e)
+   * 2) if(e,s,s)
+   * 3) while(e,s)
+   * 4) return(e)
+   * 5) nop
+   * 6) seq(s,s)
+   * 7) declare(x,t,s) *)
 type stm =
-  | Assign of {name : Symbol.t ; value : exp}
-  | If of {cond : exp; true_stm : stm; false_stm : stm}
-  | While of {cond : exp; body : stm}
+  | Assign of
+      { name : Symbol.t
+      ; value : exp
+      }
+  | If of
+      { cond : exp
+      ; true_stm : stm
+      ; false_stm : stm
+      }
+  | While of
+      { cond : exp
+      ; body : stm
+      }
   | Return of exp
   | Nop
-  | Seq of {head : stm; tail : stm}
-  | Declare of {t : dtype; name : Symbol.t; tail : stm}
-  | Sexp of exp (* This is used for special case in elaboration from CST simp case. *)
+  | Seq of
+      { head : stm
+      ; tail : stm
+      }
+  | Declare of
+      { t : dtype
+      ; name : Symbol.t
+      ; tail : stm
+      }
+  | Sexp of exp
+(* This is used for special case in elaboration from CST simp case. *)
 
 type program = stm
 
 (* Print as source, with redundant parentheses *)
 (* module Print : sig
-  val pp_exp : exp -> string
-  val pp_stm : stm -> string
-  val pp_program : program -> string
-end *)
+     val pp_exp : exp -> string
+     val pp_stm : stm -> string
+     val pp_program : program -> string
+   end *)

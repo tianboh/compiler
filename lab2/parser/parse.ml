@@ -35,7 +35,9 @@ let parse (filename : string) : Cst.program =
           | _ ->
             (* Parse error; attempt to print a helpful error message. *)
             let src_span =
-              Util.Mark.of_positions Lexing.(lexbuf.lex_start_p) Lexing.(lexbuf.lex_curr_p)
+              Util.Mark.of_positions
+                Lexing.(lexbuf.lex_start_p)
+                Lexing.(lexbuf.lex_curr_p)
             in
             Util.Error_msg.error C0_lexer.errors (Some src_span) ~msg:"Parse error.";
             raise Util.Error_msg.Error)

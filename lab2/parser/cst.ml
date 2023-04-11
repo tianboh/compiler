@@ -79,7 +79,9 @@ type unop =
 (* "~" bitwise not *)
 
 (* They are not used as well, reason as unop. *)
-type postop = Plus_plus | Minus_minus
+type postop =
+  | Plus_plus
+  | Minus_minus
 
 (* Notice that the subexpressions of an expression are marked.
  * (That is, the subexpressions are of type exp Mark.t, not just
@@ -105,29 +107,67 @@ type exp =
   | Const_int of Int32.t
   | True
   | False
-  | Binop of { op : binop; lhs : mexp; rhs : mexp }
-  | Unop of { op : unop; operand : mexp }
-  | Terop of { cond : mexp; true_exp : mexp; false_exp : mexp }
+  | Binop of
+      { op : binop
+      ; lhs : mexp
+      ; rhs : mexp
+      }
+  | Unop of
+      { op : unop
+      ; operand : mexp
+      }
+  | Terop of
+      { cond : mexp
+      ; true_exp : mexp
+      ; false_exp : mexp
+      }
 
 and mexp = exp Mark.t
 
-type dtype = Int | Bool
+type dtype =
+  | Int
+  | Bool
 
 type decl =
-  | New_var of { t : dtype; name : Symbol.t }
-  | Init of { t : dtype; name : Symbol.t; value : mexp }
+  | New_var of
+      { t : dtype
+      ; name : Symbol.t
+      }
+  | Init of
+      { t : dtype
+      ; name : Symbol.t
+      ; value : mexp
+      }
 
-type stm = Simp of simp | Control of control | Block of block
+type stm =
+  | Simp of simp
+  | Control of control
+  | Block of block
 
 and simp =
-  | Assign of { name : Symbol.t; value : mexp }
+  | Assign of
+      { name : Symbol.t
+      ; value : mexp
+      }
   | Declare of decl
   | Exp of mexp
 
 and control =
-  | If of { cond : mexp; true_stm : stm; false_stm : stm option }
-  | While of { cond : mexp; body : stm }
-  | For of { init : simp option; cond : mexp; iter : simp option; body : stm }
+  | If of
+      { cond : mexp
+      ; true_stm : stm
+      ; false_stm : stm option
+      }
+  | While of
+      { cond : mexp
+      ; body : stm
+      }
+  | For of
+      { init : simp option
+      ; cond : mexp
+      ; iter : simp option
+      ; body : stm
+      }
   | Return of mexp
 
 and mstm = stm Mark.t
@@ -160,11 +200,13 @@ module Print = struct
     | Less -> "<"
     | Less_eq -> "<="
     | Not_eq -> "!="
+  ;;
 
   let pp_unop = function
     | Negative -> "-"
     | Excalmation_mark -> "!"
     | Dash_mark -> "~"
+  ;;
 
   let rec pp_exp = function
     | Var id -> Symbol.name id
@@ -173,26 +215,32 @@ module Print = struct
     | False -> "False"
     | Unop unop -> sprintf "%s(%s)" (pp_unop unop.op) (pp_mexp unop.operand)
     | Binop binop ->
-        sprintf "(%s %s %s)" (pp_mexp binop.lhs) (pp_binop binop.op)
-          (pp_mexp binop.rhs)
+      sprintf "(%s %s %s)" (pp_mexp binop.lhs) (pp_binop binop.op) (pp_mexp binop.rhs)
     | Terop ter_exp ->
-        sprintf "%s ? %s : %s" (pp_mexp ter_exp.cond) (pp_mexp ter_exp.true_exp)
-          (pp_mexp ter_exp.false_exp)
+      sprintf
+        "%s ? %s : %s"
+        (pp_mexp ter_exp.cond)
+        (pp_mexp ter_exp.true_exp)
+        (pp_mexp ter_exp.false_exp)
 
   and pp_mexp e = pp_exp (Mark.data e)
 
-  let pp_dtype = function Int -> "int" | Bool -> "bool"
+  let pp_dtype = function
+    | Int -> "int"
+    | Bool -> "bool"
+  ;;
 
   let pp_decl = function
     | New_var id -> sprintf "%s %s;" (pp_dtype id.t) (Symbol.name id.name)
     | Init id ->
-        sprintf "%s %s = %s;" (pp_dtype id.t) (Symbol.name id.name)
-          (pp_mexp id.value)
+      sprintf "%s %s = %s;" (pp_dtype id.t) (Symbol.name id.name) (pp_mexp id.value)
+  ;;
 
   let pp_simp = function
     | Assign id -> sprintf "%s = %s;" (Symbol.name id.name) (pp_mexp id.value)
     | Declare d -> pp_decl d
     | Exp e -> pp_mexp e
+  ;;
 
   let rec pp_stm = function
     | Simp s -> pp_simp s
@@ -201,25 +249,23 @@ module Print = struct
 
   and pp_ctl = function
     | If if_stm ->
-        let else_stm =
-          match if_stm.false_stm with
-          | Some s -> sprintf "%s" (pp_stm s)
-          | None -> ""
-        in
-        sprintf "if(%s){%s}else{%s}" (pp_mexp if_stm.cond)
-          (pp_stm if_stm.true_stm) else_stm
+      let else_stm =
+        match if_stm.false_stm with
+        | Some s -> sprintf "%s" (pp_stm s)
+        | None -> ""
+      in
+      sprintf "if(%s){%s}else{%s}" (pp_mexp if_stm.cond) (pp_stm if_stm.true_stm) else_stm
     | While while_stm ->
-        sprintf "while(%s){%s}" (pp_mexp while_stm.cond) (pp_stm while_stm.body)
+      sprintf "while(%s){%s}" (pp_mexp while_stm.cond) (pp_stm while_stm.body)
     | For for_stm ->
-        let init, iter =
-          match (for_stm.init, for_stm.iter) with
-          | None, None -> ("", "")
-          | Some init, None -> (pp_simp init, "")
-          | None, Some iter -> ("", pp_simp iter)
-          | Some init, Some iter -> (pp_simp init, pp_simp iter)
-        in
-        sprintf "for(%s; %s; %s){%s}" init (pp_mexp for_stm.cond) iter
-          (pp_stm for_stm.body)
+      let init, iter =
+        match for_stm.init, for_stm.iter with
+        | None, None -> "", ""
+        | Some init, None -> pp_simp init, ""
+        | None, Some iter -> "", pp_simp iter
+        | Some init, Some iter -> pp_simp init, pp_simp iter
+      in
+      sprintf "for(%s; %s; %s){%s}" init (pp_mexp for_stm.cond) iter (pp_stm for_stm.body)
     | Return e -> sprintf "return %s;" (pp_mexp e)
 
   and pp_blk = function
@@ -227,7 +273,6 @@ module Print = struct
     | h :: t -> sprintf "%s" (pp_mstm h) ^ pp_blk t
 
   and pp_mstm stm = pp_stm (Mark.data stm)
-
   and pp_block stms = "{\n" ^ pp_blk stms ^ "}"
 
   let pp_program block = pp_block block

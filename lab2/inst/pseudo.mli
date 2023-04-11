@@ -8,7 +8,7 @@
  * Currently just a pseudo language with 3-operand
  * instructions and arbitrarily many temps
  *
-*)
+ *)
 module Register = Var.X86_reg
 module Temp = Var.Temp
 
@@ -48,5 +48,4 @@ type instr =
   | Comment of string
 
 val format : instr -> string
-
 val format_operand : operand -> string

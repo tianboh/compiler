@@ -11,9 +11,10 @@
  *   - Switch from ocamlbuild to dune 2.7
  *   - TODO: Add support for expect tests
  *   - Update to Core v0.14
-*)
+ *)
 
 open Core
+
 (* open Json_reader *)
 open Args
 module AS_psu = Inst.Pseudo
@@ -56,7 +57,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
    *
    * even if e1 is of type 'a Term.t, we can use x as having type 'a
    * in the body of e2.
-  *)
+   *)
   let module Let_syntax = struct
     let return = Term.pure
     let map ~f a = Term.(return f $ a)
@@ -99,7 +100,10 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
       ~default:Opt_level.Opt_none
       (Arg.info [ "O"; "opt" ] ~doc ~docv:"OPT")
   and df_type =
-    let doc = "[forward-may|forward-must|backward-may|backward-must|no-analysis] The type of dataflow analysis" in
+    let doc =
+      "[forward-may|forward-must|backward-may|backward-must|no-analysis] The type of \
+       dataflow analysis"
+    in
     opt
       Df_analysis.conv
       ~default:Df_analysis.No_analysis
@@ -131,7 +135,8 @@ let process_checkpoint (cmd : cmd_line_args) =
     exit 1
   | Some base_filename ->
     let input_json = Yojson.Basic.from_file cmd.filename in
-    if cmd.regalloc_only then
+    if cmd.regalloc_only
+    then (
       let input = Json_reader.Lab1_checkpoint.program_of_json input_json in
       let input_temp = Codegen.Program.transform_json_to_temp input in
       (* let () = Codegen.Program.print_lines input_temp in *)
@@ -141,15 +146,17 @@ let process_checkpoint (cmd : cmd_line_args) =
       Out_channel.with_file filename ~f:(fun out ->
           Out_channel.output_string
             out
-            (output' |> Json_reader.Lab1_checkpoint.json_of_allocations |> Yojson.Basic.to_string))
-    else
+            (output'
+            |> Json_reader.Lab1_checkpoint.json_of_allocations
+            |> Yojson.Basic.to_string)))
+    else (
       let input = Json_reader.Lab2_checkpoint.program_of_json input_json in
       let output = Dfana.dfana input cmd.df_type in
       let filename = base_filename ^ ".out" in
       Out_channel.with_file filename ~f:(fun out ->
           Out_channel.output_string
             out
-            (output |> Json_reader.Lab2_checkpoint.json_of_dflines)) 
+            (output |> Json_reader.Lab2_checkpoint.json_of_dflines)))
 ;;
 
 (* The main driver for the compiler: runs each phase. *)
@@ -196,26 +203,28 @@ let compile (cmd : cmd_line_args) : unit =
     (* let () = Printf.printf "Execution time reg_alloc_info: %fs\n%!" (stop -. start) in *)
     let assem_x86 = Codegen.Gen.X86.gen assem_ps reg_alloc_info in
     File.dump_asm_x86 file assem_x86
-    (* failwith "error" *)
 ;;
+
+(* failwith "error" *)
 
 let run (cmd : cmd_line_args) : unit =
   match cmd.regalloc_only, cmd.df_type with
-  | (true, No_analysis) -> process_checkpoint cmd
-  | (false, Forward_may) -> process_checkpoint cmd
-  | (false, Forward_must) -> process_checkpoint cmd
-  | (false, Backward_may) -> process_checkpoint cmd
-  | (false, Backward_must) -> process_checkpoint cmd
-  | (_, _) -> try compile cmd with
+  | true, No_analysis -> process_checkpoint cmd
+  | false, Forward_may -> process_checkpoint cmd
+  | false, Forward_must -> process_checkpoint cmd
+  | false, Backward_may -> process_checkpoint cmd
+  | false, Backward_must -> process_checkpoint cmd
+  | _, _ ->
+    (try compile cmd with
     | Util.Error_msg.Error ->
       prerr_endline "Compilation failed.";
-      exit 1
+      exit 1)
 ;;
 
 (* Compiler entry point
  * Use the cmd_line_term to parse the command line arguments, and pass the
  * parsed args to the run function.
-*)
+ *)
 let main () =
   let open Cmdliner in
   let cmd_line_info = Term.info "c0c" ~doc:"Compile a c0c source file." in
