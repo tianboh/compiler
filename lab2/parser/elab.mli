@@ -17,9 +17,13 @@
    * In addition, we will simplify for from CST to while statement in AST.
    * This will reduce the Intermediate Representation.
    *
-   * Expression level benefit: we obtain from CST -> AST is that.
-   * 1) logical operation && || ^ can be denoted in ternary
+   * Expression level benefit:
+   * 1) logical operation && || ^ can be denoted in ternary expression, so IR does not
+   *    logical operation anymore.
    * 2) <binop>= b can be simplified to a = a binop b
+   * 3) We will initialize an integer to zero if it is just declared but not
+   *    initialized. This can avoid some error in the program because C0 requires each
+   *    of a variable should be defined before.
    * This can simplify our work in IR level
    * More details can be checked in
    * https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf Page 5 and 6
