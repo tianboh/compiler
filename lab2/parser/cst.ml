@@ -150,10 +150,14 @@
      | And -> "&"
      | Or -> "|"
      | Hat -> "^"
+     | Right_shift -> ">>"
+     | Left_shift -> "<<"
    ;;
  
    let pp_unop = function
      | Negative -> "-"
+     | Excalmation_mark -> "!"
+     | Dash_mark -> "~" 
    ;;
  
    let rec pp_exp = function
