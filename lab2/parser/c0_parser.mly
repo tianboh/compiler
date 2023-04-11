@@ -86,14 +86,13 @@ let expand_postop lhs op
 %token L_paren R_paren
 %token Eof
 %token Semicolon
-%token Unary
 (* Binary operators *) 
 %token Plus Minus Star Slash Percent Less Less_eq Greater Greater_eq Equal_eq Not_eq
-        And_and Or_or And Or Left_shift Right_shift
+        And_and Or_or And Or Left_shift Right_shift Hat (* bitwise exclusive or *)
 (* postop *)
 %token Minus_minus Plus_plus
 (* unop *)
-%token Excalmation_mark Dash_mark Hat
+%token Excalmation_mark (* logical not *) Dash_mark (* bitwise not *) Negative (* This is a placeholder for minus *)
 (* assign op *)
 %token Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq And_eq Or_eq Hat_eq Left_shift_eq Right_shift_eq
 (* Ternary op *)
@@ -102,7 +101,7 @@ let expand_postop lhs op
 // %token <Int32.t> Dbg_line
 // %token <Int32.t> Dbg_col
 
-(* Unary is a dummy terminal.
+(* Negative is a dummy terminal.
  * We need dummy terminals if we wish to assign a precedence
  * to a production that does not correspond to the precedence of
  * the rightmost terminal in that production.
@@ -113,9 +112,26 @@ let expand_postop lhs op
  * Minus_minus is a dummy terminal to parse-fail on.
  *)
 
+(*
+ * Operation declared before has lower precedence. Check 
+ * https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf
+ * for detailed operation precedence in L2 grammar.
+ *)
+%right Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq And_eq Or_eq Hat_eq Left_shift_eq Right_shift_eq
+%right Question_mark Colon
+%left Or_or
+%left And_and
+%left Or
+%left Hat
+%left And
+%left Equal_eq Not_eq
+%left Less Less_eq Greater Greater_eq
+%left Left_shift Right_shift
 %left Plus Minus
 %left Star Slash Percent
-%right Unary
+%right Negative Excalmation_mark Dash_mark Plus_plus Minus_minus
+
+
 
 %start program
 
@@ -251,27 +267,27 @@ control :
 
 exp :
   | L_paren; e = exp; R_paren;
-      { e }
+    { e }
   | c = int_const;
-      { Cst.Const_int c }
+    { Cst.Const_int c }
   | Main;
-      { Cst.Var (Symbol.symbol "main") }
+    { Cst.Var (Symbol.symbol "main") }
   | True;
-      { Cst.True }
+    { Cst.True }
   | False;
-      { Cst.False }
+    { Cst.False }
   | ident = Ident;
-      { Cst.Var ident }
+    { Cst.Var ident }
   | unop = unop; e = m(exp);
-      { Cst.Unop {op = unop; operand = e} }
+    { Cst.Unop {op = unop; operand = e} }
   | lhs = m(exp);
     op = binop;
     rhs = m(exp);
-      { Cst.Binop { op; lhs; rhs; } }
-  | Minus; e = m(exp); %prec Unary
-      { Cst.Unop { op = Cst.Negative; operand = e; } }
+    { Cst.Binop { op; lhs; rhs; } }
+  | Minus; e = m(exp); %prec Negative
+    { Cst.Unop { op = Cst.Negative; operand = e; } }
   | cond = m(exp); Question_mark; true_exp = m(exp); Colon; false_exp = m(exp);
-     { Cst.Ter {cond = cond; true_exp = true_exp; false_exp = false_exp} }
+    { Cst.Ter {cond = cond; true_exp = true_exp; false_exp = false_exp} }
   ;
 
 int_const :
@@ -288,25 +304,41 @@ int_const :
 %inline
 binop :
   | Plus;
-      { Cst.Plus }
+    { Cst.Plus }
   | Minus;
-      { Cst.Minus }
+    { Cst.Minus }
   | Star;
-      { Cst.Times }
+    { Cst.Times }
   | Slash;
-      { Cst.Divided_by }
+    { Cst.Divided_by }
   | Percent;
-      { Cst.Modulo }
+    { Cst.Modulo }
   | And_and;
-      { Cst.And_and }
+    { Cst.And_and }
   | Or_or;
-      { Cst.Or_or }
+    { Cst.Or_or }
   | And;
-      { Cst.And }
+    { Cst.And }
   | Or;
-      { Cst.Or }
-  | Hat;
-      { Cst.Hat }
+    { Cst.Or }
+  | Less
+    { Cst.Less }
+  | Less_eq
+    { Cst.Less_eq }
+  | Greater
+    { Cst.Greater }
+  | Greater_eq
+    { Cst.Greater_eq }
+  | Equal_eq
+    { Cst.Equal_eq }
+  | Not_eq
+    { Cst.Not_eq }
+  | Left_shift
+    { Cst.Left_shift }
+  | Right_shift
+    { Cst.Right_shift }
+  | Hat
+    { Cst.Hat }
   ;
 
 unop : 
