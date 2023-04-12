@@ -8,10 +8,19 @@
  *
  * This type checker is part of the semantic analysis
  * It checkes whether each statement and expression is valid
- * For example, type checker will check whether the condition
- * in if statement returns a bool, etc.
+ * 
  * Check https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf
  * Section 4.1 for more details.
+ *
+ * Statement level check
+ * 1) Check the expression of statement is of the correct type. 
+ * For example, whether the expression of If.cond is Bool type.
+ * 2) Check sub-statement is valid of a statement.
+ * For example, whether Seq.head and Seq.tail is valid for Seq.
+ * 3) Check variable re-declaration error.
+ *
+ * Expression level check
+ * 1) Check whether the operand and operator consistent with each other.
  *
  * Modified: Anand Subramanian <asubrama@andrew.cmu.edu> Fall 2010
  * Now distinguishes between declarations and initialization
@@ -50,36 +59,9 @@ type env =
 
 let tc_errors : Util.Error_msg.t = Util.Error_msg.create ()
 
-let rec tc_exp (ast : A.mexp) (vars : init_status S.t) : unit =
-  let error ~msg =
-    Util.Error_msg.error tc_errors (Util.Mark.src_span ast) ~msg;
-    raise Util.Error_msg.Error
-  in
-  match Util.Mark.data ast with
-  | A.Var id ->
-    (match S.find vars id with
-    | None -> error ~msg:(sprintf "Not declared before use: `%s`" (Symbol.name id))
-    | Some Decl ->
-      error ~msg:(sprintf "Not initialized before use: `%s`" (Symbol.name id))
-    | Some Init -> ())
-  | A.Const_int _ -> ()
-  | A.True -> ()
-  | A.False -> ()
-  | A.Binop binop ->
-    tc_exp binop.lhs vars;
-    tc_exp binop.rhs vars
-  | A.Unop unop -> tc_exp unop.operand vars
-  | _ -> ()
-;;
-
 let error ~msg src_span =
   Util.Error_msg.error tc_errors src_span ~msg;
   raise Util.Error_msg.Error
-;;
-
-let trans_ast_dtype = function
-  | A.Int -> Int
-  | A.Bool -> Bool
 ;;
 
 let type_cmp t1 t2 =
@@ -90,26 +72,56 @@ let type_cmp t1 t2 =
   | Bool, Bool -> true
 ;;
 
-(* Get AST mexp type. Return None if exp is a var and not 
- * contained in env.
- * Notice: this  function does not check the validity of 
- * operator and operand. For example, it will not realize the 
- * inconsistence when cond type of terop is int.
- * This will be checked in tc_exp. *)
-let rec get_ast_exp_dtype (exp : A.mexp) (env : env) : dtype option =
-  match Mark.data exp with
-  | Var var ->
+(* tc_exp will check if expression is valid
+ * including whether the operand and operator consistent. 
+ * It will return the type of expression if pass the check.
+ * Otherwise, it will report an error and stop. *)
+let rec tc_exp (exp : A.mexp) (env : env) : dtype =
+  let loc = Mark.src_span exp in
+  match Util.Mark.data exp with
+  | A.Var var ->
     (match S.find env.vars var with
-    | None -> None
-    | Some s -> Some s.dtype)
-  | A.True -> Some Bool
-  | A.False -> Some Bool
-  | A.Const_int _ -> Some Int
+    | None -> error ~msg:(sprintf "Identifier not declared: `%s`" (Symbol.name var)) loc
+    | Some var -> var.dtype)
+  | A.Const_int _ -> Int
+  | A.True -> Bool
+  | A.False -> Bool
   | A.Binop binop ->
     (match binop.op with
-    | A.Equal_eq | A.Greater | A.Greater_eq | A.Less | A.Less_eq | A.Not_eq -> Some Bool
-    | _ -> Some Int)
-  | A.Terop terop -> get_ast_exp_dtype terop.true_exp env
+    (* Relation op: < <= > >= *)
+    | A.Less | A.Less_eq | A.Greater | A.Greater_eq ->
+      (match tc_exp binop.lhs env, tc_exp binop.rhs env with
+      | Int, Int -> Bool
+      | _, _ -> error ~msg:(sprintf "Relation operand should be integer.") loc)
+    (* Polyeq op: ==, != *)
+    | A.Equal_eq | A.Not_eq ->
+      let t1 = tc_exp binop.lhs env in
+      let t2 = tc_exp binop.rhs env in
+      if type_cmp t1 t2
+      then Bool
+      else error ~msg:(sprintf "Polyeq operands type mismatch") loc
+    (* Rest are int operation *)
+    | _ ->
+      let t1 = tc_exp binop.lhs env in
+      let t2 = tc_exp binop.rhs env in
+      (match t1, t2 with
+      | Int, Int -> Int
+      | _, _ -> error ~msg:(sprintf "Integer binop operands are not integer") loc))
+  | A.Terop terop ->
+    let t_cond = tc_exp terop.cond env in
+    let t1 = tc_exp terop.true_exp env in
+    let t2 = tc_exp terop.false_exp env in
+    (match t_cond with
+    | Int -> error ~msg:(sprintf "Terop condition should be bool") loc
+    | Bool ->
+      if type_cmp t1 t2
+      then t1
+      else error ~msg:(sprintf "Terop true and false exp type should be consistent") loc)
+;;
+
+let trans_ast_dtype = function
+  | A.Int -> Int
+  | A.Bool -> Bool
 ;;
 
 (* 
@@ -145,49 +157,37 @@ and tc_assign name loc exp env : env =
   match S.find env.vars name with
   | None -> error ~msg:(sprintf "Not declared: `%s`" (Symbol.name name)) loc
   | Some var ->
-    let exp_type = get_ast_exp_dtype exp env in
+    let exp_type = tc_exp exp env in
     (* Check if expression type and variable type match *)
-    (match exp_type with
-    | None -> error ~msg:(sprintf "RHS var not declared") loc
-    | Some exp_type' ->
-      if type_cmp exp_type' var.dtype
-      then (
-        (* Type match, Update variable state to initialized. *)
-        let env_vars = S.set env.vars ~key:name ~data:{ var with state = Init } in
-        { env with vars = env_vars })
-      else
-        (* expression and variable type mismatch, error *)
-        error ~msg:(sprintf "var type and exp type mismatch") loc)
+    if type_cmp exp_type var.dtype
+    then (
+      (* Type match, Update variable state to initialized. *)
+      let env_vars = S.set env.vars ~key:name ~data:{ var with state = Init } in
+      { env with vars = env_vars })
+    else
+      (* expression and variable type mismatch, error *)
+      error ~msg:(sprintf "var type and exp type mismatch") loc
 
 and tc_return mexp env =
   let loc = Mark.src_span mexp in
-  let exp_type = get_ast_exp_dtype mexp env in
+  let exp_type = tc_exp mexp env in
   match exp_type with
-  | None -> error ~msg:(sprintf "Return exp type is none") loc
-  | Some dtype ->
-    (match dtype with
-    | Int -> env
-    | Bool -> error ~msg:(sprintf "Return type is bool") loc)
+  | Int -> { env with returns = true }
+  | Bool -> error ~msg:(sprintf "Return type is bool") loc
 
 and tc_if cond true_stm false_stm loc env =
-  let cond_type = get_ast_exp_dtype cond env in
+  let cond_type = tc_exp cond env in
   match cond_type with
-  | None -> error ~msg:(sprintf "If cond type is empty") loc
-  | Some t ->
-    (match t with
-    | Int -> error ~msg:(sprintf "If cond type is int") loc
-    | Bool ->
-      let env = tc_stms true_stm env in
-      tc_stms false_stm env)
+  | Int -> error ~msg:(sprintf "If cond type is int") loc
+  | Bool ->
+    let env = tc_stms true_stm env in
+    tc_stms false_stm env
 
 and tc_while cond body loc env =
-  let cond_type = get_ast_exp_dtype cond env in
+  let cond_type = tc_exp cond env in
   match cond_type with
-  | None -> error ~msg:(sprintf "While cond type is empty") loc
-  | Some t ->
-    (match t with
-    | Int -> error ~msg:(sprintf "While cond type is int") loc
-    | Bool -> tc_stms body env)
+  | Int -> error ~msg:(sprintf "While cond type is int") loc
+  | Bool -> tc_stms body env
 
 (* Declare check is tricky because we will
  * not override old env. Instead, we will return it
