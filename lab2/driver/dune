@@ -11,7 +11,7 @@
   regalloc
   util
   parser
-  type
+  semantic
   flow
   codegen
   file)
