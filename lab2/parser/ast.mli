@@ -11,7 +11,7 @@
  *
  * Forward compatible fragment of C0
  *)
-(* module Mark = Util.Mark *)
+module Mark = Util.Mark
 module Symbol = Util.Symbol
 
 (* Operator *)
@@ -36,6 +36,7 @@ type binop =
   | Not_eq
 
 (* Expression *)
+
 type exp =
   | Var of Symbol.t
   | Const_int of Int32.t
@@ -43,28 +44,21 @@ type exp =
   | False
   | Binop of
       { op : binop
-      ; lhs : exp
-      ; rhs : exp
+      ; lhs : mexp
+      ; rhs : mexp
       }
   | Terop of
-      { cond : exp
-      ; true_exp : exp
-      ; false_exp : exp
+      { cond : mexp
+      ; true_exp : mexp
+      ; false_exp : mexp
       }
 
 (* Expression plus src file location *)
-(* and mexp = exp Mark.t *)
+and mexp = exp Mark.t
 
 type dtype =
   | Int
   | Bool
-
-(* Declaration *)
-(* type decl =
-   (* int/bool x; *)
-   | New_var of { t : dtype; name : Symbol.t }
-   (* int/bool x = e; *)
-   | Init of { t : dtype; name : Symbol.t; value : mexp} *)
 
 (* Statement
    * 1) Asign(x,e)
@@ -77,32 +71,34 @@ type dtype =
 type stm =
   | Assign of
       { name : Symbol.t
-      ; value : exp
+      ; value : mexp
       }
   | If of
-      { cond : exp
-      ; true_stm : stm
-      ; false_stm : stm
+      { cond : mexp
+      ; true_stm : mstm
+      ; false_stm : mstm
       }
   | While of
-      { cond : exp
-      ; body : stm
+      { cond : mexp
+      ; body : mstm
       }
-  | Return of exp
+  | Return of mexp
   | Nop
   | Seq of
-      { head : stm
-      ; tail : stm
+      { head : mstm
+      ; tail : mstm
       }
   | Declare of
       { t : dtype
       ; name : Symbol.t
-      ; tail : stm
+      ; tail : mstm
       }
-  | Sexp of exp
-(* This is used for special case in elaboration from CST simp case. *)
+  (* This is used for special case in elaboration from CST simp case. *)
+  | Sexp of mexp
 
-type program = stm
+and mstm = stm Mark.t
+
+type program = mstm
 
 (* Print as source, with redundant parentheses *)
 (* module Print : sig

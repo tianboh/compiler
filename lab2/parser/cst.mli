@@ -51,7 +51,6 @@ type postop =
   | Plus_plus
   | Minus_minus
 
-(* Expression *)
 type exp =
   | Var of Symbol.t
   | Const_int of Int32.t
@@ -72,21 +71,17 @@ type exp =
       ; false_exp : mexp
       }
 
-(* Expression plus src file location *)
 and mexp = exp Mark.t
 
 type dtype =
   | Int
   | Bool
 
-(* Declaration *)
 type decl =
-  (* int/bool x; *)
   | New_var of
       { t : dtype
       ; name : Symbol.t
       }
-  (* int/bool x = e; *)
   | Init of
       { t : dtype
       ; name : Symbol.t
@@ -106,21 +101,23 @@ and simp =
   | Declare of decl
   | Exp of mexp
 
+and msimp = simp Mark.t
+
 and control =
   | If of
       { cond : mexp
-      ; true_stm : stm
-      ; false_stm : stm option
+      ; true_stm : mstm
+      ; false_stm : mstm option
       }
   | While of
       { cond : mexp
-      ; body : stm
+      ; body : mstm
       }
   | For of
-      { init : simp option
+      { init : msimp option
       ; cond : mexp
-      ; iter : simp option
-      ; body : stm
+      ; iter : msimp option
+      ; body : mstm
       }
   | Return of mexp
 

@@ -246,19 +246,19 @@ lvalue :
   ;
 
 control : 
-  | If; L_paren; e = m(exp); R_paren; s = stm;
+  | If; L_paren; e = m(exp); R_paren; s = m(stm);
       { Cst.If {cond = e; true_stm = s; false_stm = None} }
-  | If; L_paren; e = m(exp); R_paren; true_stm = stm; Else; false_stm = stm;
+  | If; L_paren; e = m(exp); R_paren; true_stm = m(stm); Else; false_stm = m(stm);
       { Cst.If {cond = e; true_stm = true_stm; false_stm = Some false_stm} }
-  | While; L_paren; e = m(exp); R_paren; s = stm;
+  | While; L_paren; e = m(exp); R_paren; s = m(stm);
       { Cst.While {cond = e; body = s} }
-  | For; L_paren; e = m(exp); s = stm;
+  | For; L_paren; e = m(exp); s = m(stm);
       { Cst.For {init = None; cond = e; iter = None; body = s} }
-  | For; L_paren; init = simp; e = m(exp); s = stm;
+  | For; L_paren; init = m(simp); e = m(exp); s = m(stm);
       { Cst.For {init = Some init; cond = e; iter = None; body = s} }
-  | For; L_paren; e = m(exp); iter = simp; s = stm;
+  | For; L_paren; e = m(exp); iter = m(simp); s = m(stm);
       { Cst.For {init = None; cond = e; iter = Some iter; body = s} }
-  | For; L_paren; init = simp; e = m(exp); iter = simp; s = stm;
+  | For; L_paren; init = m(simp); e = m(exp); iter = m(simp); s = m(stm);
       { Cst.For {init = Some init; cond = e; iter = Some iter; body = s} }
   | Return; e = m(exp); Semicolon;
       { Cst.Return e }

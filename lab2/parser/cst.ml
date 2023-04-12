@@ -152,21 +152,23 @@ and simp =
   | Declare of decl
   | Exp of mexp
 
+and msimp = simp Mark.t
+
 and control =
   | If of
       { cond : mexp
-      ; true_stm : stm
-      ; false_stm : stm option
+      ; true_stm : mstm
+      ; false_stm : mstm option
       }
   | While of
       { cond : mexp
-      ; body : stm
+      ; body : mstm
       }
   | For of
-      { init : simp option
+      { init : msimp option
       ; cond : mexp
-      ; iter : simp option
-      ; body : stm
+      ; iter : msimp option
+      ; body : mstm
       }
   | Return of mexp
 
@@ -251,21 +253,30 @@ module Print = struct
     | If if_stm ->
       let else_stm =
         match if_stm.false_stm with
-        | Some s -> sprintf "%s" (pp_stm s)
+        | Some s -> sprintf "%s" (pp_mstm s)
         | None -> ""
       in
-      sprintf "if(%s){%s}else{%s}" (pp_mexp if_stm.cond) (pp_stm if_stm.true_stm) else_stm
+      sprintf
+        "if(%s){%s}else{%s}"
+        (pp_mexp if_stm.cond)
+        (pp_mstm if_stm.true_stm)
+        else_stm
     | While while_stm ->
-      sprintf "while(%s){%s}" (pp_mexp while_stm.cond) (pp_stm while_stm.body)
+      sprintf "while(%s){%s}" (pp_mexp while_stm.cond) (pp_mstm while_stm.body)
     | For for_stm ->
       let init, iter =
         match for_stm.init, for_stm.iter with
         | None, None -> "", ""
-        | Some init, None -> pp_simp init, ""
-        | None, Some iter -> "", pp_simp iter
-        | Some init, Some iter -> pp_simp init, pp_simp iter
+        | Some init, None -> pp_msimp init, ""
+        | None, Some iter -> "", pp_msimp iter
+        | Some init, Some iter -> pp_msimp init, pp_msimp iter
       in
-      sprintf "for(%s; %s; %s){%s}" init (pp_mexp for_stm.cond) iter (pp_stm for_stm.body)
+      sprintf
+        "for(%s; %s; %s){%s}"
+        init
+        (pp_mexp for_stm.cond)
+        iter
+        (pp_mstm for_stm.body)
     | Return e -> sprintf "return %s;" (pp_mexp e)
 
   and pp_blk = function
@@ -273,6 +284,7 @@ module Print = struct
     | h :: t -> sprintf "%s" (pp_mstm h) ^ pp_blk t
 
   and pp_mstm stm = pp_stm (Mark.data stm)
+  and pp_msimp msimp = pp_simp (Mark.data msimp)
   and pp_block stms = "{\n" ^ pp_blk stms ^ "}"
 
   let pp_program block = pp_block block
