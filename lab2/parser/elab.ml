@@ -21,9 +21,6 @@
    * 1) logical operation && || ^ can be denoted in ternary expression, so IR does not
    *    logical operation anymore.
    * 2) <binop>= b can be simplified to a = a binop b
-   * 3) We will initialize an integer to zero if it is just declared but not
-   *    initialized. This can avoid some error in the program because C0 requires each
-   *    of a variable should be defined before. According to course Middle End, 2020/9/22.
    * This can simplify our work in IR level
    * More details can be checked in
    * https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf Page 5 and 6
@@ -153,17 +150,9 @@ and elab_declare (decl : Cst.decl) (src_span : Mark.src_span option) (tail : Cst
   match decl with
   | New_var var ->
     let ast_tail = elaborate_internal tail (Mark.naked Ast.Nop) in
-    let assign =
-      match var.t with
-      | Cst.Int ->
-        Ast.Assign
-          { name = var.name; value = Mark.mark' (Ast.Const_int Int32.zero) src_span }
-      | Cst.Bool -> Ast.Assign { name = var.name; value = Mark.naked Ast.False }
+    let decl_ast =
+      Ast.Declare { t = elab_type var.t; name = var.name; tail = ast_tail }
     in
-    let seq =
-      Mark.naked (Ast.Seq { head = Mark.mark' assign src_span; tail = ast_tail })
-    in
-    let decl_ast = Ast.Declare { t = elab_type var.t; name = var.name; tail = seq } in
     Mark.mark' decl_ast src_span, []
   | Init init ->
     let ast_tail = elaborate_internal tail (Mark.naked Ast.Nop) in

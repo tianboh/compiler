@@ -17,10 +17,14 @@
  * For example, whether the expression of If.cond is Bool type.
  * 2) Check sub-statement is valid of a statement.
  * For example, whether Seq.head and Seq.tail is valid for Seq.
- * 3) Check variable re-declaration error.
+ * 3) Check variable re-declaration error, and assign without declare error.
  *
  * Expression level check
  * 1) Check whether the operand and operator consistent with each other.
+ * 
+ * We can summarize above checks to two cases
+ * 1) Type check in statement and expression
+ * 2) Variable declaration check, including re-decl and non-decl.
  *
  * Modified: Anand Subramanian <asubrama@andrew.cmu.edu> Fall 2010
  * Now distinguishes between declarations and initialization
