@@ -24,6 +24,7 @@ module Elab = Parser.Elab
 module Ast = Parser.Ast
 module Cst = Parser.Cst
 module Typechecker = Semantic.Typechecker
+module Controlflow = Semantic.Controlflow
 module Dfana = Flow.Dfana
 module Tree = Parser.Tree
 module Trans = Parser.Trans
@@ -36,7 +37,7 @@ type cmd_line_args =
   ; dump_ast : bool
   ; dump_ir : bool
   ; dump_assem : bool
-  ; typecheck_only : bool
+  ; semcheck_only : bool
   ; regalloc_only : bool
   ; emit : Emit.t
   ; opt_level : Opt_level.t
@@ -81,9 +82,9 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and dump_assem =
     let doc = "If present, print the final assembly." in
     flag (Arg.info [ "dump-assem" ] ~doc)
-  and typecheck_only =
-    let doc = "If present, exit after typechecking." in
-    flag (Arg.info [ "t"; "typecheck-only" ] ~doc)
+  and semcheck_only =
+    let doc = "If present, exit after semantic analysis." in
+    flag (Arg.info [ "t"; "semcheck-only" ] ~doc)
   and regalloc_only =
     let doc = "Regalloc only for l1 checkpoint" in
     flag (Arg.info [ "r"; "regalloc-only" ] ~doc)
@@ -117,7 +118,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   ; dump_ast
   ; dump_ir
   ; dump_assem
-  ; typecheck_only
+  ; semcheck_only
   ; regalloc_only
   ; emit
   ; opt_level
@@ -168,10 +169,12 @@ let compile (cmd : cmd_line_args) : unit =
   say_if cmd.dump_ast (fun () -> Cst.Print.pp_program cst);
   (* Elaborate *)
   let ast = Elab.elaborate cst in
-  (* Typecheck *)
+  (* Semantic analysis *)
   say_if cmd.verbose (fun () -> "Checking...");
   Typechecker.typecheck ast;
-  if cmd.typecheck_only then exit 0;
+  Controlflow.cf_ret ast;
+  Controlflow.cf_init ast;
+  if cmd.semcheck_only then exit 0;
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Trans.translate ast in
