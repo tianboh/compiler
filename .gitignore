@@ -1,3 +1,5 @@
 _build
 .merlin
 bin/c0c
+.ocamlformat
+.vscode/
