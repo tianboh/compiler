@@ -178,7 +178,7 @@ let compile (cmd : cmd_line_args) : unit =
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Trans.translate ast in
-  say_if cmd.dump_ir (fun () -> Tree.Print.pp_program ir);
+  say_if cmd.dump_ir (fun () -> Tree.Print.pp_stm ir);
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)

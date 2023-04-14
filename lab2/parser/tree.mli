@@ -6,37 +6,69 @@
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  *)
 module Temp = Var.Temp
+module Label = Util.Label
 
 type binop =
-  | Add
-  | Sub
-  | Mul
-  | Div
-  | Mod
-  | Logic_and
-  | Logic_or
-  | Bit_and
-  | Bit_or
-  | Bit_xor
+  | Plus
+  | Minus
+  | Times
+  | Divided_by
+  | Modulo
+  | And
+  | Or
+  | Hat
+  | Right_shift
+  | Left_shift
+  | Equal_eq
+  | Greater
+  | Greater_eq
+  | Less
+  | Less_eq
+  | Not_eq
 
 type exp =
-  | Const_int of Int32.t
-  | Const_bool of Bool.t
+  | Const of Int32.t
   | Temp of Temp.t
   | Binop of
       { lhs : exp
       ; op : binop
       ; rhs : exp
       }
+  (* Sexp is designed as a counterpart for AST terop.
+   * It will execute stm for side effect, like CJump, 
+   * and then return exp. *)
+  | Sexp of
+      { stm : stm
+      ; exp : exp
+      }
 
-type stm =
+and stm =
   | Move of
       { dest : Temp.t
       ; src : exp
       }
   | Return of exp
+  | Jump of Label.t
+  | CJump of
+      { (* Jump if cond is Int.one 
+         * Otherwise, execute next adjunct statement.
+         * cond can be 
+         * 1) integer zero, indicate false
+         * 2) integer one, indicate true
+         * 3) a binary relation comparison, a relop b 
+         *)
+        cond : exp
+      ; target_stm : Label.t
+      }
+  | Label of Label.t
+  | Seq of
+      { head : stm
+      ; tail : stm
+      }
 
-type program = stm list
+type program = stm
+
+val is_relop : binop -> bool
 
 module Print : sig
   val pp_exp : exp -> string
