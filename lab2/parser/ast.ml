@@ -84,7 +84,11 @@ type stm =
       ; name : Symbol.t
       ; tail : mstm
       }
-  (* This is used for special case in elaboration from CST simp case. *)
+  (* This is used for special case in elaboration from CST simp case. 
+   * Also expression as statement is legal according to 
+   * https://c0.cs.cmu.edu/docs/c0-reference.pdf Section 6.2,
+   * Such a statement evaluates e, incurring all of its effects, 
+   * and then discards the return value if there is any *)
   | Sexp of mexp
 
 and mstm = stm Mark.t

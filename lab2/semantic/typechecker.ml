@@ -207,8 +207,8 @@ and tc_declare decl_type decl_name tail loc env =
         ~data:{ state = Decl; dtype = trans_ast_dtype decl_type }
     in
     let env' = { env with vars = vars' } in
-    let _ = (tc_stms tail env' : env) in
-    env
+    let env'' = (tc_stms tail env' : env) in
+    { env'' with vars = S.remove env''.vars decl_name }
 ;;
 
 let typecheck prog =

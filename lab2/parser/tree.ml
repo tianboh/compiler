@@ -88,6 +88,11 @@ and stm =
       { head : stm
       ; tail : stm
       }
+  | Nop
+  | NExp of
+      (* NExp only execute expression for potential side effect
+       * But it will drop the result after execution. *)
+      exp
 
 type program = stm
 
@@ -136,6 +141,8 @@ module Print : PRINT = struct
       Printf.sprintf "cjump(%s) Target:%s" (pp_exp cj.cond) (Label.name cj.target_stm)
     | Label l -> Label.name l
     | Seq seq -> pp_stm seq.head ^ pp_stm seq.tail
+    | Nop -> "nop"
+    | NExp nexp -> pp_exp nexp
   ;;
 
   let pp_program program = pp_stm program

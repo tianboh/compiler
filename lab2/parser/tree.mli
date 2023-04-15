@@ -65,6 +65,11 @@ and stm =
       { head : stm
       ; tail : stm
       }
+  | Nop
+  | NExp of
+      (* NExp only execute expression for potential side effect
+       * But it will drop the result after execution. *)
+      exp
 
 type program = stm
 
