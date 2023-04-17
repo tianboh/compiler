@@ -1,6 +1,6 @@
 (library
  (name inst)
- (libraries core var)
+ (libraries core var util)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))

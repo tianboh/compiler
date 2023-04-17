@@ -1,40 +1,59 @@
-(* L1 Compiler
+(* L2 Compiler
  * Assembly language
- * Author: Kaustuv Chaudhuri <kaustuv+@andrew.cmu.edu>
+ * Created: Kaustuv Chaudhuri <kaustuv+@andrew.cmu.edu>
+ * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
  * Modified By: Alex Vaynberg <alv@andrew.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  *
- * Currently just a pseudo language with 3-operand
- * instructions and arbitrarily many temps
+ * Pseudo assembly code feature
+ * 1) 3-operand format instructions and arbitrarily many temps.
+ * These temps will be mapped to registers eventually.
+ * 2) Compared with IR, pseudo assembly code is more low-level
+ * because there is no statement anymore. In fact, IR statement
+ * is more of instruction and IR exp is more of operand.
+ * 3) Also, the operand for instruction is not nested anymore.
+ * For example, IR level support:
+ *   type exp = | binop {op; lhs : exp; rhs : exp}
+ * However, in pseudo code assembly, operand of binop can only 
+ * be of Imm, Temp or reg.
  *)
 open Core
 module Register = Var.X86_reg
 module Temp = Var.Temp
+module Label = Util.Label
 open Var.Layout
 
 (* Notice that pure pseudo assembly does not assign register to each temp, so 
-   operand does not contain register type. Register is assigned in x86 assemb. 
-   
-   However, when we use gen_pseudo_x86 function, the operand will contain x86 register
-   because of some conventions.
-*)
+ * operand does not contain register type. Register is assigned in x86 assemb. 
+ *  
+ * However, when we use gen_pseudo_x86 function, the operand will contain x86 
+ * register because of some conventions.
+ *)
 type operand =
   | Imm of Int32.t
   | Temp of Temp.t
   | Reg of Register.t
 
 type bin_op =
-  | Add
-  | Sub
-  | Mul
-  | Div
-  | Mod
+  | Plus
+  | Minus
+  | Times
+  | Divided_by
+  | Modulo
   | And
   | Or
-  | Pand
-  | Por
-  | Pxor
+  | Hat
+  | Right_shift
+  | Left_shift
+  | Equal_eq
+  | Greater
+  | Greater_eq
+  | Less
+  | Less_eq
+  | Not_eq
+
+(* | T.Hat -> check https://www.madwizard.org/programming/snippets?id=36 *)
 
 type instr =
   | Binop of
@@ -47,22 +66,35 @@ type instr =
       { dest : operand
       ; src : operand
       }
+  | Jump of { target : Label.t }
+  | CJump of
+      { (*Jump if cond == 1*)
+        cond : operand
+      ; target : Label.t
+      }
+  | Label of Label.t
   | Directive of string
   | Comment of string
 
 (* functions that format assembly output *)
 
 let format_binop = function
-  | Add -> "+"
-  | Sub -> "-"
-  | Mul -> "*"
-  | Div -> "/"
-  | Mod -> "%"
-  | And -> "&&"
-  | Or -> "||"
-  | Pand -> "&"
-  | Por -> "|"
-  | Pxor -> "^"
+  | Plus -> "+"
+  | Minus -> "-"
+  | Times -> "*"
+  | Divided_by -> "/"
+  | Modulo -> "%"
+  | And -> "&"
+  | Or -> "|"
+  | Hat -> "^"
+  | Right_shift -> ">>"
+  | Left_shift -> "<<"
+  | Equal_eq -> "=="
+  | Greater -> ">"
+  | Greater_eq -> ">="
+  | Less -> "<"
+  | Less_eq -> "<="
+  | Not_eq -> "!="
 ;;
 
 let format_operand = function
@@ -80,25 +112,9 @@ let format = function
       (format_binop binop.op)
       (format_operand binop.rhs)
   | Mov mv -> sprintf "%s <-- %s" (format_operand mv.dest) (format_operand mv.src)
+  | Jump jp -> sprintf "jump %s" (Label.name jp.target)
+  | CJump cjp -> sprintf "cjump(%s) %s" (format_operand cjp.cond) (Label.name cjp.target)
+  | Label label -> sprintf ".%s" (Label.name label)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
 ;;
-
-(* let gen_x86_operand (op : operand) (reg_alloc_info : Register.t Temp.Map.t) : X86.operand = match op with
-  | Temp t -> X86.Reg (Temp.Map.find_exn reg_alloc_info t)
-  | Imm i -> X86.Imm i
-;; *)
-
-(* let gen_x86_inst (inst) : = match inst with
-  | Binop bin_op -> 
-      { op = X86.Binop
-      ; dest = X86.operand
-      ; lhs : X86.operand
-      ; rhs : X86.operand
-      }
-  | Mov mov ->  of
-      { dest : Temp.t
-      ; src : operand
-      }
-  | Directive dir -> of string
-  | Comment cmt -> of string *)

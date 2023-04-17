@@ -33,12 +33,12 @@ type instr =
       ; layout : layout
       }
   (* temp := EDX:EAX / SRC;
-                            IF temp > FFFFFFFFH
-                                THEN #DE; (* Divide error *)
-                            ELSE
-                                EAX := temp;
-                                EDX := EDX:EAX MOD SRC;
-                            FI; *)
+            IF temp > FFFFFFFFH
+                THEN #DE; (* Divide error *)
+            ELSE
+                EAX := temp;
+                EDX := EDX:EAX MOD SRC;
+            FI; *)
   | Mod of
       { src : operand
       ; layout : layout

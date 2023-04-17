@@ -1,4 +1,4 @@
-(* L1 Compiler
+(* L2 Compiler
  * Assembly Code Generator for FAKE assembly
  * Author: Alex Vaynberg <alv@andrew.cmu.edu>
  * Based on code by: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
@@ -39,217 +39,114 @@ module Memory = Var.Memory
 open Var.Layout
 
 let munch_op = function
-  | T.Add -> AS.Add
-  | T.Sub -> AS.Sub
-  | T.Mul -> AS.Mul
-  | T.Div -> AS.Div
-  | T.Mod -> AS.Mod
-  | T.Logic_and -> AS.And
-  | T.Logic_or -> AS.Or
-  | T.Bit_and -> AS.Pand
-  | T.Bit_or -> AS.Por
-  | T.Bit_xor -> AS.Pxor
+  | T.Plus -> AS.Plus
+  | T.Minus -> AS.Minus
+  | T.Times -> AS.Times
+  | T.Divided_by -> AS.Divided_by
+  | T.Modulo -> AS.Modulo
+  | T.And -> AS.And
+  | T.Or -> AS.Or
+  | T.Hat -> AS.Hat
+  | T.Right_shift -> AS.Right_shift
+  | T.Left_shift -> AS.Left_shift
+  | T.Equal_eq -> AS.Equal_eq
+  | T.Greater -> AS.Greater
+  | T.Greater_eq -> AS.Greater_eq
+  | T.Less -> AS.Less
+  | T.Less_eq -> AS.Less_eq
+  | T.Not_eq -> AS.Not_eq
 ;;
 
 module Pseudo = struct
-  (* munch_exp dest exp
-  * Generates instructions for dest <-- exp.
-  *)
+  (* munch_exp_acc dest exp rev_acc
+   *
+   * Suppose we have the statement:
+   *   dest <-- exp
+   *
+   * If the codegened statements for this are:
+   *   s1; s2; s3; s4;
+   *
+   * Then this function returns the result:
+   *   s4 :: s3 :: s2 :: s1 :: rev_acc
+   *
+   * I.e., rev_acc is an accumulator argument where the codegen'ed
+   * statements are built in reverse. This allows us to create the
+   * statements in linear time rather than quadratic time (for highly
+   * nested expressions).
+   *)
+  let rec munch_exp_acc (dest : AS.operand) (exp : T.exp) (rev_acc : AS.instr list)
+      : AS.instr list
+    =
+    match exp with
+    | T.Const i -> AS.Mov { dest; src = AS.Imm i } :: rev_acc
+    | T.Temp t -> AS.Mov { dest; src = AS.Temp t } :: rev_acc
+    | T.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
+    | T.Sexp sexp ->
+      let stm = munch_stm sexp.stm in
+      let stm_rev = List.rev stm in
+      let ret = stm_rev @ rev_acc in
+      (* Notice that sexp does not return any thing,
+       * it is only used for side effect.
+       * So we create a temporary as dest, but do not
+       * use it in the above level. *)
+      let t = AS.Temp (Temp.create ()) in
+      munch_exp_acc t sexp.exp ret
 
-  let munch_exp : AS.operand -> T.exp -> AS.instr list =
-    (* munch_exp_acc dest exp rev_acc
-    *
-    * Suppose we have the statement:
-    *   dest <-- exp
-    *
-    * If the codegened statements for this are:
-    *   s1; s2; s3; s4;
-    *
-    * Then this function returns the result:
-    *   s4 :: s3 :: s2 :: s1 :: rev_acc
-    *
-    * I.e., rev_acc is an accumulator argument where the codegen'ed
-    * statements are built in reverse. This allows us to create the
-    * statements in linear time rather than quadratic time (for highly
-    * nested expressions).
-    *)
-    let rec munch_exp_acc (dest : AS.operand) (exp : T.exp) (rev_acc : AS.instr list)
-        : AS.instr list
-      =
-      match exp with
-      | T.Const_int i -> AS.Mov { dest; src = AS.Imm i } :: rev_acc
-      | T.Const_bool b ->
-        (match b with
-        | true -> AS.Mov { dest; src = AS.Imm Int32.one } :: rev_acc
-        | false -> AS.Mov { dest; src = AS.Imm Int32.zero } :: rev_acc)
-      | T.Temp t -> AS.Mov { dest; src = AS.Temp t } :: rev_acc
-      | T.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
-    (* munch_binop_acc dest (binop, e1, e2) rev_acc
-    *
-    * generates instructions to achieve dest <- e1 binop e2
-    *
-    * Much like munch_exp, this returns the result of appending the
-    * instructions in reverse to the accumulator argument, rev_acc.
-    *)
-    and munch_binop_acc
-        (dest : AS.operand)
-        ((binop, e1, e2) : T.binop * T.exp * T.exp)
-        (rev_acc : AS.instr list)
-        : AS.instr list
-      =
-      let op = munch_op binop in
-      (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
-      let t1 = Temp.create () in
-      let t2 = Temp.create () in
-      let rev_acc' =
-        rev_acc |> munch_exp_acc (AS.Temp t1) e1 |> munch_exp_acc (AS.Temp t2) e2
-      in
-      AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
+  (* munch_binop_acc dest (binop, e1, e2) rev_acc
+   *
+   * generates instructions to achieve dest <- e1 binop e2
+   *
+   * Much like munch_exp, this returns the result of appending the
+   * instructions in reverse to the accumulator argument, rev_acc.
+   *)
+  and munch_binop_acc
+      (dest : AS.operand)
+      ((binop, e1, e2) : T.binop * T.exp * T.exp)
+      (rev_acc : AS.instr list)
+      : AS.instr list
+    =
+    let op = munch_op binop in
+    (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
+    let t1 = Temp.create () in
+    let t2 = Temp.create () in
+    let rev_acc' =
+      rev_acc |> munch_exp_acc (AS.Temp t1) e1 |> munch_exp_acc (AS.Temp t2) e2
     in
-    fun dest exp ->
-      (* Since munch_exp_acc returns the reversed accumulator, we must
-      * reverse the list before returning. *)
-      List.rev (munch_exp_acc dest exp [])
-  ;;
+    AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
 
-  (* munch_stm : T.stm -> AS.instr list *)
-  (* munch_stm stm generates code to execute stm *)
-  let munch_stm stm =
+  and munch_exp : AS.operand -> T.exp -> AS.instr list =
+   (* munch_exp dest exp
+    * Generates instructions for dest <-- exp.
+    *)
+   fun dest exp ->
+    (* Since munch_exp_acc returns the reversed accumulator, we must
+     * reverse the list before returning. *)
+    List.rev (munch_exp_acc dest exp [])
+
+  and munch_stm stm =
     match stm with
     | T.Move mv -> munch_exp (AS.Temp mv.dest) mv.src
     | T.Return e ->
       (* return e is implemented as %eax <- e 
-        %t-1 is %eax, which is our returned destination. *)
+       * %t-1 is %eax, which is our returned destination. *)
       let t = Temp.create_no (-1) in
       munch_exp (AS.Temp t) e
-  ;;
-
-  (* Check if key is stored in cache before, if key -> Imm
-   * is stored before, then return Imm, else return key. *)
-  let const_cache (map : Int32.t Temp.Map.t) (key : AS.operand) : AS.operand =
-    match key with
-    | AS.Temp k ->
-      (* let () = printf "check key %s\n" (Temp.name k) in *)
-      (match Temp.Map.find map k with
-      | Some s ->
-        (* let () = printf "find %d\n" (Int32.to_int_exn s) in  *)
-        AS.Imm s
-      | None -> AS.Temp k)
-    | AS.Imm i -> AS.Imm i
-    | AS.Reg r -> AS.Reg r
-  ;;
-
-  (* We store the map from Temp.t to Imm when read mov instruction.
-   * We will replace right hand side operand temp in mov and binop 
-   * with Imm if the temporary has already been stored.*)
-  let const_propagation (pseudo_assembly : AS.instr list) : AS.instr list =
-    let const_map = Temp.Map.empty in
-    let rec helper
-        (pseudo_assembly : AS.instr list)
-        (res : AS.instr list)
-        (const_map : Int32.t Temp.Map.t)
-      =
-      match pseudo_assembly with
-      | [] -> res
-      | h :: t ->
-        (match h with
-        | AS.Binop bin ->
-          (match bin.op with
-          | AS.Add | AS.Sub | AS.Mul | AS.Div | AS.Mod ->
-            let new_l = const_cache const_map bin.lhs in
-            let new_r = const_cache const_map bin.rhs in
-            helper
-              t
-              (res
-              @ [ AS.Binop { op = bin.op; lhs = new_l; rhs = new_r; dest = bin.dest } ])
-              const_map
-          | _ -> helper t (res @ [ h ]) const_map)
-        | AS.Mov mov ->
-          (match mov.dest, mov.src with
-          | AS.Temp tmp, AS.Imm i ->
-            let const_map = Temp.Map.set const_map ~key:tmp ~data:i in
-            if Temp.is_reg tmp
-            then helper t (res @ [ h ]) const_map
-            else helper t res const_map
-          | AS.Temp _, AS.Temp src ->
-            (match Temp.Map.find const_map src with
-            | None -> helper t (res @ [ h ]) const_map
-            | Some s ->
-              helper t (res @ [ AS.Mov { dest = mov.dest; src = AS.Imm s } ]) const_map)
-          | _ -> helper t (res @ [ h ]) const_map)
-        | _ -> helper t (res @ [ h ]) const_map)
-    in
-    helper pseudo_assembly [] const_map
-  ;;
-
-  (* Check whether temporary key is mapped to a value in coalesce map. *)
-  let temp_cache (map : Temp.t Temp.Map.t) (key : AS.operand) : AS.operand =
-    match key with
-    | AS.Imm i -> AS.Imm i
-    | AS.Reg r -> AS.Reg r
-    | AS.Temp t ->
-      (match Temp.Map.find map t with
-      | Some v ->
-        (* let () = printf "find %s\n" (Temp.name v) in  *)
-        AS.Temp v
-      | None ->
-        (* let () = printf "find %s\n" (Temp.name t) in  *)
-        AS.Temp t)
-  ;;
-
-  (* When read mov t1 t2, we will generate t3 and use t3 to replace t1 and t2 in the following insts. 
-   * Then we build a map to store the mapping relation {t1 : t3} and {t2 : t3} where t1 and t2 are key
-   * and t3 is the value. *)
-  let temp_propagation (ori_insts : AS.instr list) : AS.instr list =
-    let temp_map = Temp.Map.empty in
-    let rec helper
-        (ori_insts : AS.instr list)
-        (ret : AS.instr list)
-        (map : Temp.t Temp.Map.t)
-        : AS.instr list
-      =
-      match ori_insts with
-      | [] -> ret
-      | h :: t ->
-        (match h with
-        | AS.Mov mov ->
-          (match mov.dest, mov.src with
-          | AS.Temp dest, AS.Temp src ->
-            if Temp.is_reg dest
-            then (
-              let src =
-                match Temp.Map.find map src with
-                | None -> src
-                | Some s -> s
-              in
-              helper t (ret @ [ AS.Mov { dest = AS.Temp dest; src = AS.Temp src } ]) map)
-            else (
-              let root =
-                match Temp.Map.find map src with
-                | None -> src
-                | Some s -> s
-              in
-              let map = Temp.Map.set map ~key:dest ~data:root in
-              helper t ret map)
-          | _ -> helper t (ret @ [ h ]) map)
-        | AS.Binop bin ->
-          let new_dest = temp_cache map bin.dest in
-          let new_lhs = temp_cache map bin.lhs in
-          let new_rhs = temp_cache map bin.rhs in
-          helper
-            t
-            (ret
-            @ [ AS.Binop { op = bin.op; dest = new_dest; lhs = new_lhs; rhs = new_rhs } ]
-            )
-            map
-        | _ -> helper t (ret @ [ h ]) map)
-    in
-    helper ori_insts [] temp_map
+    | Jump jmp -> [ AS.Jump { target = jmp } ]
+    | T.CJump cjmp ->
+      let t = AS.Temp (Temp.create ()) in
+      let cond = munch_exp t cjmp.cond in
+      cond @ [ AS.CJump { cond = t; target = cjmp.target_stm } ]
+    | T.Label l -> [ AS.Label l ]
+    | T.Seq seq -> munch_stm seq.head @ munch_stm seq.tail
+    | T.Nop -> []
+    | T.NExp nexp ->
+      let t = AS.Temp (Temp.create ()) in
+      munch_exp t nexp
   ;;
 
   (* To codegen a series of statements, just concatenate the results of
-  * codegen-ing each statement. *)
-  let gen = List.concat_map ~f:(fun stm -> munch_stm stm)
+   * codegen-ing each statement. *)
+  let gen (stm : T.program) = munch_stm stm
 
   (* let rec print_insts insts = 
     match insts with
@@ -258,19 +155,10 @@ module Pseudo = struct
       let () = printf "%s\n" (AS.format h) in 
       print_insts t
   ;; *)
-  let optimize (ori_insts : AS.instr list) : AS.instr list =
-    (* let () = print_insts ori_insts in *)
-    let ret = temp_propagation ori_insts in
-    let ret = const_propagation ret in
-    ret
-  ;;
+
   (* let () = print_insts ret in *)
   (* ori_insts *)
 end
-
-(* module Pseudo_x86 = struct
-  let gen = List.concat_map ~f:(fun stm -> munch_stm stm)
-end *)
 
 module X86 = struct
   let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t)
@@ -299,23 +187,23 @@ module X86 = struct
       (swap : Register.t)
     =
     match op with
-    | Add -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_add dest rhs DWORD
-    | Sub -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_sub dest rhs DWORD
-    | Mul ->
+    | Plus -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_add dest rhs DWORD
+    | Minus -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_sub dest rhs DWORD
+    | Times ->
       [ AS_x86.Mov { dest = eax; src = lhs; layout = DWORD }
       ; AS_x86.Mul { src = rhs; dest = eax; layout = DWORD }
       ; AS_x86.Mov { dest; src = eax; layout = DWORD }
       ]
-    | Div ->
+    | Divided_by ->
       (* Notice that lhs and rhs may be allocated on edx. 
-                 So we use reg_swap to avoid override in the edx <- 0. *)
+       * So we use reg_swap to avoid override in the edx <- 0. *)
       [ AS_x86.Mov { dest = eax; src = lhs; layout = DWORD }
       ; AS_x86.Mov { dest = AS_x86.Reg swap; src = rhs; layout = DWORD }
       ; AS_x86.Cvt { layout = DWORD }
       ; AS_x86.Div { src = AS_x86.Reg swap; layout = DWORD }
       ; AS_x86.Mov { dest; src = eax; layout = DWORD }
       ]
-    | Mod ->
+    | Modulo ->
       [ AS_x86.Mov { dest = eax; src = lhs; layout = DWORD }
       ; AS_x86.Mov { dest = AS_x86.Reg swap; src = rhs; layout = DWORD }
       ; AS_x86.Cvt { layout = DWORD }
@@ -350,7 +238,7 @@ module X86 = struct
         let src = oprd_ps_to_x86 mov.src reg_alloc_info in
         let insts = AS_x86.safe_mov dest src DWORD in
         _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
-      | AS.Directive _ | AS.Comment _ -> _codegen_w_reg res t reg_alloc_info reg_swap)
+      | _ -> _codegen_w_reg res t reg_alloc_info reg_swap)
   ;;
 
   let gen (inst_list : AS.instr list) (reg_alloc_info : (Temp.t * Register.t) option list)
