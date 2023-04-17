@@ -191,7 +191,7 @@ dtype :
   | Int;
       { Cst.Int }
   | Bool;
-      {Cst.Bool}
+      { Cst.Bool }
 
 decl :
   | t = dtype; ident = Ident;
@@ -230,7 +230,7 @@ simp :
       { expand_asnop ~lhs ~op ~rhs $startpos(lhs) $endpos(rhs) }
   | lhs = m(lvalue); op = postop;
       { expand_postop lhs op $startpos(lhs)}
-  | d = decl; Semicolon;
+  | d = decl;
       { Cst.Declare d }
   | e = m(exp);
       { Cst.Exp e }
