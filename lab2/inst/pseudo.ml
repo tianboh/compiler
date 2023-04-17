@@ -72,6 +72,7 @@ type instr =
         cond : operand
       ; target : Label.t
       }
+  | Ret of { var : operand }
   | Label of Label.t
   | Directive of string
   | Comment of string
@@ -117,4 +118,5 @@ let format = function
   | Label label -> sprintf ".%s" (Label.name label)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
+  | Ret ret -> sprintf "return %s" (format_operand ret.var)
 ;;

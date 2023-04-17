@@ -204,7 +204,6 @@ let dump_json (inst_info : (int, line) Base.Hashtbl.t) : Inst_reg_info.program =
 
 let gen_regalloc_info (inst_list : AS.instr list) =
   let inst_info = Hashtbl.create (module Int) in
-  (* let () = List.iter inst_list ~f:(fun x -> printf "%s\n" (AS.format x)) in *)
   let inst_info = gen_forward inst_list inst_info 0 in
   let inst_list_rev = List.rev inst_list in
   let live_out = Temp.Set.empty in

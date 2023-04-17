@@ -14,6 +14,7 @@ module AS_x86 = Inst.X86
 
 module Pseudo : sig
   val gen : Parser.Tree.program -> AS.instr list
+  val print_insts : AS.instr list -> unit
 end
 
 (* module Pseudo_x86 : sig

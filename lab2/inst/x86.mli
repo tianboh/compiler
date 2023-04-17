@@ -46,6 +46,14 @@ type instr =
       }
   | Cvt of { layout : layout }
   | Ret
+  | Pop of
+      { reg : operand
+      ; layout : layout
+      }
+  | Push of
+      { reg : operand
+      ; layout : layout
+      }
   (* Assembly directive. *)
   | Directive of string
   (* Human-friendly comment. *)
@@ -58,3 +66,4 @@ val format_operand : operand -> layout -> string
 val safe_mov : operand -> operand -> layout -> instr list
 val safe_add : operand -> operand -> layout -> instr list
 val safe_sub : operand -> operand -> layout -> instr list
+val safe_ret : operand -> layout -> instr list

@@ -50,6 +50,14 @@ type instr =
       }
   | Cvt of { layout : layout } (*could be cdq, cqo, etc based on size it wants to extend.*)
   | Ret
+  | Pop of
+      { reg : operand
+      ; layout : layout
+      }
+  | Push of
+      { reg : operand
+      ; layout : layout
+      }
   | Directive of string
   | Comment of string
 
@@ -79,6 +87,15 @@ let safe_sub (dest : operand) (src : operand) (layout : layout) =
     ; Sub { dest = Mem dest; src = Reg (Register.swap ()); layout }
     ]
   | _ -> [ Sub { dest; src; layout } ]
+;;
+
+let safe_ret (dest : operand) (layout : layout) =
+  (* insts = [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] *)
+  [ Mov { dest = Reg (Register.create_no 1); src = dest; layout = DWORD }
+  ; Mov { dest = Reg (Register.create_no 8); src = Reg (Register.create_no 7); layout }
+  ; Pop { reg = Reg (Register.create_no 7); layout = QWORD }
+  ; Ret
+  ]
 ;;
 
 (* prologue for a callee function. Handle callee-saved registers and allocate space for local variables *)
@@ -145,7 +162,11 @@ let format = function
       (format_inst mv.layout)
       (format_operand mv.src mv.layout)
       (format_operand mv.dest mv.layout)
-  | Ret -> format_epilogue ()
+  | Ret -> "ret"
+  | Push push ->
+    sprintf "push%s %s" (format_inst push.layout) (format_operand push.reg push.layout)
+  | Pop pop ->
+    sprintf "pop%s %s" (format_inst pop.layout) (format_operand pop.reg pop.layout)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
 ;;

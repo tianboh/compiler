@@ -129,8 +129,9 @@ module Pseudo = struct
     | T.Return e ->
       (* return e is implemented as %eax <- e 
        * %t-1 is %eax, which is our returned destination. *)
-      let t = Temp.create_no (-1) in
-      munch_exp (AS.Temp t) e
+      let t = Temp.create () in
+      let inst = munch_exp (AS.Temp t) e in
+      inst @ [ AS.Ret { var = AS.Temp t } ]
     | Jump jmp -> [ AS.Jump { target = jmp } ]
     | T.CJump cjmp ->
       let t = AS.Temp (Temp.create ()) in
@@ -148,13 +149,13 @@ module Pseudo = struct
    * codegen-ing each statement. *)
   let gen (stm : T.program) = munch_stm stm
 
-  (* let rec print_insts insts = 
+  let rec print_insts insts =
     match insts with
     | [] -> ()
-    | h :: t -> 
-      let () = printf "%s\n" (AS.format h) in 
+    | h :: t ->
+      let () = printf "%s\n" (AS.format h) in
       print_insts t
-  ;; *)
+  ;;
 
   (* let () = print_insts ret in *)
   (* ori_insts *)
@@ -223,7 +224,7 @@ module X86 = struct
       (reg_swap : Register.t)
     =
     match inst_list with
-    | [] -> res @ [ AS_x86.Ret ]
+    | [] -> res
     | h :: t ->
       (* let () = printf "%s\n" (AS.format h) in *)
       (match h with
@@ -237,6 +238,11 @@ module X86 = struct
         let dest = oprd_ps_to_x86 mov.dest reg_alloc_info in
         let src = oprd_ps_to_x86 mov.src reg_alloc_info in
         let insts = AS_x86.safe_mov dest src DWORD in
+        _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
+      | AS.Ret ret ->
+        let var_ret = oprd_ps_to_x86 ret.var reg_alloc_info in
+        (* [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] *)
+        let insts = AS_x86.safe_ret var_ret QWORD in
         _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
       | _ -> _codegen_w_reg res t reg_alloc_info reg_swap)
   ;;

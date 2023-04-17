@@ -63,6 +63,7 @@ type instr =
         cond : operand
       ; target : Label.t
       }
+  | Ret of {var : operand}
   | Label of Label.t
   (* Assembly directive. *)
   | Directive of string
