@@ -127,8 +127,6 @@ module Pseudo = struct
     match stm with
     | T.Move mv -> munch_exp (AS.Temp mv.dest) mv.src
     | T.Return e ->
-      (* return e is implemented as %eax <- e 
-       * %t-1 is %eax, which is our returned destination. *)
       let t = Temp.create () in
       let inst = munch_exp (AS.Temp t) e in
       inst @ [ AS.Ret { var = AS.Temp t } ]
@@ -170,7 +168,15 @@ module X86 = struct
       let reg =
         match Temp.Map.find reg_alloc_info t with
         | Some s -> s
-        | None -> Register.tmp_to_reg t
+        | None ->
+          (* Consider two cases here:
+           * 1) Temp is pre-determined by input. Like l1-checkpoint %rax is written as %t-1
+           * 2) Some variable that is only declared but not defined during the whole program. 
+           * For example: int a; and no assignment afterwards.
+           * In this case, we will use %eax to represent it. Notice that it is only a representation
+           * for this uninitialized temporary, and %eax will not be assigned in the following instruction.
+           * Therefore, no worry for the return value. *)
+          if Temp.value t < 0 then Register.tmp_to_reg t else Register.create_no 1
       in
       if Register.need_spill reg then AS_x86.Mem (Memory.from_reg reg) else AS_x86.Reg reg
     | Reg r -> AS_x86.Reg r

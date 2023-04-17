@@ -180,28 +180,6 @@ let print_line (line : line) =
 
 let print_lines (lines : line list) = List.iter lines ~f:(fun line -> print_line line)
 
-(* let format_line (line : line) : Inst_reg_info.line = 
-  let define_l = Temp.Set.to_list line.define in
-  let define = match define_l with
-  | [] -> ""
-  | h :: _ -> h
-  in
-  { uses = Temp.Set.to_list line.uses
-  ; define = define
-  ; live_out = Temp.Set.to_list line.live_out
-  ; move = line.move
-  ; line_number = line.line_number
-  }
-;;
-
-let dump_json (inst_info : (int, line) Base.Hashtbl.t) : Inst_reg_info.program = 
-  let line_num = Hashtbl.keys inst_info in
-  let line_num = List.sort line_num ~compare:Int.compare in
-  List.map line_num ~f:(fun no -> 
-    let line = Hashtbl.find_exn inst_info no in
-    format_line line)
-;; *)
-
 let gen_regalloc_info (inst_list : AS.instr list) =
   let inst_info = Hashtbl.create (module Int) in
   let inst_info = gen_forward inst_list inst_info 0 in
@@ -213,6 +191,5 @@ let gen_regalloc_info (inst_list : AS.instr list) =
   let inst_no_sort = List.sort (Hashtbl.keys inst_info) ~compare:Int.compare in
   let ret = List.map inst_no_sort ~f:(fun no -> Hashtbl.find_exn inst_info no) in
   (* let () = print_lines ret in *)
-  (* let () = dump_json inst_info in *)
   ret
 ;;
