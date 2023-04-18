@@ -9,3 +9,5 @@
 module AS = Inst.Pseudo
 
 val optimize : AS.instr list -> AS.instr list 
+val copy_propagation : AS.instr list -> AS.instr list
+val const_propagation : AS.instr list -> AS.instr list

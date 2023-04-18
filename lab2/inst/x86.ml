@@ -48,7 +48,7 @@ type instr =
       ; src : operand
       ; layout : layout
       }
-  | Cvt of { layout : layout } (*could be cdq, cqo, etc based on size it wants to extend.*)
+  | Cvt of { layout : layout } (*could be cdq, cqo, etc based on size it wants to extend. EDX:EAX := sign-extend of EAX *)
   | Ret
   | Pop of
       { reg : operand

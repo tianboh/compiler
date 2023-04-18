@@ -92,6 +92,12 @@ let rec gen_forward
       let line = { line with define; uses } in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward t inst_info (line_num + 1)
+    | AS.Ret ret ->
+      let define = gen_TempSet [] in
+      let uses = gen_TempSet [ ret.var ] in
+      let line = { line with define; uses } in
+      Hashtbl.set inst_info ~key:line_num ~data:line;
+      gen_forward t inst_info (line_num + 1)
     | _ -> gen_forward t inst_info line_num)
 ;;
 
@@ -104,7 +110,7 @@ let rec gen_backward inst_list inst_info line_num (cur_alive_set : Temp.Set.t) =
     let cur_alive_set = Temp.Set.diff cur_alive_set line.define in
     let cur_alive_set = Temp.Set.union cur_alive_set line.uses in
     (match h with
-    | AS.Binop _ | AS.Mov _ | AS.CJump _ ->
+    | AS.Binop _ | AS.Mov _ | AS.CJump _ | AS.Ret _ | AS.Jump _ ->
       let line = { line with live_out = cur_alive_set } in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_backward t inst_info (line_num - 1) cur_alive_set

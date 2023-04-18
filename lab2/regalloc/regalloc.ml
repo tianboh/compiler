@@ -2,42 +2,42 @@ open Core
 open Printf
 
 (*
-     This file contains necessary functions to allocate registers
-     based on input file described as type program in Lab1_checkpoint.
-
-     I used Hash table from register to register Set
-     as adjacency list to denote interference graph.
-
-     We considered x86 conventions during register allocation. These registers are converted
-     to temporary with negative index. They are pre-colored before SEO, and their neighbors
-     are increased as if %eax or %edx are firstly traversed.
-     See https://www.cs.cmu.edu/~janh/courses/411/17/lec/03-regalloc.pdf Section 7 for details.
-
-     The basic allocation procedure follows:
-       1) Build interference graph. We build edge from line.define to line.live_out.
-          We do not build clique based on live_out because this may ignore dependency
-          between define and live_out. For example, if the defined temporary is not used
-          in the future, so it may not in live_out set, then scheduler may allocate a register
-          which is already allocated for the live_out for the current register
-          (because there is no edge between define and live_out).
-          PS:If we can eliminate redundant defination in SSA, which means every defination
-          will be in the live_out set, then we can build clique purely based on live_out set.
-          Time complexity: O(v + e)
-       2) Pre-color and maintain order of neighbors of pre-colored nodes. Pre-colored nodes are basically
-          %eax and %edx to obey x86 conventions.
-          Time complexity: O(v + e)
-       3) Use maximum cardinality search to build SEO
-          Theoratically, We initialize every vertex with weight 0. Then, each time
-          we start from a vertex u with maximum weight and update its neighbors weight by one.
-          Then we record vertex u and delete from graph, and keep doing so until no vertex left on graph.
-          Notice temporaries(not consider pre-colored register) in interference graph is pure SSA.
-          So we can apply maximum cardinality to find optimal register allocation policy.
-          Time complexity for SEO: O(v + e)
-       4) Greedy coloring based on SEO
-          Greedy assign registers in SEO order. We generate register name based on %rax.
-          The rule is generate register with minimum index which is greater than its allocated neighbors.
-          Time complexity for coloring: O(v + e)
-*)
+ * This file contains necessary functions to allocate registers
+ * based on input file described as type program in Lab1_checkpoint.
+ *
+ * I used Hash table from register to register Set
+ * as adjacency list to denote interference graph.
+ *
+ * We considered x86 conventions during register allocation. These registers are converted
+ * to temporary with negative index. They are pre-colored before SEO, and their neighbors
+ * are increased as if %eax or %edx are firstly traversed.
+ * See https://www.cs.cmu.edu/~janh/courses/411/17/lec/03-regalloc.pdf Section 7 for details.
+ *
+ * The basic allocation procedure follows:
+ *   1) Build interference graph. We build edge from line.define to line.live_out.
+ *     We do not build clique based on live_out because this may ignore dependency
+ *     between define and live_out. For example, if the defined temporary is not used
+ *     in the future, so it may not in live_out set, then scheduler may allocate a register
+ *     which is already allocated for the live_out for the current register
+ *     (because there is no edge between define and live_out).
+ *     PS:If we can eliminate redundant defination in SSA, which means every defination
+ *     will be in the live_out set, then we can build clique purely based on live_out set.
+ *     Time complexity: O(v + e)
+ *   2) Pre-color and maintain order of neighbors of pre-colored nodes. Pre-colored nodes are basically
+ *     %eax and %edx to obey x86 conventions.
+ *     Time complexity: O(v + e)
+ *   3) Use maximum cardinality search to build SEO
+ *     Theoratically, We initialize every vertex with weight 0. Then, each time
+ *     we start from a vertex u with maximum weight and update its neighbors weight by one.
+ *     Then we record vertex u and delete from graph, and keep doing so until no vertex left on graph.
+ *     Notice temporaries(not consider pre-colored register) in interference graph is pure SSA.
+ *     So we can apply maximum cardinality to find optimal register allocation policy.
+ *     Time complexity for SEO: O(v + e)
+ *   4) Greedy coloring based on SEO
+ *     Greedy assign registers in SEO order. We generate register name based on %rax.
+ *     The rule is generate register with minimum index which is greater than its allocated neighbors.
+ *     Time complexity for coloring: O(v + e)
+ *)
 module Temp = Var.Temp
 module Register = Var.X86_reg
 module Reg_info = Codegen.Program
@@ -47,27 +47,6 @@ type reg = Register.t
 type temp = Temp.t
 
 type allocations = (temp * temp) option list
-
-(* let (<?>) c (cmp, x, y) =
-   if c = 0
-   then cmp x y
-   else c;; *)
-
-(* let reg_cmp_pretty (t1 : string) (t2 : string) =
-     Int.compare (String.length t1) (String.length t2)
-     <?> (String.compare, t1, t2)
-   ;; *)
-
-(* module TempSet = Set.Make(Temp) *)
-(* type t = TempSet.t *)
-(* let is_tmp par =
-     String.compare (String.sub par ~pos:1 ~len:1) "t" = 0
-   ;;
-
-   let is_reg par =
-     (String.compare (String.sub par ~pos:1 ~len:1) "r" = 0)
-     || (String.compare (String.sub par ~pos:1 ~len:1) "e" = 0)
-   ;; *)
 
 (* print adjacency list (interference graph) *)
 let print_adj adj =
@@ -95,35 +74,37 @@ let build_def_lo adj def s_lo =
       Temp.Map.set adj ~key:v ~data:s_res)
 
 (* Build interference graph based on def and live_out.
-      The insight here is we cannot allocate/assign register for def with the same register as
-      registers allocated for live_out temps
-
-   Notice that some variables are in uses field but not in live_out field during define. We can
-   assign the same register for the def which is currently used in the 'uses' field because those
-   registers used in 'use' filed will not alive after this instruction. Therefore, we do not connect
-   node between def and uses.
-
-   For lines whose define field is %eax or %edx, we build a isolated node for them and do not
-   build edge from them to any temporaries.
-*)
+ * The insight here is we cannot allocate/assign register for def with the same register as
+ * registers allocated for live_out temps
+ *
+ * Notice that some variables are in uses field but not in live_out field during define. We can
+ * assign the same register for the def which is currently used in the 'uses' field because those
+ * registers used in 'use' filed will not alive after this instruction. Therefore, we do not connect
+ * node between def and uses.
+ *
+ * For lines whose define field is %eax or %edx, we build a isolated node for them and do not
+ * build edge from them to any temporaries.
+ *)
 let rec _build_graph (prog : Reg_info.temps_info) adj =
   match prog with
   | [] -> adj
-  | h :: t -> (
+  | h :: t ->
       (* let () = print_adj adj in *)
-      match Reg_info.get_def h with
-      | None -> _build_graph t adj
-      | Some def ->
-          let s_def_nbr =
-            match Temp.Map.find adj def with
-            | Some s -> s
-            | None -> Temp.Set.empty
-          in
-          let s_lo = h.live_out in
-          let s_u = Temp.Set.union s_def_nbr s_lo in
-          let adj = Temp.Map.set adj ~key:def ~data:s_u in
-          let adj = build_def_lo adj def s_lo in
-          _build_graph t adj)
+      let adj =
+        match Reg_info.get_def h with
+        | None -> adj
+        | Some def ->
+            let s_def_nbr =
+              match Temp.Map.find adj def with
+              | Some s -> s
+              | None -> Temp.Set.empty
+            in
+            let s_lo = h.live_out in
+            let s_u = Temp.Set.union s_def_nbr s_lo in
+            let adj = Temp.Map.set adj ~key:def ~data:s_u in
+            build_def_lo adj def s_lo
+      in
+      _build_graph t adj
 
 (* Build double(mutually) linked adjacency list based on .in file.*)
 let build_graph (prog : Reg_info.temps_info) =
