@@ -252,13 +252,13 @@ control :
       { Cst.If {cond = e; true_stm = true_stm; false_stm = Some false_stm} }
   | While; L_paren; e = m(exp); R_paren; s = m(stm);
       { Cst.While {cond = e; body = s} }
-  | For; L_paren; e = m(exp); s = m(stm);
+  | For; L_paren; Semicolon; e = m(exp); Semicolon; R_paren; s = m(stm);
       { Cst.For {init = None; cond = e; iter = None; body = s} }
-  | For; L_paren; init = m(simp); e = m(exp); s = m(stm);
+  | For; L_paren; init = m(simp); Semicolon; e = m(exp); Semicolon; R_paren; s = m(stm);
       { Cst.For {init = Some init; cond = e; iter = None; body = s} }
-  | For; L_paren; e = m(exp); iter = m(simp); s = m(stm);
+  | For; L_paren; Semicolon; e = m(exp); Semicolon; iter = m(simp); R_paren; s = m(stm);
       { Cst.For {init = None; cond = e; iter = Some iter; body = s} }
-  | For; L_paren; init = m(simp); e = m(exp); iter = m(simp); s = m(stm);
+  | For; L_paren; init = m(simp); Semicolon; e = m(exp); Semicolon; iter = m(simp); R_paren; s = m(stm);
       { Cst.For {init = Some init; cond = e; iter = Some iter; body = s} }
   | Return; e = m(exp); Semicolon;
       { Cst.Return e }

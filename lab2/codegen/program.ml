@@ -98,6 +98,12 @@ let rec gen_forward
       let line = { line with define; uses } in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward t inst_info (line_num + 1)
+    | AS.Label _ ->
+      let define = Temp.Set.empty in
+      let uses = Temp.Set.empty in
+      let line = { line with define; uses } in
+      Hashtbl.set inst_info ~key:line_num ~data:line;
+      gen_forward t inst_info (line_num + 1)
     | _ -> gen_forward t inst_info line_num)
 ;;
 

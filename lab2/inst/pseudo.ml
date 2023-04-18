@@ -115,7 +115,7 @@ let format = function
   | Mov mv -> sprintf "%s <-- %s" (format_operand mv.dest) (format_operand mv.src)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
   | CJump cjp -> sprintf "cjump(%s) %s" (format_operand cjp.cond) (Label.name cjp.target)
-  | Label label -> sprintf ".%s" (Label.name label)
+  | Label label -> sprintf "%s" (Label.name label)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
   | Ret ret -> sprintf "return %s" (format_operand ret.var)

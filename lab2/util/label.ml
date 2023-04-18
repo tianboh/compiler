@@ -32,6 +32,6 @@ let label (name : string option) : t =
   t
 ;;
 
-let name : t -> string = fun x -> x.name ^ "_" ^ Int.to_string x.unique_id
+let name : t -> string = fun x -> "." ^ x.name ^ "_" ^ Int.to_string x.unique_id
 
 include Comparable.Make (T)
