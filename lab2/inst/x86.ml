@@ -1,10 +1,17 @@
-(* 
- * L1 x86 assembly   
+(* L2 x86 assembly 
+ * 
+ * Provide new instruction compared with L1
+ * 1) Operation related: 
+ * 2) Control flow related:
+ * 3) Flag related: 
+ *
+ * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
 
 open Core
 module Register = Var.X86_reg
 module Memory = Var.Memory
+module Label = Util.Label
 open Var.Layout
 
 type operand =
@@ -58,6 +65,45 @@ type instr =
       { reg : operand
       ; layout : layout
       }
+  | Cmp of
+      { lhs : operand
+      ; rhs : operand
+      ; layout : layout
+      }
+  | LAHF (* Load: AH := flags SF ZF xx AF xx PF xx CF *)
+  | SAHF (* Store AH into flags SF ZF xx AF xx PF xx CF *)
+  | Label of Label.t
+  | Jump of Label.t
+  (* Conditional jump family *)
+  | JE (* Jump if equal, ZF = 1 *)
+  | JNE of Label.t (* Jump if not equal, ZF = 0 *)
+  | JL (* Jump if less, <, SF <> OF *)
+  | JLE (* Jump if less or equal, <=, ZF = 1 or SF <> OF *)
+  | JG (* Jump if greater, >, ZF = 0 and SF = OF *)
+  | JGE (* Jump if greater or equal, >=, SF = OF *)
+  (* SETCC family. Notice it can only set 8-bit operand to register, 
+   * so it only works for %al, %bl, %cl and %dl. We use %al by default. *)
+  | SETE of
+      { (* Set byte if equal (ZF=1). layout is a placeholder for dest,
+         * it can only be BYTE *)
+        dest : operand
+      ; layout : layout
+      }
+  | SETNE of
+      { dest : operand
+      ; layout : layout
+      }
+  | AND of
+      { (* bitwise and *)
+        src : operand
+      ; dest : operand
+      ; layout : layout
+      }
+  | XOR of
+      { src : operand
+      ; dest : operand
+      ; layout : layout
+      }
   | Directive of string
   | Comment of string
 
@@ -96,6 +142,48 @@ let safe_ret (dest : operand) (layout : layout) =
   ; Pop { reg = Reg (Register.create_no 7); layout = QWORD }
   ; Ret
   ]
+;;
+
+(* Prepare for conditional jump. *)
+let safe_cjp (lhs : operand) (rhs : operand) (layout : layout) =
+  match lhs, rhs with
+  | Mem lhs_mem, Mem rhs_mem ->
+    let swap_reg = Reg (Register.swap ()) in
+    [ Mov { dest = swap_reg; src = Mem lhs_mem; layout }
+    ; Cmp { lhs = swap_reg; rhs = Mem rhs_mem; layout }
+    ; Mov { dest = Mem lhs_mem; src = swap_reg; layout }
+    ]
+  | _ -> [ Cmp { lhs; rhs; layout } ]
+;;
+
+let safe_je (lhs : operand) (rhs : operand) (layout : layout) =
+  let prep = safe_cjp lhs rhs layout in
+  prep @ [ JE ]
+;;
+
+let safe_jne (lhs : operand) (rhs : operand) (layout : layout) (target : Label.t) =
+  let prep = safe_cjp lhs rhs layout in
+  prep @ [ JNE target ]
+;;
+
+let safe_jl (lhs : operand) (rhs : operand) (layout : layout) =
+  let prep = safe_cjp lhs rhs layout in
+  prep @ [ JL ]
+;;
+
+let safe_jle (lhs : operand) (rhs : operand) (layout : layout) =
+  let prep = safe_cjp lhs rhs layout in
+  prep @ [ JLE ]
+;;
+
+let safe_jg (lhs : operand) (rhs : operand) (layout : layout) =
+  let prep = safe_cjp lhs rhs layout in
+  prep @ [ JG ]
+;;
+
+let safe_jge (lhs : operand) (rhs : operand) (layout : layout) =
+  let prep = safe_cjp lhs rhs layout in
+  prep @ [ JGE ]
 ;;
 
 (* prologue for a callee function. Handle callee-saved registers and allocate space for local variables *)
@@ -167,6 +255,36 @@ let format = function
     sprintf "push%s %s" (format_inst push.layout) (format_operand push.reg push.layout)
   | Pop pop ->
     sprintf "pop%s %s" (format_inst pop.layout) (format_operand pop.reg pop.layout)
+  | Cmp cmp ->
+    sprintf
+      "cmp%s %s, %s"
+      (format_inst cmp.layout)
+      (format_operand cmp.rhs cmp.layout)
+      (format_operand cmp.lhs cmp.layout)
+  | LAHF -> "lahf"
+  | SAHF -> "sahf"
+  | Label l -> Label.content l
+  | Jump jp -> sprintf "jmp %s" (Label.name jp)
+  | JE -> "je"
+  | JNE jne -> sprintf "jne %s" (Label.name jne)
+  | JL -> "jl"
+  | JLE -> "jle"
+  | JG -> "jg"
+  | JGE -> "jge"
+  | SETE sete -> sprintf "sete %s" (format_operand sete.dest sete.layout)
+  | SETNE setne -> sprintf "setne %s" (format_operand setne.dest setne.layout)
+  | AND a ->
+    sprintf
+      "and%s %s, %s"
+      (format_inst a.layout)
+      (format_operand a.src a.layout)
+      (format_operand a.dest a.layout)
+  | XOR xor ->
+    sprintf
+      "xor%s %s, %s"
+      (format_inst xor.layout)
+      (format_operand xor.src xor.layout)
+      (format_operand xor.dest xor.layout)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
 ;;

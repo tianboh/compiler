@@ -1,5 +1,6 @@
-(* L1 optimizer
- * Optimizer for pseudo assembly code
+(* L2 pseudo code optimizer
+ *
+ * Optimization contains 
  * 1) Const propagation
  * 2) temp propagation
  *

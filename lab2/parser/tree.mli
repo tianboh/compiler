@@ -50,14 +50,10 @@ and stm =
   | Return of exp
   | Jump of Label.t
   | CJump of
-      { (* Jump if cond is Int.one 
-         * Otherwise, execute next adjunct statement.
-         * cond can be 
-         * 1) integer zero, indicate false
-         * 2) integer one, indicate true
-         * 3) a binary relation comparison, a relop b 
-         *)
-        cond : exp
+      { (* Jump if lhs op rhs is true*)
+        lhs : exp
+      ; op : binop
+      ; rhs : exp
       ; target_stm : Label.t
       }
   | Label of Label.t

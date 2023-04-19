@@ -23,3 +23,5 @@ include Comparable.S with type t := t
 val label : string option -> t (* generates a new label with given name *)
 
 val name : t -> string (* returns a name associated with label *)
+
+val content : t -> string

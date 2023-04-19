@@ -73,14 +73,10 @@ and stm =
   | Return of exp
   | Jump of Label.t
   | CJump of
-      { (* Jump if cond is Int.one 
-         * Otherwise, execute next adjunct statement.
-         * cond can be 
-         * 1) integer zero, indicate false
-         * 2) integer one, indicate true
-         * 3) a binary relation comparison, a relop b 
-         *)
-        cond : exp
+      { (* Jump if lhs op rhs is true*)
+        lhs : exp
+      ; op : binop
+      ; rhs : exp
       ; target_stm : Label.t
       }
   | Label of Label.t
@@ -134,15 +130,20 @@ module Print : PRINT = struct
     | Sexp sexp -> Printf.sprintf "(%s %s)" (pp_stm sexp.stm) (pp_exp sexp.exp)
 
   and pp_stm = function
-    | Move mv -> Temp.name mv.dest ^ "  <--  " ^ pp_exp mv.src
-    | Return e -> "return " ^ pp_exp e
-    | Jump j -> "jump " ^ Label.name j
+    | Move mv -> Temp.name mv.dest ^ "  <--  " ^ pp_exp mv.src ^ "\n"
+    | Return e -> "return " ^ pp_exp e ^ "\n"
+    | Jump j -> "jump " ^ Label.name j ^ "\n"
     | CJump cj ->
-      Printf.sprintf "cjump(%s) Target:%s" (pp_exp cj.cond) (Label.name cj.target_stm)
-    | Label l -> Label.name l
+      Printf.sprintf
+        "cjump(%s %s %s) Target:%s\n"
+        (pp_exp cj.lhs)
+        (pp_binop cj.op)
+        (pp_exp cj.rhs)
+        (Label.name cj.target_stm)
+    | Label l -> Label.content l ^ "\n"
     | Seq seq -> pp_stm seq.head ^ pp_stm seq.tail
-    | Nop -> "nop"
-    | NExp nexp -> pp_exp nexp
+    | Nop -> "nop" ^ "\n"
+    | NExp nexp -> pp_exp nexp ^ "\n"
   ;;
 
   let pp_program program = pp_stm program

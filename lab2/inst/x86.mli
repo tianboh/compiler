@@ -1,5 +1,7 @@
 module Register = Var.X86_reg
 module Memory = Var.Memory
+module Label = Util.Label
+
 open Var.Layout
 
 type operand =
@@ -7,7 +9,7 @@ type operand =
   | Reg of Register.t
   | Mem of Memory.t
 
-type instr =
+  type instr =
   | Add of
       { src : operand
       ; dest : operand
@@ -22,29 +24,28 @@ type instr =
       { src : operand
       ; dest : operand
       ; layout : layout
-      }
+      } (* Destination is form of EDX:EAX by default. Only one operand required. *)
   | Div of
       { src : operand
       ; layout : layout
       }
+  (* temp := EDX:EAX / SRC;
+            IF temp > FFFFFFFFH
+                THEN #DE; (* Divide error *)
+            ELSE
+                EAX := temp;
+                EDX := EDX:EAX MOD SRC;
+            FI; *)
   | Mod of
       { src : operand
       ; layout : layout
-      }
-  (* dest <- lhs op rhs *)
-  (* | Binop of
-        { op : bin_op
-        ; dest : [`Reg of Register.t]
-        ; lhs : operand
-        ; rhs : operand
-        } *)
-  (* dest <- src *)
+      } (* Similar as above, but use edx after div.*)
   | Mov of
       { dest : operand
       ; src : operand
       ; layout : layout
       }
-  | Cvt of { layout : layout }
+  | Cvt of { layout : layout } (*could be cdq, cqo, etc based on size it wants to extend. EDX:EAX := sign-extend of EAX *)
   | Ret
   | Pop of
       { reg : operand
@@ -54,9 +55,45 @@ type instr =
       { reg : operand
       ; layout : layout
       }
-  (* Assembly directive. *)
+  | Cmp of
+      { lhs : operand
+      ; rhs : operand
+      ; layout : layout
+      }
+  | LAHF (* Load: AH := flags SF ZF xx AF xx PF xx CF *)
+  | SAHF (* Store AH into flags SF ZF xx AF xx PF xx CF *)
+  | Label of Label.t
+  | Jump of Label.t
+  (* Conditional jump family *)
+  | JE (* Jump if equal, ZF = 1 *)
+  | JNE of Label.t  (* Jump if not equal, ZF = 0 *)
+  | JL (* Jump if less, <, SF <> OF *)
+  | JLE (* Jump if less or equal, <=, ZF = 1 or SF <> OF *)
+  | JG (* Jump if greater, >, ZF = 0 and SF = OF *)
+  | JGE (* Jump if greater or equal, >=, SF = OF *)
+  (* SETCC family *)
+  | SETE of
+      { (* Set byte if equal (ZF=1). layout is a placeholder for dest,
+         * it can only be BYTE *)
+        dest : operand
+      ; layout : layout
+      }
+  | SETNE of
+      { dest : operand
+      ; layout : layout
+      }
+  | AND of
+      { (* bitwise and *)
+        src : operand
+      ; dest : operand
+      ; layout : layout
+      }
+  | XOR of
+      { src : operand
+      ; dest : operand
+      ; layout : layout
+      }
   | Directive of string
-  (* Human-friendly comment. *)
   | Comment of string
 
 val format_prologue : int -> string
@@ -67,3 +104,9 @@ val safe_mov : operand -> operand -> layout -> instr list
 val safe_add : operand -> operand -> layout -> instr list
 val safe_sub : operand -> operand -> layout -> instr list
 val safe_ret : operand -> layout -> instr list
+val safe_je : operand -> operand -> layout -> instr list
+val safe_jne : operand -> operand -> layout -> Label.t -> instr list
+val safe_jl : operand -> operand -> layout -> instr list
+val safe_jle : operand -> operand -> layout -> instr list
+val safe_jg : operand -> operand -> layout -> instr list
+val safe_jge : operand -> operand -> layout -> instr list

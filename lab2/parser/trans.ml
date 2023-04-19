@@ -36,6 +36,14 @@ let trans_binop = function
   | A.Not_eq -> T.Not_eq
 ;;
 
+let gen_cond (exp : T.exp) : T.exp * T.binop * T.exp =
+  match exp with
+  | T.Const i -> T.Const i, T.Equal_eq, T.Const Int32.one
+  | T.Temp t -> T.Temp t, T.Equal_eq, T.Const Int32.one
+  | T.Binop binop -> binop.lhs, binop.op, binop.rhs
+  | T.Sexp sexp -> T.Sexp sexp, T.Equal_eq, T.Const Int32.one
+;;
+
 let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) =
   match exp_ast with
   (* after type-checking, id must be declared; do not guard lookup *)
@@ -56,17 +64,18 @@ let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) =
    * rest code
    *)
   | A.Terop terop ->
-    let cond = trans_mexp terop.cond env in
+    let cond_raw = trans_mexp terop.cond env in
     let true_exp = trans_mexp terop.true_exp env in
     let false_exp = trans_mexp terop.false_exp env in
     let temp = Temp.create () in
     let label_target = Label.label (Some "terop_true") in
     let asn = T.Move { dest = temp; src = true_exp } in
+    let lhs, op, rhs = gen_cond cond_raw in
     let seq_cj =
       T.Seq
         { head =
             T.Seq
-              { head = T.CJump { cond; target_stm = label_target }
+              { head = T.CJump { lhs; op; rhs; target_stm = label_target }
               ; tail = T.Move { dest = temp; src = false_exp }
               }
         ; tail = T.Label label_target
@@ -99,13 +108,14 @@ let rec trans_stm (ast : A.program) (env : Temp.t S.t) : T.program =
      *  converge_label
      *  rest code blah blah
      *)
-    let cond = trans_mexp if_ast.cond env in
+    let cond_raw = trans_mexp if_ast.cond env in
     let label_true = Label.label (Some "if_true") in
     let label_conv = Label.label (Some "if_conv") in
     let false_stm = trans_stm if_ast.false_stm env in
+    let lhs, op, rhs = gen_cond cond_raw in
     let seq_false =
       T.Seq
-        { head = T.CJump { cond; target_stm = label_true }
+        { head = T.CJump { lhs; op; rhs; target_stm = label_true }
         ; tail = T.Seq { head = false_stm; tail = T.Jump label_conv }
         }
     in
@@ -124,14 +134,15 @@ let rec trans_stm (ast : A.program) (env : Temp.t S.t) : T.program =
      * body
      * label_loop_stop
      * CJump cond label_loop_start *)
-    let cond = trans_mexp while_ast.cond env in
+    let cond_raw = trans_mexp while_ast.cond env in
     let body = trans_stm while_ast.body env in
     let label_loop_start = Label.label (Some "loop_start") in
     let label_loop_stop = Label.label (Some "loop_stop") in
+    let lhs, op, rhs = gen_cond cond_raw in
     let seq1 =
       T.Seq
         { head = T.Label label_loop_stop
-        ; tail = T.CJump { cond; target_stm = label_loop_start }
+        ; tail = T.CJump { lhs; op; rhs; target_stm = label_loop_start }
         }
     in
     let seq2 = T.Seq { head = body; tail = seq1 } in

@@ -88,7 +88,7 @@ let rec gen_forward
       gen_forward t inst_info (line_num + 1)
     | AS.CJump cjp ->
       let define = gen_TempSet [] in
-      let uses = gen_TempSet [ cjp.cond ] in
+      let uses = gen_TempSet [ cjp.lhs; cjp.rhs ] in
       let line = { line with define; uses } in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward t inst_info (line_num + 1)

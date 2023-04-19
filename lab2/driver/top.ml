@@ -34,6 +34,7 @@ module Trans = Parser.Trans
 type cmd_line_args =
   { verbose : bool
   ; dump_parsing : bool
+  ; dump_cst : bool
   ; dump_ast : bool
   ; dump_ir : bool
   ; dump_assem : bool
@@ -73,6 +74,9 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and dump_parsing =
     let doc = "If present, print debug informaton from parsing." in
     flag (Arg.info [ "dump-parsing" ] ~doc)
+  and dump_cst =
+    let doc = "If present, print the parsed cst." in
+    flag (Arg.info [ "dump-cst" ] ~doc)
   and dump_ast =
     let doc = "If present, print the parsed ast." in
     flag (Arg.info [ "dump-ast" ] ~doc)
@@ -115,6 +119,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   in
   { verbose
   ; dump_parsing
+  ; dump_cst
   ; dump_ast
   ; dump_ir
   ; dump_assem
@@ -166,9 +171,10 @@ let compile (cmd : cmd_line_args) : unit =
   if cmd.dump_parsing then ignore (Parsing.set_trace true : bool);
   (* Parse *)
   let cst = Parse.parse cmd.filename in
-  say_if cmd.dump_ast (fun () -> Cst.Print.pp_program cst);
+  say_if cmd.dump_cst (fun () -> Cst.Print.pp_program cst);
   (* Elaborate *)
   let ast = Elab.elaborate cst in
+  say_if cmd.dump_ast (fun () -> Ast.Print.pp_program ast);
   (* Semantic analysis *)
   say_if cmd.verbose (fun () -> "Checking...");
   Typechecker.typecheck ast;
@@ -183,11 +189,11 @@ let compile (cmd : cmd_line_args) : unit =
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
   let assem_ps = Codegen.Gen.Pseudo.gen ir in
-  let assem_ps = Codegen.Optimize.optimize assem_ps in
+  (* let assem_ps = Codegen.Optimize.optimize assem_ps in *)
   (* let () = Codegen.Gen.Pseudo.print_insts assem_ps in *)
   (* let stop = Unix.gettimeofday () in *)
   (* let () = Printf.printf "Execution time assem_ps: %fs\n%!" (stop -. start) in *)
-  say_if cmd.dump_assem (fun () -> List.to_string ~f:AS_psu.format assem_ps);
+  say_if cmd.dump_assem (fun () -> AS_psu.pp_program assem_ps "");
   match cmd.emit with
   (* Output: abstract 3-address assem *)
   | Abstract_assem ->

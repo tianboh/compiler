@@ -60,7 +60,9 @@ type instr =
   | Jump of { target : Label.t }
   | CJump of
       { (*Jump if cond == 1*)
-        cond : operand
+        lhs : operand
+      ; op : bin_op
+      ; rhs : operand
       ; target : Label.t
       }
   | Ret of {var : operand}
@@ -72,3 +74,4 @@ type instr =
 
 val format : instr -> string
 val format_operand : operand -> string
+val pp_program : instr list -> string -> string

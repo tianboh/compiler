@@ -101,8 +101,8 @@ and mstm = stm Mark.t
 type program = mstm
 
 (* Print as source, with redundant parentheses *)
-(* module Print : sig
-     val pp_exp : exp -> string
-     val pp_stm : stm -> string
-     val pp_program : program -> string
-   end *)
+module Print : sig
+  val pp_exp : exp -> string
+  val pp_stm : stm -> string
+  val pp_program : program -> string
+end

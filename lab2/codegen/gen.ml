@@ -132,9 +132,12 @@ module Pseudo = struct
       inst @ [ AS.Ret { var = AS.Temp t } ]
     | Jump jmp -> [ AS.Jump { target = jmp } ]
     | T.CJump cjmp ->
-      let t = AS.Temp (Temp.create ()) in
-      let cond = munch_exp t cjmp.cond in
-      cond @ [ AS.CJump { cond = t; target = cjmp.target_stm } ]
+      let lhs = AS.Temp (Temp.create ()) in
+      let op = munch_op cjmp.op in
+      let rhs = AS.Temp (Temp.create ()) in
+      let lhs_inst = munch_exp lhs cjmp.lhs in
+      let rhs_inst = munch_exp rhs cjmp.rhs in
+      lhs_inst @ rhs_inst @ [ AS.CJump { lhs; op; rhs; target = cjmp.target_stm } ]
     | T.Label l -> [ AS.Label l ]
     | T.Seq seq -> munch_stm seq.head @ munch_stm seq.tail
     | T.Nop -> []
@@ -154,9 +157,6 @@ module Pseudo = struct
       let () = printf "%s\n" (AS.format h) in
       print_insts t
   ;;
-
-  (* let () = print_insts ret in *)
-  (* ori_insts *)
 end
 
 module X86 = struct
@@ -217,6 +217,16 @@ module X86 = struct
       ; AS_x86.Div { src = AS_x86.Reg swap; layout = DWORD }
       ; AS_x86.Mov { dest; src = edx; layout = DWORD }
       ]
+    | Not_eq ->
+      [ AS_x86.Mov { dest; src = eax; layout = DWORD }
+      ; AS_x86.Mov { dest = AS_x86.Reg swap; src = lhs; layout = DWORD }
+      ; AS_x86.XOR { dest = eax; src = eax; layout = DWORD }
+      ; AS_x86.Cmp { lhs = AS_x86.Reg swap; rhs; layout = DWORD }
+      ; AS_x86.SETNE { dest = eax; layout = BYTE }
+      ; AS_x86.Mov { dest = AS_x86.Reg swap; src = eax; layout = DWORD }
+      ; AS_x86.Mov { dest = eax; src = dest; layout = DWORD }
+      ; AS_x86.Mov { dest; src = AS_x86.Reg swap; layout = DWORD }
+      ]
     | _ ->
       failwith
         ("inst not implemented yet "
@@ -250,6 +260,24 @@ module X86 = struct
         (* [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] *)
         let insts = AS_x86.safe_ret var_ret QWORD in
         _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
+      | AS.Label l -> _codegen_w_reg (res @ [ AS_x86.Label l ]) t reg_alloc_info reg_swap
+      | AS.Jump jp ->
+        _codegen_w_reg (res @ [ AS_x86.Jump jp.target ]) t reg_alloc_info reg_swap
+      | AS.CJump cjp ->
+        let lhs = oprd_ps_to_x86 cjp.lhs reg_alloc_info in
+        let rhs = oprd_ps_to_x86 cjp.rhs reg_alloc_info in
+        let target = cjp.target in
+        let inst =
+          match cjp.op with
+          | Equal_eq -> AS_x86.safe_je lhs rhs DWORD
+          | Greater -> AS_x86.safe_jg lhs rhs DWORD
+          | Greater_eq -> AS_x86.safe_jge lhs rhs DWORD
+          | Less -> AS_x86.safe_jl lhs rhs DWORD
+          | Less_eq -> AS_x86.safe_jle lhs rhs DWORD
+          | Not_eq -> AS_x86.safe_jne lhs rhs DWORD target
+          | _ -> failwith "conditional jump op should can only be relop."
+        in
+        _codegen_w_reg (res @ inst) t reg_alloc_info reg_swap
       | _ -> _codegen_w_reg res t reg_alloc_info reg_swap)
   ;;
 

@@ -69,7 +69,9 @@ type instr =
   | Jump of { target : Label.t }
   | CJump of
       { (*Jump if cond == 1*)
-        cond : operand
+        lhs : operand
+      ; op : bin_op
+      ; rhs : operand
       ; target : Label.t
       }
   | Ret of { var : operand }
@@ -114,9 +116,24 @@ let format = function
       (format_operand binop.rhs)
   | Mov mv -> sprintf "%s <-- %s" (format_operand mv.dest) (format_operand mv.src)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
-  | CJump cjp -> sprintf "cjump(%s) %s" (format_operand cjp.cond) (Label.name cjp.target)
-  | Label label -> sprintf "%s" (Label.name label)
+  | CJump cjp ->
+    sprintf
+      "cjump(%s %s %s) %s"
+      (format_operand cjp.lhs)
+      (format_binop cjp.op)
+      (format_operand cjp.rhs)
+      (Label.name cjp.target)
+  | Label label -> sprintf "%s" (Label.content label)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
   | Ret ret -> sprintf "return %s" (format_operand ret.var)
+;;
+
+let rec pp_program (program : instr list) res =
+  match program with
+  | [] -> res
+  | h :: t ->
+    let inst_str = format h ^ "\n" in
+    let res = res ^ inst_str in
+    pp_program t res
 ;;
