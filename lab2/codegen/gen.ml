@@ -217,16 +217,6 @@ module X86 = struct
       ; AS_x86.Div { src = AS_x86.Reg swap; layout = DWORD }
       ; AS_x86.Mov { dest; src = edx; layout = DWORD }
       ]
-    | Not_eq ->
-      [ AS_x86.Mov { dest; src = eax; layout = DWORD }
-      ; AS_x86.Mov { dest = AS_x86.Reg swap; src = lhs; layout = DWORD }
-      ; AS_x86.XOR { dest = eax; src = eax; layout = DWORD }
-      ; AS_x86.Cmp { lhs = AS_x86.Reg swap; rhs; layout = DWORD }
-      ; AS_x86.SETNE { dest = eax; layout = BYTE }
-      ; AS_x86.Mov { dest = AS_x86.Reg swap; src = eax; layout = DWORD }
-      ; AS_x86.Mov { dest = eax; src = dest; layout = DWORD }
-      ; AS_x86.Mov { dest; src = AS_x86.Reg swap; layout = DWORD }
-      ]
     | _ ->
       failwith
         ("inst not implemented yet "
@@ -267,17 +257,18 @@ module X86 = struct
         let lhs = oprd_ps_to_x86 cjp.lhs reg_alloc_info in
         let rhs = oprd_ps_to_x86 cjp.rhs reg_alloc_info in
         let target = cjp.target in
-        let inst =
+        let cmp_inst = AS_x86.safe_cmp lhs rhs DWORD reg_swap in
+        let cjp_inst =
           match cjp.op with
-          | Equal_eq -> AS_x86.safe_je lhs rhs DWORD
-          | Greater -> AS_x86.safe_jg lhs rhs DWORD
-          | Greater_eq -> AS_x86.safe_jge lhs rhs DWORD
-          | Less -> AS_x86.safe_jl lhs rhs DWORD
-          | Less_eq -> AS_x86.safe_jle lhs rhs DWORD
-          | Not_eq -> AS_x86.safe_jne lhs rhs DWORD target
+          | Equal_eq -> [ AS_x86.JE target ]
+          | Greater -> [ AS_x86.JG target ]
+          | Greater_eq -> [ AS_x86.JGE target ]
+          | Less -> [ AS_x86.JL target ]
+          | Less_eq -> [ AS_x86.JLE target ]
+          | Not_eq -> [ AS_x86.JNE target ]
           | _ -> failwith "conditional jump op should can only be relop."
         in
-        _codegen_w_reg (res @ inst) t reg_alloc_info reg_swap
+        _codegen_w_reg (res @ cmp_inst @ cjp_inst) t reg_alloc_info reg_swap
       | _ -> _codegen_w_reg res t reg_alloc_info reg_swap)
   ;;
 

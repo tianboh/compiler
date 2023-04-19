@@ -9,7 +9,7 @@ type operand =
   | Reg of Register.t
   | Mem of Memory.t
 
-  type instr =
+type instr =
   | Add of
       { src : operand
       ; dest : operand
@@ -65,13 +65,14 @@ type operand =
   | Label of Label.t
   | Jump of Label.t
   (* Conditional jump family *)
-  | JE (* Jump if equal, ZF = 1 *)
-  | JNE of Label.t  (* Jump if not equal, ZF = 0 *)
-  | JL (* Jump if less, <, SF <> OF *)
-  | JLE (* Jump if less or equal, <=, ZF = 1 or SF <> OF *)
-  | JG (* Jump if greater, >, ZF = 0 and SF = OF *)
-  | JGE (* Jump if greater or equal, >=, SF = OF *)
-  (* SETCC family *)
+  | JE of Label.t (* Jump if equal, ZF = 1 *)
+  | JNE of Label.t (* Jump if not equal, ZF = 0 *)
+  | JL of Label.t (* Jump if less, <, SF <> OF *)
+  | JLE of Label.t (* Jump if less or equal, <=, ZF = 1 or SF <> OF *)
+  | JG of Label.t (* Jump if greater, >, ZF = 0 and SF = OF *)
+  | JGE of Label.t (* Jump if greater or equal, >=, SF = OF *)
+  (* SETCC family. Notice it can only set 8-bit operand to register, 
+   * so it only works for %al, %bl, %cl and %dl. We use %al by default. *)
   | SETE of
       { (* Set byte if equal (ZF=1). layout is a placeholder for dest,
          * it can only be BYTE *)
@@ -104,9 +105,4 @@ val safe_mov : operand -> operand -> layout -> instr list
 val safe_add : operand -> operand -> layout -> instr list
 val safe_sub : operand -> operand -> layout -> instr list
 val safe_ret : operand -> layout -> instr list
-val safe_je : operand -> operand -> layout -> instr list
-val safe_jne : operand -> operand -> layout -> Label.t -> instr list
-val safe_jl : operand -> operand -> layout -> instr list
-val safe_jle : operand -> operand -> layout -> instr list
-val safe_jg : operand -> operand -> layout -> instr list
-val safe_jge : operand -> operand -> layout -> instr list
+val safe_cmp : operand -> operand -> layout -> Register.t  -> instr list

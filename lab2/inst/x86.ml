@@ -75,12 +75,12 @@ type instr =
   | Label of Label.t
   | Jump of Label.t
   (* Conditional jump family *)
-  | JE (* Jump if equal, ZF = 1 *)
+  | JE of Label.t (* Jump if equal, ZF = 1 *)
   | JNE of Label.t (* Jump if not equal, ZF = 0 *)
-  | JL (* Jump if less, <, SF <> OF *)
-  | JLE (* Jump if less or equal, <=, ZF = 1 or SF <> OF *)
-  | JG (* Jump if greater, >, ZF = 0 and SF = OF *)
-  | JGE (* Jump if greater or equal, >=, SF = OF *)
+  | JL of Label.t (* Jump if less, <, SF <> OF *)
+  | JLE of Label.t (* Jump if less or equal, <=, ZF = 1 or SF <> OF *)
+  | JG of Label.t (* Jump if greater, >, ZF = 0 and SF = OF *)
+  | JGE of Label.t (* Jump if greater or equal, >=, SF = OF *)
   (* SETCC family. Notice it can only set 8-bit operand to register, 
    * so it only works for %al, %bl, %cl and %dl. We use %al by default. *)
   | SETE of
@@ -145,45 +145,25 @@ let safe_ret (dest : operand) (layout : layout) =
 ;;
 
 (* Prepare for conditional jump. *)
-let safe_cjp (lhs : operand) (rhs : operand) (layout : layout) =
-  match lhs, rhs with
-  | Mem lhs_mem, Mem rhs_mem ->
-    let swap_reg = Reg (Register.swap ()) in
-    [ Mov { dest = swap_reg; src = Mem lhs_mem; layout }
+let safe_cmp (lhs : operand) (rhs : operand) (layout : layout) (swap : Register.t) =
+  (* | Not_eq ->
+      [ AS_x86.Mov { dest; src = eax; layout = DWORD }
+      ; AS_x86.Mov { dest = AS_x86.Reg swap; src = lhs; layout = DWORD }
+      ; AS_x86.XOR { dest = eax; src = eax; layout = DWORD }
+      ; AS_x86.Cmp { lhs = AS_x86.Reg swap; rhs; layout = DWORD }
+      ; AS_x86.SETNE { dest = eax; layout = BYTE }
+      ; AS_x86.Mov { dest = AS_x86.Reg swap; src = eax; layout = DWORD }
+      ; AS_x86.Mov { dest = eax; src = dest; layout = DWORD }
+      ; AS_x86.Mov { dest; src = AS_x86.Reg swap; layout = DWORD }
+      ] *)
+  (* [ Mov { dest = swap_reg; src = Mem lhs_mem; layout }
     ; Cmp { lhs = swap_reg; rhs = Mem rhs_mem; layout }
     ; Mov { dest = Mem lhs_mem; src = swap_reg; layout }
-    ]
+    ] *)
+  match lhs, rhs with
+  | Mem _, Mem _ ->
+    [ Mov { dest = Reg swap; src = lhs; layout }; Cmp { lhs = Reg swap; rhs; layout } ]
   | _ -> [ Cmp { lhs; rhs; layout } ]
-;;
-
-let safe_je (lhs : operand) (rhs : operand) (layout : layout) =
-  let prep = safe_cjp lhs rhs layout in
-  prep @ [ JE ]
-;;
-
-let safe_jne (lhs : operand) (rhs : operand) (layout : layout) (target : Label.t) =
-  let prep = safe_cjp lhs rhs layout in
-  prep @ [ JNE target ]
-;;
-
-let safe_jl (lhs : operand) (rhs : operand) (layout : layout) =
-  let prep = safe_cjp lhs rhs layout in
-  prep @ [ JL ]
-;;
-
-let safe_jle (lhs : operand) (rhs : operand) (layout : layout) =
-  let prep = safe_cjp lhs rhs layout in
-  prep @ [ JLE ]
-;;
-
-let safe_jg (lhs : operand) (rhs : operand) (layout : layout) =
-  let prep = safe_cjp lhs rhs layout in
-  prep @ [ JG ]
-;;
-
-let safe_jge (lhs : operand) (rhs : operand) (layout : layout) =
-  let prep = safe_cjp lhs rhs layout in
-  prep @ [ JGE ]
 ;;
 
 (* prologue for a callee function. Handle callee-saved registers and allocate space for local variables *)
@@ -265,12 +245,12 @@ let format = function
   | SAHF -> "sahf"
   | Label l -> Label.content l
   | Jump jp -> sprintf "jmp %s" (Label.name jp)
-  | JE -> "je"
+  | JE je -> sprintf "je %s" (Label.name je)
   | JNE jne -> sprintf "jne %s" (Label.name jne)
-  | JL -> "jl"
-  | JLE -> "jle"
-  | JG -> "jg"
-  | JGE -> "jge"
+  | JL jl -> sprintf "jl %s" (Label.name jl)
+  | JLE jle -> sprintf "jle %s" (Label.name jle)
+  | JG jg -> sprintf "jg %s" (Label.name jg)
+  | JGE jge -> sprintf "jge %s" (Label.name jge)
   | SETE sete -> sprintf "sete %s" (format_operand sete.dest sete.layout)
   | SETNE setne -> sprintf "setne %s" (format_operand setne.dest setne.layout)
   | AND a ->
