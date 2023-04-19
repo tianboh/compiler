@@ -179,7 +179,6 @@ module X86 = struct
           if Temp.value t < 0 then Register.tmp_to_reg t else Register.create_no 1
       in
       if Register.need_spill reg then AS_x86.Mem (Memory.from_reg reg) else AS_x86.Reg reg
-    | Reg r -> AS_x86.Reg r
     | Imm i -> AS_x86.Imm i
   ;;
 

@@ -24,7 +24,6 @@ module Label = Util.Label
 type operand =
   | Imm of Int32.t
   | Temp of Temp.t
-  | Reg of Register.t
 
 type bin_op =
   | Plus

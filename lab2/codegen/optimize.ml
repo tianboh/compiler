@@ -28,7 +28,6 @@ let const_cache (map : Int32.t Temp.Map.t) (key : AS.operand) : AS.operand =
       AS.Imm s
     | None -> AS.Temp k)
   | AS.Imm i -> AS.Imm i
-  | AS.Reg r -> AS.Reg r
 ;;
 
 (* We store the map from Temp.t to Imm when read mov instruction.
@@ -58,7 +57,6 @@ let const_propagation (pseudo_assembly : AS.instr list) : AS.instr list =
             | AS.Temp temp ->
               (* update const_map because destination is updated. *)
               Temp.Map.remove const_map temp
-            | AS.Reg _ -> const_map
           in
           helper t (res @ [ AS.Binop { op; lhs; rhs; dest } ]) const_map
         | _ -> helper t (res @ [ h ]) const_map)
@@ -79,7 +77,7 @@ let const_propagation (pseudo_assembly : AS.instr list) : AS.instr list =
         | _ -> helper t (res @ [ h ]) const_map)
       | AS.Ret ret ->
         (match ret.var with
-        | AS.Imm _ | AS.Reg _ -> helper t (res @ [ h ]) const_map
+        | AS.Imm _ -> helper t (res @ [ h ]) const_map
         | AS.Temp temp ->
           (match Temp.Map.find const_map temp with
           | Some _ ->
@@ -95,7 +93,6 @@ let const_propagation (pseudo_assembly : AS.instr list) : AS.instr list =
 let temp_cache (map : Temp.t Temp.Map.t) (key : AS.operand) : AS.operand =
   match key with
   | AS.Imm i -> AS.Imm i
-  | AS.Reg r -> AS.Reg r
   | AS.Temp t ->
     (match Temp.Map.find map t with
     | Some v ->
