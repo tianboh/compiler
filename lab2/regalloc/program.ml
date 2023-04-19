@@ -1,13 +1,13 @@
-(* 
-    This module generates information for register allocation 
-    based on pseudo assembly code. The target format program is 
-    declared in json_reader.Lab1_checkpoint.ml
-    
-    The basic idea is to generate infocmrtion including 
-    "define", "use", "live_out", "move" and "line_num" info
-    for each pseudo assembly instruction.
+(*
+  This module generates information for register allocation
+  based on pseudo assembly code. The target format program is
+  declared in json_reader.Lab1_checkpoint.ml
 
-    Pseudo assembly instruction list -> register allocation info
+  The basic idea is to generate infocmrtion including
+  "define", "use", "live_out", "move" and "line_num" info
+  for each pseudo assembly instruction.
+
+  Pseudo assembly instruction list -> register allocation info
 *)
 open Core
 module Inst_reg_info = Json_reader.Lab1_checkpoint
@@ -73,8 +73,8 @@ let rec gen_forward
     (match h with
     | AS.Binop binop ->
       (* let def = match binop.op with
-      | Div | Mod | Mul -> gen_TempSet [AS.Temp (Register.reg_to_tmp (Register.create_no 1))]
-      | _ -> gen_TempSet [binop.dest] in *)
+             | Div | Mod | Mul -> gen_TempSet [AS.Temp (Register.reg_to_tmp (Register.create_no 1))]
+             | _ -> gen_TempSet [binop.dest] in *)
       let def = gen_TempSet [ binop.dest ] in
       let uses = gen_TempSet [ binop.lhs; binop.rhs ] in
       let line = { line with define = def; uses } in
@@ -147,10 +147,10 @@ let gen_TempSet (l : string list) =
   Temp.Set.of_list l
 ;;
 
-(* When read from json file(l1 checkpoint), we need to transform 
-   the information from string info to line declared in this file. 
+(* When read from json file(l1 checkpoint), we need to transform
+   the information from string info to line declared in this file.
    We will ignore register string during transformation because we
-   only need to assign temp to registers. 
+   only need to assign temp to registers.
 *)
 let transform_str_to_temp (line : Inst_reg_info.line) =
   { define = gen_TempSet [ line.define ]

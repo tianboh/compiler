@@ -1,11 +1,11 @@
 (* 
-    This module generates information for register allocation 
-    based on pseudo assembly code. The target format program is 
-    declared in json_reader.Lab1_checkpoint.ml
+  This module generates information for register allocation 
+  based on pseudo assembly code. The target format program is 
+  declared in json_reader.Lab1_checkpoint.ml
 
-    The basic idea is to generate infocmrtion including 
-    "define", "use", "live_out", "move" and "line_num" info
-    for each pseudo assembly instruction.
+  The basic idea is to generate infocmrtion including 
+  "define", "use", "live_out", "move" and "line_num" info
+  for each pseudo assembly instruction.
 *)
 (* open Core *)
 

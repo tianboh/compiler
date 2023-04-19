@@ -1,6 +1,6 @@
 module Temp = Var.Temp
 module Register = Var.X86_reg
-module Reg_info = Codegen.Program
+module Reg_info = Program
 
 type reg = Register.t
 
