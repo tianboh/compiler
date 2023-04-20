@@ -82,8 +82,7 @@ module Pseudo = struct
     | T.Temp t -> AS.Mov { dest; src = AS.Temp t } :: rev_acc
     | T.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
     | T.Sexp sexp ->
-      let stm = munch_stm sexp.stm in
-      let stm_rev = List.rev stm in
+      let stm_rev = munch_stm_rev sexp.stm in
       let ret = stm_rev @ rev_acc in
       (* Notice that sexp does not return any thing,
        * it is only used for side effect.
@@ -123,32 +122,36 @@ module Pseudo = struct
      * reverse the list before returning. *)
     List.rev (munch_exp_acc dest exp [])
 
-  and munch_stm stm =
+  and munch_stm_rev stm =
+    (* Return a reversed AS.instr list. *)
     match stm with
-    | T.Move mv -> munch_exp (AS.Temp mv.dest) mv.src
+    | T.Move mv -> munch_exp_acc (AS.Temp mv.dest) mv.src []
     | T.Return e ->
       let t = Temp.create () in
-      let inst = munch_exp (AS.Temp t) e in
-      inst @ [ AS.Ret { var = AS.Temp t } ]
+      let inst = munch_exp_acc (AS.Temp t) e [] in
+      AS.Ret { var = AS.Temp t } :: inst
     | Jump jmp -> [ AS.Jump { target = jmp } ]
     | T.CJump cjmp ->
       let lhs = AS.Temp (Temp.create ()) in
       let op = munch_op cjmp.op in
       let rhs = AS.Temp (Temp.create ()) in
-      let lhs_inst = munch_exp lhs cjmp.lhs in
-      let rhs_inst = munch_exp rhs cjmp.rhs in
-      lhs_inst @ rhs_inst @ [ AS.CJump { lhs; op; rhs; target = cjmp.target_stm } ]
+      let lhs_inst_rev = munch_exp_acc lhs cjmp.lhs [] in
+      let rhs_inst_rev = munch_exp_acc rhs cjmp.rhs [] in
+      (AS.CJump { lhs; op; rhs; target = cjmp.target_stm } :: rhs_inst_rev) @ lhs_inst_rev
     | T.Label l -> [ AS.Label l ]
-    | T.Seq seq -> munch_stm seq.head @ munch_stm seq.tail
+    | T.Seq seq -> munch_stm_rev seq.tail @ munch_stm_rev seq.head
     | T.Nop -> []
     | T.NExp nexp ->
       let t = AS.Temp (Temp.create ()) in
-      munch_exp t nexp
+      munch_exp_acc t nexp []
   ;;
 
   (* To codegen a series of statements, just concatenate the results of
    * codegen-ing each statement. *)
-  let gen (stm : T.program) = munch_stm stm
+  let gen (stm : T.program) =
+    let res_rev = munch_stm_rev stm in
+    List.rev res_rev
+  ;;
 
   let rec print_insts insts =
     match insts with
@@ -222,7 +225,7 @@ module X86 = struct
         ^ AS_x86.format_operand (dest :> AS_x86.operand) DWORD)
   ;;
 
-  let rec _codegen_w_reg
+  let rec _codegen_w_reg_rev
       res
       inst_list
       (reg_alloc_info : Register.t Temp.Map.t)
@@ -238,37 +241,42 @@ module X86 = struct
         let lhs = oprd_ps_to_x86 bin_op.lhs reg_alloc_info in
         let rhs = oprd_ps_to_x86 bin_op.rhs reg_alloc_info in
         let insts = gen_x86_inst_bin bin_op.op dest lhs rhs reg_swap in
-        _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
+        let insts_rev = List.rev insts in
+        _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
       | AS.Mov mov ->
         let dest = oprd_ps_to_x86 mov.dest reg_alloc_info in
         let src = oprd_ps_to_x86 mov.src reg_alloc_info in
         let insts = AS_x86.safe_mov dest src DWORD in
-        _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
+        let insts_rev = List.rev insts in
+        _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
       | AS.Ret ret ->
         let var_ret = oprd_ps_to_x86 ret.var reg_alloc_info in
         (* [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] *)
         let insts = AS_x86.safe_ret var_ret QWORD in
-        _codegen_w_reg (res @ insts) t reg_alloc_info reg_swap
-      | AS.Label l -> _codegen_w_reg (res @ [ AS_x86.Label l ]) t reg_alloc_info reg_swap
+        let insts_rev = List.rev insts in
+        _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
+      | AS.Label l -> _codegen_w_reg_rev (AS_x86.Label l :: res) t reg_alloc_info reg_swap
       | AS.Jump jp ->
-        _codegen_w_reg (res @ [ AS_x86.Jump jp.target ]) t reg_alloc_info reg_swap
+        _codegen_w_reg_rev (AS_x86.Jump jp.target :: res) t reg_alloc_info reg_swap
       | AS.CJump cjp ->
         let lhs = oprd_ps_to_x86 cjp.lhs reg_alloc_info in
         let rhs = oprd_ps_to_x86 cjp.rhs reg_alloc_info in
         let target = cjp.target in
         let cmp_inst = AS_x86.safe_cmp lhs rhs DWORD reg_swap in
+        let cmp_inst_rev = List.rev cmp_inst in
         let cjp_inst =
           match cjp.op with
-          | Equal_eq -> [ AS_x86.JE target ]
-          | Greater -> [ AS_x86.JG target ]
-          | Greater_eq -> [ AS_x86.JGE target ]
-          | Less -> [ AS_x86.JL target ]
-          | Less_eq -> [ AS_x86.JLE target ]
-          | Not_eq -> [ AS_x86.JNE target ]
+          | Equal_eq -> AS_x86.JE target
+          | Greater -> AS_x86.JG target
+          | Greater_eq -> AS_x86.JGE target
+          | Less -> AS_x86.JL target
+          | Less_eq -> AS_x86.JLE target
+          | Not_eq -> AS_x86.JNE target
           | _ -> failwith "conditional jump op should can only be relop."
         in
-        _codegen_w_reg (res @ cmp_inst @ cjp_inst) t reg_alloc_info reg_swap
-      | _ -> _codegen_w_reg res t reg_alloc_info reg_swap)
+        (* _codegen_w_reg_rev (res @ cmp_inst @ cjp_inst) t reg_alloc_info reg_swap *)
+        _codegen_w_reg_rev ((cjp_inst :: cmp_inst_rev) @ res) t reg_alloc_info reg_swap
+      | _ -> _codegen_w_reg_rev res t reg_alloc_info reg_swap)
   ;;
 
   let gen (inst_list : AS.instr list) (reg_alloc_info : (Temp.t * Register.t) option list)
@@ -283,6 +291,7 @@ module X86 = struct
             | temp, reg -> Temp.Map.set acc ~key:temp ~data:reg))
     in
     let reg_swap = Register.swap () in
-    _codegen_w_reg [] inst_list reg_alloc reg_swap
+    let res_rev = _codegen_w_reg_rev [] inst_list reg_alloc reg_swap in
+    List.rev res_rev
   ;;
 end

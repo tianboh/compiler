@@ -117,7 +117,7 @@ let build_graph (prog : Reg_info.temps_info) =
 
 let get_precolor (adj : Temp.Set.t Temp.Map.t) =
   Temp.Map.fold adj ~init:[] ~f:(fun ~key:k ~data:_ acc ->
-      if Temp.value k < 0 then [ k ] @ acc else acc)
+      if Temp.value k < 0 then k :: acc else acc)
 ;;
 
 (* Table store info from temp to register index. *)
@@ -150,7 +150,7 @@ let gen_reg_table prog adj =
   reg_table
 ;;
 
-let rec _seo adj reg_table seq =
+let rec _seo_rev adj reg_table seq =
   match Temp.Map.is_empty reg_table with
   | true -> seq
   | false ->
@@ -164,7 +164,7 @@ let rec _seo adj reg_table seq =
       | None -> failwith "empty reg_table"
       | Some s -> s
     in
-    let seq_new = seq @ [ u ] in
+    let seq_new = u :: seq in
     let nbr = Temp.Map.find_exn adj u in
     let nbr = Temp.Set.remove nbr u in
     let reg_table =
@@ -176,14 +176,15 @@ let rec _seo adj reg_table seq =
             Temp.Map.set reg_table ~key:x ~data:order)
     in
     let reg_table = Temp.Map.remove reg_table u in
-    _seo adj reg_table seq_new
+    _seo_rev adj reg_table seq_new
 ;;
 
 (* We need to consider the influence of pre-coloring, which is stored in tmp_to_reg *)
 let seo adj prog =
   let seq = get_precolor adj in
   let reg_table = gen_reg_table prog adj in
-  _seo adj reg_table seq
+  let seo_rev = _seo_rev adj reg_table seq in
+  List.rev seo_rev
 ;;
 
 (* Allocate register for tmp.
@@ -196,7 +197,7 @@ let alloc (nbr : Temp.Set.t) (tmp_to_reg : reg Temp.Map.t) : reg =
     Temp.Set.fold nbr ~init:[] ~f:(fun acc u ->
         match Temp.Map.find tmp_to_reg u with
         | None -> acc
-        | Some u' -> [ u' ] @ acc)
+        | Some u' -> u' :: acc)
   in
   let nbr_reg_s = Register.Set.of_list nbr_reg_l in
   let r = Register.find_min_available nbr_reg_s in

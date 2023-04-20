@@ -41,7 +41,7 @@ let const_propagation (pseudo_assembly : AS.instr list) : AS.instr list =
       (const_map : Int32.t Temp.Map.t)
     =
     match pseudo_assembly with
-    | [] -> res
+    | [] -> List.rev res
     | h :: t ->
       (match h with
       | AS.Binop bin ->
@@ -58,8 +58,8 @@ let const_propagation (pseudo_assembly : AS.instr list) : AS.instr list =
               (* update const_map because destination is updated. *)
               Temp.Map.remove const_map temp
           in
-          helper t (res @ [ AS.Binop { op; lhs; rhs; dest } ]) const_map
-        | _ -> helper t (res @ [ h ]) const_map)
+          helper t (AS.Binop { op; lhs; rhs; dest } :: res) const_map
+        | _ -> helper t (h :: res) const_map)
       | AS.Mov mov ->
         (match mov.dest, mov.src with
         | AS.Temp tmp, AS.Imm i ->
@@ -70,21 +70,21 @@ let const_propagation (pseudo_assembly : AS.instr list) : AS.instr list =
           | None ->
             (* Update const map if dest is already in cache key. *)
             let const_map = Temp.Map.remove const_map dest in
-            helper t (res @ [ h ]) const_map
+            helper t (h :: res) const_map
           | Some s ->
             let const_map = Temp.Map.set const_map ~key:dest ~data:s in
             helper t res const_map)
-        | _ -> helper t (res @ [ h ]) const_map)
+        | _ -> helper t (h :: res) const_map)
       | AS.Ret ret ->
         (match ret.var with
-        | AS.Imm _ -> helper t (res @ [ h ]) const_map
+        | AS.Imm _ -> helper t (h :: res) const_map
         | AS.Temp temp ->
           (match Temp.Map.find const_map temp with
           | Some _ ->
             let v = Temp.Map.find_exn const_map temp in
-            helper t (res @ [ AS.Ret { var = AS.Imm v } ]) const_map
-          | None -> helper t (res @ [ h ]) const_map))
-      | _ -> helper t (res @ [ h ]) const_map)
+            helper t (AS.Ret { var = AS.Imm v } :: res) const_map
+          | None -> helper t (h :: res) const_map))
+      | _ -> helper t (h :: res) const_map)
   in
   helper pseudo_assembly [] const_map
 ;;

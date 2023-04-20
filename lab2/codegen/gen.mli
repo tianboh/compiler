@@ -11,8 +11,10 @@ module AS = Inst.Pseudo
 module Temp = Var.Temp
 module Register = Var.X86_reg
 module AS_x86 = Inst.X86
+module T = Parser.Tree
 
 module Pseudo : sig
+  val munch_exp : AS.operand -> T.exp -> AS.instr list
   val gen : Parser.Tree.program -> AS.instr list
   val print_insts : AS.instr list -> unit
 end

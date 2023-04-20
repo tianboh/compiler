@@ -127,7 +127,7 @@ let group_block_lines prog =
     | [] -> if List.is_empty acc then l else l @ [ acc ]
     | h :: t ->
       if h.is_label && not inclusive
-      then helper ([ h ] @ t) true ([ acc ] @ l) []
+      then helper (h :: t) true ([ acc ] @ l) []
       else if h.is_label
       then helper t false l [ h ]
       else if inclusive
@@ -139,10 +139,10 @@ let group_block_lines prog =
 
 let rec _group_logical_lines lss acc =
   match lss with
-  | [] -> acc
+  | [] -> List.rev acc
   | h :: t ->
     let new_h = List.rev h in
-    _group_logical_lines t (acc @ [ new_h ])
+    _group_logical_lines t ([ new_h ] @ acc)
 ;;
 
 (*  
@@ -421,7 +421,7 @@ let dfs blocks (df_type : Df_analysis.t) =
     | Df_analysis.Backward_may | Df_analysis.Backward_must ->
       let blocks = swap_pred_succ blocks in
       let blocks = swap_in_out blocks in
-      let blocks = _dfs blocks df_type ([ -1 ] @ List.rev order) in
+      let blocks = _dfs blocks df_type (-1 :: List.rev order) in
       let blocks = swap_in_out blocks in
       swap_pred_succ blocks
     | Df_analysis.No_analysis -> failwith "error for input type no_analysis in dfs"
@@ -510,12 +510,12 @@ let gen_res res =
   let accu = [] in
   let rec helper lines accu =
     match lines with
-    | [] -> accu
+    | [] -> List.rev accu
     | h :: t ->
       let line_in_set, line_out_set = Hashtbl.find_exn res h in
       let line_in = IntSet.to_list line_in_set in
       let line_out = IntSet.to_list line_out_set in
-      let accu = accu @ [ line_in, line_out, h ] in
+      let accu = [ line_in, line_out, h ] @ accu in
       helper t accu
   in
   helper keys_ordered accu

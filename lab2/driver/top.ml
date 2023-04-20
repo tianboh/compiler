@@ -192,7 +192,7 @@ let compile (cmd : cmd_line_args) : unit =
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
   let assem_ps = Codegen.Gen.Pseudo.gen ir in
-  (* let assem_ps = Codegen.Optimize.optimize assem_ps in *)
+  let assem_ps = Codegen.Optimize.optimize assem_ps in
   (* let () = Codegen.Gen.Pseudo.print_insts assem_ps in *)
   (* let stop = Unix.gettimeofday () in *)
   (* let () = Printf.printf "Execution time assem_ps: %fs\n%!" (stop -. start) in *)
