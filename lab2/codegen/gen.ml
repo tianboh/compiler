@@ -84,12 +84,7 @@ module Pseudo = struct
     | T.Sexp sexp ->
       let stm_rev = munch_stm_rev sexp.stm in
       let ret = stm_rev @ rev_acc in
-      (* Notice that sexp does not return any thing,
-       * it is only used for side effect.
-       * So we create a temporary as dest, but do not
-       * use it in the above level. *)
-      let t = AS.Temp (Temp.create ()) in
-      munch_exp_acc t sexp.exp ret
+      munch_exp_acc dest sexp.exp ret
 
   (* munch_binop_acc dest (binop, e1, e2) rev_acc
    *

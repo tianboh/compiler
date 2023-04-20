@@ -130,7 +130,7 @@ module Print = struct
       sprintf "(%s %s %s)" (pp_mexp binop.lhs) (pp_binop binop.op) (pp_mexp binop.rhs)
     | Terop terop ->
       sprintf
-        "(%s %s %s)"
+        "(%s ? %s : %s)"
         (pp_mexp terop.cond)
         (pp_mexp terop.true_exp)
         (pp_mexp terop.false_exp)
