@@ -170,7 +170,21 @@ let get_block_succ (ls : line list) l2b =
   let succ = IntSet.diff blk_succ_lines_s blk_lines_s in
   if IntSet.is_empty succ
   then IntSet.of_list [ -1 ]
-  else IntSet.map succ ~f:(fun s -> Hashtbl.find_exn l2b s)
+  else
+    (* Only return has succ set empty, however, 
+     * some special case may be like
+     * int i;
+     * int a = 1;
+     * return a;
+     * i += 1  
+     * In this case, i += 1 has succ, but there is no
+     * real successor. So if we cannot find its 
+     * successor block, we will make its successor
+     * block as -1. *)
+    IntSet.map succ ~f:(fun s ->
+        match Hashtbl.find l2b s with
+        | Some succ' -> succ'
+        | None -> -1)
 ;;
 
 let get_block_gen_kill (ls : line list) =

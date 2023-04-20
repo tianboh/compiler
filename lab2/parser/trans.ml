@@ -151,7 +151,8 @@ let rec trans_stm (ast : A.program) (env : Temp.t S.t) : T.program =
     seq4
   | A.Return ret_ast ->
     let exp = trans_mexp ret_ast env in
-    T.Return exp
+    let ret = T.Return exp in
+    T.Seq { head = ret; tail = T.Label (Label.label (Some "afterlife")) }
   | A.Nop -> T.Nop
   | A.Seq seq_ast ->
     let head = trans_stm seq_ast.head env in

@@ -184,6 +184,9 @@ let compile (cmd : cmd_line_args) : unit =
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Trans.translate ast in
+  (* Okay, this is a hack, we will provide more comprehensive handling in lab3. 
+   * TODO: fix it! *)
+  let ir = Tree.Seq { head = Tree.Label (Util.Label.label (Some "main")); tail = ir } in
   say_if cmd.dump_ir (fun () -> Tree.Print.pp_stm ir);
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");

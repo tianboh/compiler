@@ -9,8 +9,9 @@
 *)
 (* open Core *)
 
-module AS = Inst.Pseudo
+open Core
 module Inst_reg_info = Json_reader.Lab1_checkpoint
+module AS = Inst.Pseudo
 module Temp = Var.Temp
 module Register = Var.X86_reg
 
@@ -27,11 +28,11 @@ type temps_info = line list
 (* Return None if define field is empty else Some Temp.t *)
 val get_def : line -> Temp.t option
 
-val gen_forward
+(* val gen_forward
   :  AS.instr list
   -> (int, line) Base.Hashtbl.t
   -> int
-  -> (int, line) Base.Hashtbl.t
+  -> (int, line) Base.Hashtbl.t *)
 
 val gen_backward
   :  AS.instr list
@@ -46,5 +47,7 @@ val transform_temps_to_json
   :  (Temp.t * Register.t) option list
   -> Inst_reg_info.allocations
 
+val print_TempSet : (Temp.t, Temp.comparator_witness) Set_intf.Set.t -> unit
+val print_line : line -> unit
 val print_lines : line list -> unit
 val gen_regalloc_info : AS.instr list -> line list
