@@ -16,16 +16,31 @@ module Label = Util.Label
 
 let print_line (line : Dfana_info.line) =
   let () = printf "\n{gen: " in
-  let () = List.iter ~f:(fun x -> printf "%d" x) line.gen in
+  let () = List.iter ~f:(fun x -> printf "%d " x) line.gen in
   let () = printf "\nkill: " in
-  let () = List.iter ~f:(fun x -> printf "%d" x) line.kill in
+  let () = List.iter ~f:(fun x -> printf "%d " x) line.kill in
   let () = printf "\nsucc: " in
-  let () = List.iter ~f:(fun x -> printf "%d" x) line.succ in
+  let () = List.iter ~f:(fun x -> printf "%d " x) line.succ in
   let () = printf "\nis_label: %b" line.is_label in
   printf "\nline_number: %d}\n" line.line_number
 ;;
 
 let print_df_info df_info = List.iter df_info ~f:(fun line -> print_line line)
+
+(* tmp is from line_no to temporary *)
+let print_liveout (liveout : (int list * int list * int) list) tmp_map =
+  List.iter liveout ~f:(fun line ->
+      let _, out_l, lo = line in
+      let () = printf "line %d lo: " lo in
+      let () =
+        List.iter out_l ~f:(fun x ->
+            let t = Int.Map.find_exn tmp_map x in
+            match t with
+            | AS.Temp t -> printf "%s " (Temp.name t)
+            | _ -> printf "")
+      in
+      printf "\n")
+;;
 
 (* map is from is a hash table with key : Temp.t and value Int.Set.t 
  * The value corresponds line number that define this variable. *)
@@ -182,5 +197,6 @@ let gen_liveness (inst_list : AS.instr list) =
   (* let () = print_df_info df_info in *)
   let lo_int = Dfana.dfana df_info Args.Df_analysis.Backward_may in
   let tmp_map = gen_temp inst_list 0 Int.Map.empty in
+  (* let () = print_liveout lo_int tmp_map in *)
   trans_liveness lo_int tmp_map Int.Map.empty
 ;;

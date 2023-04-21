@@ -20,3 +20,5 @@ val gen_liveness :
     Map_intf.Map.t
 val print_line : Dfana_info.line -> unit
 val print_df_info : Dfana_info.line list -> unit
+val print_liveout : (int list * int list * int) list ->
+    (int, AS.operand, Core.Int.comparator_witness) Map_intf.Map.t -> unit

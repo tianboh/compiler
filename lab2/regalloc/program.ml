@@ -151,6 +151,12 @@ let rec gen_forward'
       let line = { line with define; uses } in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward' t inst_info (line_num + 1) live_out_map
+    | AS.Jump _ ->
+      let define = gen_TempSet [] in
+      let uses = gen_TempSet [] in
+      let line = { line with define; uses } in
+      Hashtbl.set inst_info ~key:line_num ~data:line;
+      gen_forward' t inst_info (line_num + 1) live_out_map
     | AS.Ret ret ->
       let define = gen_TempSet [] in
       let uses = gen_TempSet [ ret.var ] in
