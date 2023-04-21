@@ -193,19 +193,19 @@ module X86 = struct
     let set_inst =
       match op with
       | Less -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
-      | Less_eq -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
-      | Greater -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
-      | Greater_eq -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
-      | Equal_eq -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
-      | Not_eq -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
+      | Less_eq -> [ AS_x86.SETLE { dest = eax; layout = BYTE } ]
+      | Greater -> [ AS_x86.SETG { dest = eax; layout = BYTE } ]
+      | Greater_eq -> [ AS_x86.SETGE { dest = eax; layout = BYTE } ]
+      | Equal_eq -> [ AS_x86.SETE { dest = eax; layout = BYTE } ]
+      | Not_eq -> [ AS_x86.SETNE { dest = eax; layout = BYTE } ]
       | _ -> failwith "relop cannot handle other op"
     in
     let cmp_inst = AS_x86.safe_cmp lhs rhs DWORD swap in
     cmp_inst
     @ [ AS_x86.Mov { dest = AS_x86.Reg swap; src = eax; layout = DWORD } ]
     @ set_inst
-    @ [ AS_x86.XOR { dest; src = dest; layout = DWORD }
-      ; AS_x86.Mov { dest; src = eax; layout = BYTE }
+    @ [ AS_x86.XOR { dest = eax; src = eax; layout = DWORD }
+      ; AS_x86.Mov { dest; src = eax; layout = DWORD }
       ; AS_x86.Mov { dest = eax; src = AS_x86.Reg swap; layout = DWORD }
       ]
   ;;
