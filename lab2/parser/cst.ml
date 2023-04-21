@@ -271,12 +271,7 @@ module Print = struct
         | None, Some iter -> "", pp_msimp iter
         | Some init, Some iter -> pp_msimp init, pp_msimp iter
       in
-      sprintf
-        "for(%s; %s; %s){%s}"
-        init
-        (pp_mexp for_stm.cond)
-        iter
-        (pp_mstm for_stm.body)
+      sprintf "for(%s %s; %s){%s}" init (pp_mexp for_stm.cond) iter (pp_mstm for_stm.body)
     | Return e -> sprintf "return %s;" (pp_mexp e)
 
   and pp_blk = function

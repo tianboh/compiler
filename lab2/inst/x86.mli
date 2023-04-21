@@ -83,6 +83,22 @@ type instr =
       { dest : operand
       ; layout : layout
       }
+  | SETL of
+      { dest : operand
+      ; layout : layout
+      }
+  | SETLE of
+      { dest : operand
+      ; layout : layout
+      }
+  | SETG of
+      { dest : operand
+      ; layout : layout
+      }
+  | SETGE of
+      { dest : operand
+      ; layout : layout
+      }
   | AND of
       { (* bitwise and *)
         src : operand

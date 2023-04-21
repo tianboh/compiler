@@ -93,6 +93,22 @@ type instr =
       { dest : operand
       ; layout : layout
       }
+  | SETL of
+      { dest : operand
+      ; layout : layout
+      }
+  | SETLE of
+      { dest : operand
+      ; layout : layout
+      }
+  | SETG of
+      { dest : operand
+      ; layout : layout
+      }
+  | SETGE of
+      { dest : operand
+      ; layout : layout
+      }
   | AND of
       { (* bitwise and *)
         src : operand
@@ -253,6 +269,10 @@ let format = function
   | JGE jge -> sprintf "jge %s" (Label.name jge)
   | SETE sete -> sprintf "sete %s" (format_operand sete.dest sete.layout)
   | SETNE setne -> sprintf "setne %s" (format_operand setne.dest setne.layout)
+  | SETL setl -> sprintf "setl %s" (format_operand setl.dest setl.layout)
+  | SETLE setle -> sprintf "setle %s" (format_operand setle.dest setle.layout)
+  | SETG setg -> sprintf "setg %s" (format_operand setg.dest setg.layout)
+  | SETGE setge -> sprintf "setge %s" (format_operand setge.dest setge.layout)
   | AND a ->
     sprintf
       "and%s %s, %s"

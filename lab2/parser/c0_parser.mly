@@ -254,7 +254,7 @@ control :
       { Cst.While {cond = e; body = s} }
   | For; L_paren; Semicolon; e = m(exp); Semicolon; R_paren; s = m(stm);
       { Cst.For {init = None; cond = e; iter = None; body = s} }
-  | For; L_paren; init = m(simp); Semicolon; e = m(exp); Semicolon; R_paren; s = m(stm);
+  | For; L_paren; Semicolon; init = m(simp); ; e = m(exp); Semicolon; R_paren; s = m(stm);
       { Cst.For {init = Some init; cond = e; iter = None; body = s} }
   | For; L_paren; Semicolon; e = m(exp); Semicolon; iter = m(simp); R_paren; s = m(stm);
       { Cst.For {init = None; cond = e; iter = Some iter; body = s} }
@@ -284,6 +284,8 @@ exp :
     { Cst.Binop { op; lhs; rhs; } }
   | Minus; e = m(exp); %prec Negative
     { Cst.Unop { op = Cst.Negative; operand = e; } }
+  | Excalmation_mark; e = m(exp); %prec Excalmation_mark
+    { Cst.Unop {op = Cst.Excalmation_mark; operand = e; } }
   | cond = m(exp); Question_mark; true_exp = m(exp); Colon; false_exp = m(exp);
     { Cst.Terop {cond = cond; true_exp = true_exp; false_exp = false_exp} }
   ;

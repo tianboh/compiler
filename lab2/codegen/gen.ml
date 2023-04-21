@@ -183,6 +183,33 @@ module X86 = struct
   let eax = AS_x86.Reg (Register.create_no 1)
   let edx = AS_x86.Reg (Register.create_no 4)
 
+  let gen_x86_relop_bin
+      (op : AS.bin_op)
+      (dest : AS_x86.operand)
+      (lhs : AS_x86.operand)
+      (rhs : AS_x86.operand)
+      (swap : Register.t)
+    =
+    let set_inst =
+      match op with
+      | Less -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
+      | Less_eq -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
+      | Greater -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
+      | Greater_eq -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
+      | Equal_eq -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
+      | Not_eq -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
+      | _ -> failwith "relop cannot handle other op"
+    in
+    let cmp_inst = AS_x86.safe_cmp lhs rhs DWORD swap in
+    cmp_inst
+    @ [ AS_x86.Mov { dest = AS_x86.Reg swap; src = eax; layout = DWORD } ]
+    @ set_inst
+    @ [ AS_x86.XOR { dest; src = dest; layout = DWORD }
+      ; AS_x86.Mov { dest; src = eax; layout = BYTE }
+      ; AS_x86.Mov { dest = eax; src = AS_x86.Reg swap; layout = DWORD }
+      ]
+  ;;
+
   let gen_x86_inst_bin
       (op : AS.bin_op)
       (dest : AS_x86.operand)
@@ -214,6 +241,8 @@ module X86 = struct
       ; AS_x86.Div { src = AS_x86.Reg swap; layout = DWORD }
       ; AS_x86.Mov { dest; src = edx; layout = DWORD }
       ]
+    | Less | Less_eq | Greater | Greater_eq | Equal_eq | Not_eq ->
+      gen_x86_relop_bin op dest lhs rhs swap
     | _ ->
       failwith
         ("inst not implemented yet "
