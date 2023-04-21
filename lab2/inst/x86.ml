@@ -115,6 +115,12 @@ type instr =
       ; dest : operand
       ; layout : layout
       }
+  | OR of
+      { (* bitwise and *)
+        src : operand
+      ; dest : operand
+      ; layout : layout
+      }
   | XOR of
       { src : operand
       ; dest : operand
@@ -149,6 +155,24 @@ let safe_sub (dest : operand) (src : operand) (layout : layout) =
     ; Sub { dest = Mem dest; src = Reg (Register.swap ()); layout }
     ]
   | _ -> [ Sub { dest; src; layout } ]
+;;
+
+let safe_and (dest : operand) (src : operand) (layout : layout) =
+  match dest, src with
+  | Mem dest, Mem src ->
+    [ Mov { dest = Reg (Register.swap ()); src = Mem src; layout }
+    ; AND { dest = Mem dest; src = Reg (Register.swap ()); layout }
+    ]
+  | _ -> [ AND { dest; src; layout } ]
+;;
+
+let safe_or (dest : operand) (src : operand) (layout : layout) =
+  match dest, src with
+  | Mem dest, Mem src ->
+    [ Mov { dest = Reg (Register.swap ()); src = Mem src; layout }
+    ; OR { dest = Mem dest; src = Reg (Register.swap ()); layout }
+    ]
+  | _ -> [ OR { dest; src; layout } ]
 ;;
 
 let safe_ret (dest : operand) (layout : layout) =
@@ -276,6 +300,12 @@ let format = function
   | AND a ->
     sprintf
       "and%s %s, %s"
+      (format_inst a.layout)
+      (format_operand a.src a.layout)
+      (format_operand a.dest a.layout)
+  | OR a ->
+    sprintf
+      "or%s %s, %s"
       (format_inst a.layout)
       (format_operand a.src a.layout)
       (format_operand a.dest a.layout)

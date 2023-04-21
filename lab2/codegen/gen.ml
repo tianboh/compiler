@@ -241,6 +241,8 @@ module X86 = struct
       ; AS_x86.Div { src = AS_x86.Reg swap; layout = DWORD }
       ; AS_x86.Mov { dest; src = edx; layout = DWORD }
       ]
+    | And -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_and dest rhs DWORD
+    | Or -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_or dest rhs DWORD
     | Less | Less_eq | Greater | Greater_eq | Equal_eq | Not_eq ->
       gen_x86_relop_bin op dest lhs rhs swap
     | _ ->

@@ -254,7 +254,7 @@ control :
       { Cst.While {cond = e; body = s} }
   | For; L_paren; Semicolon; e = m(exp); Semicolon; R_paren; s = m(stm);
       { Cst.For {init = None; cond = e; iter = None; body = s} }
-  | For; L_paren; Semicolon; init = m(simp); ; e = m(exp); Semicolon; R_paren; s = m(stm);
+  | For; L_paren; init = m(simp); Semicolon; e = m(exp); Semicolon; R_paren; s = m(stm);
       { Cst.For {init = Some init; cond = e; iter = None; body = s} }
   | For; L_paren; Semicolon; e = m(exp); Semicolon; iter = m(simp); R_paren; s = m(stm);
       { Cst.For {init = None; cond = e; iter = Some iter; body = s} }

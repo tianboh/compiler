@@ -105,6 +105,12 @@ type instr =
       ; dest : operand
       ; layout : layout
       }
+  | OR of
+      { (* bitwise and *)
+        src : operand
+      ; dest : operand
+      ; layout : layout
+      }
   | XOR of
       { src : operand
       ; dest : operand
@@ -120,5 +126,7 @@ val format_operand : operand -> layout -> string
 val safe_mov : operand -> operand -> layout -> instr list
 val safe_add : operand -> operand -> layout -> instr list
 val safe_sub : operand -> operand -> layout -> instr list
+val safe_and : operand -> operand -> layout -> instr list
+val safe_or : operand -> operand -> layout -> instr list
 val safe_ret : operand -> layout -> instr list
 val safe_cmp : operand -> operand -> layout -> Register.t  -> instr list
