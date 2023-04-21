@@ -33,7 +33,7 @@ type bin_op =
   | Modulo
   | And
   | Or
-  | Hat
+  | Xor
   | Right_shift
   | Left_shift
   | Equal_eq

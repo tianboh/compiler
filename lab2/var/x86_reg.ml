@@ -18,9 +18,10 @@ include Comparable.Make (T)
  * we should not assign these two registers for general purpose use like register allocation. 
  * We also preserver r15(15) as a swap register, and do not assign it for register allocation.
  * We also preserve EAX(1) and EDX(4) because they are treated special in mul, mod, and mul op.
+ * ECX(3) is preserved for left/right shift.
  *)
 let special_use = function
-  | 1 | 4 | 7 | 8 | 15 -> true
+  | 1 | 3 | 4 | 7 | 8 | 15 -> true
   | _ -> false
 ;;
 

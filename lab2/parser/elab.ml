@@ -94,8 +94,9 @@ and elab_unop (unop : Cst.unop) (operand : Cst.mexp) : Ast.exp =
       ; false_exp = Mark.naked Ast.True
       }
   | Cst.Dash_mark ->
-    let lhs = Mark.naked (Ast.Const_int Int32.min_int) in
-    Ast.Binop { op = Ast.Minus; lhs; rhs = operand_ast }
+    (* -1 is 1111 1111 in 2's complement representation *)
+    let lhs = Mark.naked (Ast.Const_int Int32.minus_one) in
+    Ast.Binop { op = Ast.Hat; lhs; rhs = operand_ast }
 
 and elab_terop (cond : Cst.mexp) (true_exp : Cst.mexp) (false_exp : Cst.mexp) : Ast.exp =
   let cond_ast = elab_mexp cond in

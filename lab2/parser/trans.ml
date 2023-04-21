@@ -24,7 +24,7 @@ let trans_binop = function
   | A.Modulo -> T.Modulo
   | A.And -> T.And
   | A.Or -> T.Or
-  | A.Hat -> T.Hat
+  | A.Hat -> T.Xor
   | A.Right_shift -> T.Right_shift
   | A.Left_shift -> T.Left_shift
   (* IB *)

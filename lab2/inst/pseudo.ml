@@ -41,7 +41,7 @@ type bin_op =
   | Modulo
   | And
   | Or
-  | Hat
+  | Xor
   | Right_shift
   | Left_shift
   | Equal_eq
@@ -50,8 +50,6 @@ type bin_op =
   | Less
   | Less_eq
   | Not_eq
-
-(* | T.Hat -> check https://www.madwizard.org/programming/snippets?id=36 *)
 
 type instr =
   | Binop of
@@ -87,7 +85,7 @@ let format_binop = function
   | Modulo -> "%"
   | And -> "&"
   | Or -> "|"
-  | Hat -> "^"
+  | Xor -> "^"
   | Right_shift -> ">>"
   | Left_shift -> "<<"
   | Equal_eq -> "=="

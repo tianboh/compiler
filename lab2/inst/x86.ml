@@ -126,6 +126,20 @@ type instr =
       ; dest : operand
       ; layout : layout
       }
+  | SAL of
+      { (* Inst layout is same as dest. 
+         * Immediate is 8bit, memory/register(%cl) is 16bit *)
+        src : operand
+      ; dest : operand
+      ; layout : layout
+      }
+  | SAR of
+      { (* Inst layout is same as dest. 
+         * Immediate is 8bit, memory/register(%cl) is 16bit *)
+        src : operand
+      ; dest : operand
+      ; layout : layout
+      }
   | Directive of string
   | Comment of string
 
@@ -173,6 +187,41 @@ let safe_or (dest : operand) (src : operand) (layout : layout) =
     ; OR { dest = Mem dest; src = Reg (Register.swap ()); layout }
     ]
   | _ -> [ OR { dest; src; layout } ]
+;;
+
+let safe_xor (dest : operand) (src : operand) (layout : layout) =
+  match dest, src with
+  | Mem dest, Mem src ->
+    [ Mov { dest = Reg (Register.swap ()); src = Mem src; layout }
+    ; XOR { dest = Mem dest; src = Reg (Register.swap ()); layout }
+    ]
+  | _ -> [ XOR { dest; src; layout } ]
+;;
+
+let safe_sal (dest : operand) (src : operand) (layout : layout) (swap : Register.t) =
+  match dest, src with
+  | _, Reg _ | _, Mem _ ->
+    let ecx = Register.create_no 3 in
+    (* when src is register/memory, SAL can only use %cl to shift. *)
+    [ Mov { dest = Reg swap; src = Reg ecx; layout }
+    ; Mov { dest = Reg ecx; src; layout }
+    ; SAL { dest; src = Reg ecx; layout }
+    ; Mov { dest = Reg ecx; src = Reg swap; layout }
+    ]
+  | _ -> [ SAL { dest; src; layout = BYTE } ]
+;;
+
+let safe_sar (dest : operand) (src : operand) (layout : layout) (swap : Register.t) =
+  match dest, src with
+  | _, Reg _ | _, Mem _ ->
+    let ecx = Register.create_no 3 in
+    (* when src is register/memory, SAR can only use %cl to shift. *)
+    [ Mov { dest = Reg swap; src = Reg ecx; layout }
+    ; Mov { dest = Reg ecx; src; layout }
+    ; SAR { dest; src = Reg ecx; layout }
+    ; Mov { dest = Reg ecx; src = Reg swap; layout }
+    ]
+  | _ -> [ SAR { dest; src; layout = BYTE } ]
 ;;
 
 let safe_ret (dest : operand) (layout : layout) =
@@ -315,6 +364,18 @@ let format = function
       (format_inst xor.layout)
       (format_operand xor.src xor.layout)
       (format_operand xor.dest xor.layout)
+  | SAR sar ->
+    sprintf
+      "sar%s %s, %s"
+      (format_inst sar.layout)
+      (format_operand sar.src BYTE)
+      (format_operand sar.dest sar.layout)
+  | SAL sal ->
+    sprintf
+      "sal%s %s, %s"
+      (format_inst sal.layout)
+      (format_operand sal.src BYTE)
+      (format_operand sal.dest sal.layout)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
 ;;

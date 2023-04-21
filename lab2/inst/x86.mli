@@ -116,6 +116,16 @@ type instr =
       ; dest : operand
       ; layout : layout
       }
+  | SAL of
+      { src : operand
+      ; dest : operand
+      ; layout : layout
+      }
+  | SAR of
+      { src : operand
+      ; dest : operand
+      ; layout : layout
+      }
   | Directive of string
   | Comment of string
 
@@ -128,5 +138,8 @@ val safe_add : operand -> operand -> layout -> instr list
 val safe_sub : operand -> operand -> layout -> instr list
 val safe_and : operand -> operand -> layout -> instr list
 val safe_or : operand -> operand -> layout -> instr list
+val safe_xor : operand -> operand -> layout -> instr list
+val safe_sal : operand -> operand -> layout -> Register.t -> instr list
+val safe_sar : operand -> operand -> layout -> Register.t -> instr list
 val safe_ret : operand -> layout -> instr list
 val safe_cmp : operand -> operand -> layout -> Register.t  -> instr list

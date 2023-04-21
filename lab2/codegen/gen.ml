@@ -46,7 +46,7 @@ let munch_op = function
   | T.Modulo -> AS.Modulo
   | T.And -> AS.And
   | T.Or -> AS.Or
-  | T.Hat -> AS.Hat
+  | T.Xor -> AS.Xor
   | T.Right_shift -> AS.Right_shift
   | T.Left_shift -> AS.Left_shift
   | T.Equal_eq -> AS.Equal_eq
@@ -243,12 +243,11 @@ module X86 = struct
       ]
     | And -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_and dest rhs DWORD
     | Or -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_or dest rhs DWORD
+    | Xor -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_xor dest rhs DWORD
+    | Right_shift -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_sar dest rhs DWORD swap
+    | Left_shift -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_sal dest rhs DWORD swap
     | Less | Less_eq | Greater | Greater_eq | Equal_eq | Not_eq ->
       gen_x86_relop_bin op dest lhs rhs swap
-    | _ ->
-      failwith
-        ("inst not implemented yet "
-        ^ AS_x86.format_operand (dest :> AS_x86.operand) DWORD)
   ;;
 
   let rec _codegen_w_reg_rev
