@@ -29,6 +29,14 @@
 *)
 
 module Mark = Util.Mark
+open Core
+
+let tc_errors : Util.Error_msg.t = Util.Error_msg.create ()
+
+let error ~msg src_span =
+  Util.Error_msg.error tc_errors src_span ~msg;
+  raise Util.Error_msg.Error
+;;
 
 (* 
  * CST exp -> AST exp
@@ -188,7 +196,13 @@ and elab_control ctl (src_span : Mark.src_span option) =
       | None -> Cst.Block [ for_stm.body ]
       | Some simp ->
         let src_span_iter = Mark.src_span simp in
-        let iter_cst = Cst.Simp (Mark.data simp) in
+        let iter_cst =
+          match Mark.data simp with
+          | Cst.Declare _ ->
+            let loc = Mark.src_span simp in
+            error ~msg:(sprintf "Cannot decalre variable at for iter.") loc
+          | _ -> Cst.Simp (Mark.data simp)
+        in
         Cst.Block [ for_stm.body; Mark.mark' iter_cst src_span_iter ]
     in
     let src_span_body = Mark.src_span for_stm.body in

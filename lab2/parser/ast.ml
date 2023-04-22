@@ -124,8 +124,8 @@ module Print = struct
   let rec pp_exp = function
     | Var id -> Symbol.name id
     | Const_int c -> Int32.to_string c
-    | True -> "1"
-    | False -> "0"
+    | True -> "true"
+    | False -> "false"
     | Binop binop ->
       sprintf "(%s %s %s)" (pp_mexp binop.lhs) (pp_binop binop.op) (pp_mexp binop.rhs)
     | Terop terop ->
@@ -153,7 +153,7 @@ module Print = struct
     | Seq seq_ast -> sprintf "%s %s" (pp_mstm seq_ast.head) (pp_mstm seq_ast.tail)
     | Declare decl_ast ->
       sprintf
-        "%s %s; %s"
+        "decl{%s %s; %s}"
         (pp_dtype decl_ast.t)
         (Symbol.name decl_ast.name)
         (pp_mstm decl_ast.tail)

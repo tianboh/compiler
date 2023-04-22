@@ -150,7 +150,9 @@ let rec tc_stms (ast : A.program) (env : env) : env =
     let env = tc_stms seq_ast.head env in
     tc_stms seq_ast.tail env
   | A.Declare decl_ast -> tc_declare decl_ast.t decl_ast.name decl_ast.tail loc env
-  | A.Sexp _ -> env
+  | A.Sexp sexp ->
+    let _ = (tc_exp sexp env : dtype) in
+    env
 
 (* Check following
  * 1) Whether variable name exist in env
