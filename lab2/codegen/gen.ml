@@ -36,6 +36,7 @@ module Reg_info = Json_reader.Lab1_checkpoint
 module Temp = Var.Temp
 module Register = Var.X86_reg
 module Memory = Var.Memory
+module Label = Util.Label
 open Var.Layout
 
 let munch_op = function
@@ -182,6 +183,7 @@ module X86 = struct
 
   let eax = AS_x86.Reg (Register.create_no 1)
   let edx = AS_x86.Reg (Register.create_no 4)
+  let fpe_label = Label.label (Some "fpe")
 
   let gen_x86_relop_bin
       (op : AS.bin_op)
@@ -244,8 +246,10 @@ module X86 = struct
     | And -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_and dest rhs DWORD
     | Or -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_or dest rhs DWORD
     | Xor -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_xor dest rhs DWORD
-    | Right_shift -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_sar dest rhs DWORD swap
-    | Left_shift -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_sal dest rhs DWORD swap
+    | Right_shift ->
+      AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_sar dest rhs DWORD fpe_label
+    | Left_shift ->
+      AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_sal dest rhs DWORD fpe_label
     | Less | Less_eq | Greater | Greater_eq | Equal_eq | Not_eq ->
       gen_x86_relop_bin op dest lhs rhs swap
   ;;
@@ -304,6 +308,15 @@ module X86 = struct
       | _ -> _codegen_w_reg_rev res t reg_alloc_info reg_swap)
   ;;
 
+  let fpe_handler =
+    let ecx = Register.create_no 3 in
+    (* We use ecx as zero reg because it is saved for shift. *)
+    [ AS_x86.Label fpe_label
+    ; AS_x86.Mov { dest = Reg ecx; src = Imm Int32.zero; layout = DWORD }
+    ; AS_x86.Div { src = Reg ecx; layout = DWORD }
+    ]
+  ;;
+
   let gen (inst_list : AS.instr list) (reg_alloc_info : (Temp.t * Register.t) option list)
       : AS_x86.instr list
     =
@@ -317,6 +330,7 @@ module X86 = struct
     in
     let reg_swap = Register.swap () in
     let res_rev = _codegen_w_reg_rev [] inst_list reg_alloc reg_swap in
-    List.rev res_rev
+    let res = List.rev res_rev in
+    res @ fpe_handler
   ;;
 end

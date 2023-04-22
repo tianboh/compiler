@@ -59,7 +59,8 @@ let dump_asm_x86 file_name x86_asm =
     ~f:(fun out ->
       let output_instr instr =
         match instr with
-        | Asm_x86.Label _ -> Out_channel.fprintf out "%s\n" (Asm_x86.format instr)
+        | Asm_x86.Label _ | Asm_x86.GDB _ ->
+          Out_channel.fprintf out "%s\n" (Asm_x86.format instr)
         | _ -> Out_channel.fprintf out "\t%s\n" (Asm_x86.format instr)
       in
       List.iter ~f:output_instr x86_asm)

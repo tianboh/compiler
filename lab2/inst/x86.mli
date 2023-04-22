@@ -126,6 +126,7 @@ type instr =
       ; dest : operand
       ; layout : layout
       }
+  | GDB of string
   | Directive of string
   | Comment of string
 
@@ -139,7 +140,7 @@ val safe_sub : operand -> operand -> layout -> instr list
 val safe_and : operand -> operand -> layout -> instr list
 val safe_or : operand -> operand -> layout -> instr list
 val safe_xor : operand -> operand -> layout -> instr list
-val safe_sal : operand -> operand -> layout -> Register.t -> instr list
-val safe_sar : operand -> operand -> layout -> Register.t -> instr list
+val safe_sal : operand -> operand -> layout -> Label.t -> instr list
+val safe_sar : operand -> operand -> layout -> Label.t -> instr list
 val safe_ret : operand -> layout -> instr list
 val safe_cmp : operand -> operand -> layout -> Register.t  -> instr list

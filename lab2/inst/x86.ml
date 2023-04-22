@@ -140,8 +140,11 @@ type instr =
       ; dest : operand
       ; layout : layout
       }
+  | GDB of string
   | Directive of string
   | Comment of string
+
+let shift_maximum_bit = Int32.of_int_exn 31 (* inclusive *)
 
 (* Now we provide safe instruction to avoid source and destination are both memory. *)
 let safe_mov (dest : operand) (src : operand) (layout : layout) =
@@ -198,30 +201,37 @@ let safe_xor (dest : operand) (src : operand) (layout : layout) =
   | _ -> [ XOR { dest; src; layout } ]
 ;;
 
-let safe_sal (dest : operand) (src : operand) (layout : layout) (swap : Register.t) =
+(* shift bit should be [0, 31] *)
+let shift_check (shift_bit : operand) (fpe_label : Label.t) =
+  [ Cmp { lhs = shift_bit; rhs = Imm shift_maximum_bit; layout = DWORD }
+  ; JG fpe_label
+  ; Cmp { lhs = shift_bit; rhs = Imm Int32.zero; layout = DWORD }
+  ; JL fpe_label
+  ]
+;;
+
+(* Remember that ecx is preserved during register allocation.
+ * So we can move src to ecx without store ecx value. *)
+let safe_sal (dest : operand) (src : operand) (layout : layout) (fpe_label : Label.t) =
   match dest, src with
   | _, Reg _ | _, Mem _ ->
     let ecx = Register.create_no 3 in
     (* when src is register/memory, SAL can only use %cl to shift. *)
-    [ Mov { dest = Reg swap; src = Reg ecx; layout }
-    ; Mov { dest = Reg ecx; src; layout }
-    ; SAL { dest; src = Reg ecx; layout }
-    ; Mov { dest = Reg ecx; src = Reg swap; layout }
-    ]
-  | _ -> [ SAL { dest; src; layout = BYTE } ]
+    (Mov { dest = Reg ecx; src; layout } :: shift_check (Reg ecx) fpe_label)
+    @ [ SAL { dest; src = Reg ecx; layout } ]
+  | _ -> shift_check src fpe_label @ [ SAL { dest; src; layout = BYTE } ]
 ;;
 
-let safe_sar (dest : operand) (src : operand) (layout : layout) (swap : Register.t) =
+(* Remember that ecx is preserved during register allocation.
+ * So we can move src to ecx without store ecx value. *)
+let safe_sar (dest : operand) (src : operand) (layout : layout) (fpe_label : Label.t) =
   match dest, src with
   | _, Reg _ | _, Mem _ ->
     let ecx = Register.create_no 3 in
     (* when src is register/memory, SAR can only use %cl to shift. *)
-    [ Mov { dest = Reg swap; src = Reg ecx; layout }
-    ; Mov { dest = Reg ecx; src; layout }
-    ; SAR { dest; src = Reg ecx; layout }
-    ; Mov { dest = Reg ecx; src = Reg swap; layout }
-    ]
-  | _ -> [ SAR { dest; src; layout = BYTE } ]
+    (Mov { dest = Reg ecx; src; layout } :: shift_check (Reg ecx) fpe_label)
+    @ [ SAR { dest; src = Reg ecx; layout } ]
+  | _ -> shift_check src fpe_label @ [ SAR { dest; src; layout = BYTE } ]
 ;;
 
 let safe_ret (dest : operand) (layout : layout) =
@@ -235,20 +245,6 @@ let safe_ret (dest : operand) (layout : layout) =
 
 (* Prepare for conditional jump. *)
 let safe_cmp (lhs : operand) (rhs : operand) (layout : layout) (swap : Register.t) =
-  (* | Not_eq ->
-      [ AS_x86.Mov { dest; src = eax; layout = DWORD }
-      ; AS_x86.Mov { dest = AS_x86.Reg swap; src = lhs; layout = DWORD }
-      ; AS_x86.XOR { dest = eax; src = eax; layout = DWORD }
-      ; AS_x86.Cmp { lhs = AS_x86.Reg swap; rhs; layout = DWORD }
-      ; AS_x86.SETNE { dest = eax; layout = BYTE }
-      ; AS_x86.Mov { dest = AS_x86.Reg swap; src = eax; layout = DWORD }
-      ; AS_x86.Mov { dest = eax; src = dest; layout = DWORD }
-      ; AS_x86.Mov { dest; src = AS_x86.Reg swap; layout = DWORD }
-      ] *)
-  (* [ Mov { dest = swap_reg; src = Mem lhs_mem; layout }
-    ; Cmp { lhs = swap_reg; rhs = Mem rhs_mem; layout }
-    ; Mov { dest = Mem lhs_mem; src = swap_reg; layout }
-    ] *)
   match lhs, rhs with
   | Mem _, Mem _ ->
     [ Mov { dest = Reg swap; src = lhs; layout }; Cmp { lhs = Reg swap; rhs; layout } ]
@@ -376,6 +372,7 @@ let format = function
       (format_inst sal.layout)
       (format_operand sal.src BYTE)
       (format_operand sal.dest sal.layout)
+  | GDB gdb -> sprintf "%s" gdb
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
 ;;
