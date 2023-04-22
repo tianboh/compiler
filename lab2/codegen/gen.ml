@@ -185,6 +185,10 @@ module X86 = struct
   let edx = AS_x86.Reg (Register.create_no 4)
   let fpe_label = Label.label (Some "fpe")
 
+  (* We don't need to store eax because eax is not assigned to any temp.
+   * Though eax, edx may be used by div/idiv instruction, once those 
+   * instructions are finished, eax, edx will no longer be used. 
+   * In a word, eax does not store temporary except ret. *)
   let gen_x86_relop_bin
       (op : AS.bin_op)
       (dest : AS_x86.operand)
@@ -203,13 +207,10 @@ module X86 = struct
       | _ -> failwith "relop cannot handle other op"
     in
     let cmp_inst = AS_x86.safe_cmp lhs rhs DWORD swap in
-    cmp_inst
-    @ [ AS_x86.Mov { dest = AS_x86.Reg swap; src = eax; layout = DWORD } ]
+    [ AS_x86.XOR { dest = eax; src = eax; layout = DWORD } ]
+    @ cmp_inst
     @ set_inst
-    @ [ AS_x86.XOR { dest = eax; src = eax; layout = DWORD }
-      ; AS_x86.Mov { dest; src = eax; layout = DWORD }
-      ; AS_x86.Mov { dest = eax; src = AS_x86.Reg swap; layout = DWORD }
-      ]
+    @ [ AS_x86.Mov { dest; src = eax; layout = DWORD } ]
   ;;
 
   let gen_x86_inst_bin
