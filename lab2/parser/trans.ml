@@ -57,31 +57,40 @@ let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) =
       ; lhs = trans_mexp binop.lhs env
       ; rhs = trans_mexp binop.rhs env
       }
-  (* a <- true_exp;
-   * CJump cond target
+  (* 
+   * CJump cond target_true
+   * Jump target_false
+   * target_true:
+   * a <- true_exp;
+   * Jump target_ter_end
+   * target_false:
    * a <- false_exp
-   * target.
-   * rest code
+   * target_ter_end:
+   * restcode
    *)
   | A.Terop terop ->
     let cond_raw = trans_mexp terop.cond env in
     let true_exp = trans_mexp terop.true_exp env in
     let false_exp = trans_mexp terop.false_exp env in
     let temp = Temp.create () in
-    let label_target = Label.label (Some "terop_true") in
-    let asn = T.Move { dest = temp; src = true_exp } in
+    let label_true = Label.label (Some "terop_true") in
+    let label_false = Label.label (Some "terop_false") in
+    let label_ter_end = Label.label (Some "terop_end") in
     let lhs, op, rhs = gen_cond cond_raw in
-    let seq_cj =
+    let seq_rev1 =
       T.Seq
-        { head =
-            T.Seq
-              { head = T.CJump { lhs; op; rhs; target_stm = label_target }
-              ; tail = T.Move { dest = temp; src = false_exp }
-              }
-        ; tail = T.Label label_target
-        }
+        { head = T.Move { dest = temp; src = false_exp }; tail = T.Label label_ter_end }
     in
-    let seq = T.Seq { head = asn; tail = seq_cj } in
+    let seq_rev2 = T.Seq { head = T.Label label_false; tail = seq_rev1 } in
+    let seq_rev3 = T.Seq { head = T.Jump label_ter_end; tail = seq_rev2 } in
+    let seq_rev4 =
+      T.Seq { head = T.Move { dest = temp; src = true_exp }; tail = seq_rev3 }
+    in
+    let seq_rev5 = T.Seq { head = T.Label label_true; tail = seq_rev4 } in
+    let seq_rev6 = T.Seq { head = T.Jump label_false; tail = seq_rev5 } in
+    let seq =
+      T.Seq { head = T.CJump { lhs; op; rhs; target_stm = label_true }; tail = seq_rev6 }
+    in
     T.Sexp { stm = seq; exp = T.Temp temp }
 
 and trans_mexp mexp env = trans_exp (Mark.data mexp) env
