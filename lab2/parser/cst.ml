@@ -150,7 +150,7 @@ and simp =
       ; value : mexp
       }
   | Declare of decl
-  | Exp of mexp
+  | Sexp of mexp
 
 and msimp = simp Mark.t
 
@@ -241,7 +241,7 @@ module Print = struct
   let pp_simp = function
     | Assign id -> sprintf "%s = %s;" (Symbol.name id.name) (pp_mexp id.value)
     | Declare d -> pp_decl d
-    | Exp e -> pp_mexp e
+    | Sexp e -> "Sexp " ^ pp_mexp e ^ ";"
   ;;
 
   let rec pp_stm = function

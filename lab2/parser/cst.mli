@@ -99,7 +99,7 @@ and simp =
       ; value : mexp
       }
   | Declare of decl
-  | Exp of mexp
+  | Sexp of mexp
 
 and msimp = simp Mark.t
 

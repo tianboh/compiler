@@ -139,7 +139,7 @@ module Print = struct
 
   let rec pp_stm = function
     | Assign asn_ast ->
-      sprintf "%s = %s;" (Symbol.name asn_ast.name) (pp_mexp asn_ast.value)
+      sprintf "Assign (%s = %s;)" (Symbol.name asn_ast.name) (pp_mexp asn_ast.value)
     | If if_ast ->
       sprintf
         "if(%s){ %s } else { %s }"
@@ -157,7 +157,7 @@ module Print = struct
         (pp_dtype decl_ast.t)
         (Symbol.name decl_ast.name)
         (pp_mstm decl_ast.tail)
-    | Sexp sexp -> pp_mexp sexp
+    | Sexp sexp -> "Sexp " ^ pp_mexp sexp ^ ";"
 
   and pp_mstm stm = pp_stm (Mark.data stm) ^ "\n"
   (* and pp_stms stms = String.concat (List.map ~f:(fun stm -> pp_mstm stm ^ "\n") stms) *)

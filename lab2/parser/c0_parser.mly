@@ -233,7 +233,7 @@ simp :
   | d = decl;
       { Cst.Declare d }
   | e = m(exp);
-      { Cst.Exp e }
+      { Cst.Sexp e }
   ;
 
 lvalue :
@@ -274,7 +274,7 @@ exp :
     { Cst.True }
   | False;
     { Cst.False }
-  | ident = Ident;
+  | ident = lvalue; 
     { Cst.Var ident }
   | unop = unop; e = m(exp);
     { Cst.Unop {op = unop; operand = e} }

@@ -153,7 +153,7 @@ and elab_simp (simp : Cst.simp) (src_span : Mark.src_span option) (tail : Cst.ms
   | Cst.Assign asn ->
     let asn_ast = Ast.Assign { name = asn.name; value = elab_mexp asn.value } in
     Mark.mark' asn_ast src_span, tail
-  | Cst.Exp exp -> Mark.mark' (Ast.Sexp (elab_mexp exp)) src_span, tail
+  | Cst.Sexp exp -> Mark.mark' (Ast.Sexp (elab_mexp exp)) src_span, tail
 
 and elab_declare (decl : Cst.decl) (src_span : Mark.src_span option) (tail : Cst.mstms) =
   match decl with
