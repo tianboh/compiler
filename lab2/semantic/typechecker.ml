@@ -210,7 +210,7 @@ and tc_declare decl_type decl_name tail loc env =
     in
     let env' = { env with vars = vars' } in
     let env'' = (tc_stms tail env' : env) in
-    { env'' with vars = S.remove env''.vars decl_name }
+    { vars = S.remove env''.vars decl_name; returns = env''.returns }
 ;;
 
 let typecheck prog =

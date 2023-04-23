@@ -164,7 +164,8 @@ let rec _cf_init (ast : A.program) (env : env) : env =
        * As for def, we intersect env.var_def and env_inside.var_def because 
        * env_inside.var_def may contain some variable declared in inner scope *)
       { var_decl = env.var_decl
-      ; var_def = Symbol.Set.inter env_inside.var_def env.var_def
+      ; var_def =
+          Symbol.Set.diff env_inside.var_def (Symbol.Set.of_list [ decl_ast.name ])
       })
   | Sexp sexp ->
     let () = cf_init_exp sexp env in
