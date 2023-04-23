@@ -144,7 +144,9 @@ let rec _cf_init (ast : A.program) (env : env) : env =
     let env1 = _cf_init if_ast.true_stm env in
     let env2 = _cf_init if_ast.false_stm env in
     { env with var_def = Symbol.Set.inter env1.var_def env2.var_def }
-  | A.While _ -> env
+  | A.While while_ast ->
+    let _ = (_cf_init while_ast.body env : env) in
+    env
   | A.Return _ -> { env with var_def = env.var_decl }
   | A.Nop -> env
   | A.Seq seq_ast ->
