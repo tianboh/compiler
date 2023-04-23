@@ -286,6 +286,8 @@ exp :
     { Cst.Unop { op = Cst.Negative; operand = e; } }
   | Excalmation_mark; e = m(exp); %prec Excalmation_mark
     { Cst.Unop {op = Cst.Excalmation_mark; operand = e; } }
+  | Dash_mark; e = m(exp); %prec Dash_mark
+    { Cst.Unop {op = Cst.Dash_mark; operand = e; } }
   | cond = m(exp); Question_mark; true_exp = m(exp); Colon; false_exp = m(exp);
     { Cst.Terop {cond = cond; true_exp = true_exp; false_exp = false_exp} }
   ;
