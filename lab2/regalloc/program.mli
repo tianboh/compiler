@@ -51,3 +51,4 @@ val print_TempSet : (Temp.t, Temp.comparator_witness) Set_intf.Set.t -> unit
 val print_line : line -> unit
 val print_lines : line list -> unit
 val gen_regalloc_info : AS.instr list -> line list
+val gen_regalloc_info' : AS.instr list -> line list

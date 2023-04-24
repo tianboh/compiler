@@ -207,7 +207,7 @@ let compile (cmd : cmd_line_args) : unit =
     let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
     (* let start = Unix.gettimeofday () in *)
-    let program = Regalloc.Program.gen_regalloc_info assem_ps in
+    let program = Regalloc.Program.gen_regalloc_info' assem_ps in
     (* let stop = Unix.gettimeofday () in *)
     (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
     (* let start = Unix.gettimeofday () in *)

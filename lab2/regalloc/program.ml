@@ -77,7 +77,7 @@ let print_line (line : line) =
 let print_lines (lines : line list) = List.iter lines ~f:(fun line -> print_line line)
 
 (* Generate define, use, move, line number. *)
-(* let rec gen_forward
+let rec gen_forward
     (inst_list : AS.instr list)
     (inst_info : (int, line) Base.Hashtbl.t)
     (line_num : int)
@@ -85,7 +85,14 @@ let print_lines (lines : line list) = List.iter lines ~f:(fun line -> print_line
   match inst_list with
   | [] -> inst_info
   | h :: t ->
-    let line = empty_line line_num in
+    let line =
+      { uses = Temp.Set.empty
+      ; define = Temp.Set.empty
+      ; live_out = Temp.Set.empty
+      ; move = false
+      ; line_number = line_num
+      }
+    in
     (match h with
     | AS.Binop binop ->
       let def = gen_TempSet [ binop.dest ] in
@@ -118,7 +125,7 @@ let print_lines (lines : line list) = List.iter lines ~f:(fun line -> print_line
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward t inst_info (line_num + 1)
     | _ -> gen_forward t inst_info line_num)
-;; *)
+;;
 
 (* Generate define, use, move, liveout, line number. *)
 let rec gen_forward'
@@ -136,37 +143,54 @@ let rec gen_forward'
     | AS.Binop binop ->
       let def = gen_TempSet [ binop.dest ] in
       let uses = gen_TempSet [ binop.lhs; binop.rhs ] in
-      let line = { line with define = def; uses } in
+      let line =
+        { line with define = def; uses; live_out = Temp.Set.union line.live_out uses }
+      in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward' t inst_info (line_num + 1) live_out_map
     | AS.Mov mov ->
       let def = gen_TempSet [ mov.dest ] in
       let uses = gen_TempSet [ mov.src ] in
-      let line = { line with define = def; uses; move = true } in
+      let line =
+        { line with
+          define = def
+        ; uses
+        ; move = true
+        ; live_out = Temp.Set.union line.live_out uses
+        }
+      in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward' t inst_info (line_num + 1) live_out_map
     | AS.CJump cjp ->
       let define = gen_TempSet [] in
       let uses = gen_TempSet [ cjp.lhs; cjp.rhs ] in
-      let line = { line with define; uses } in
+      let line =
+        { line with define; uses; live_out = Temp.Set.union line.live_out uses }
+      in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward' t inst_info (line_num + 1) live_out_map
     | AS.Jump _ ->
       let define = gen_TempSet [] in
       let uses = gen_TempSet [] in
-      let line = { line with define; uses } in
+      let line =
+        { line with define; uses; live_out = Temp.Set.union line.live_out uses }
+      in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward' t inst_info (line_num + 1) live_out_map
     | AS.Ret ret ->
       let define = gen_TempSet [] in
       let uses = gen_TempSet [ ret.var ] in
-      let line = { line with define; uses } in
+      let line =
+        { line with define; uses; live_out = Temp.Set.union line.live_out uses }
+      in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward' t inst_info (line_num + 1) live_out_map
     | AS.Label _ ->
       let define = Temp.Set.empty in
       let uses = Temp.Set.empty in
-      let line = { line with define; uses } in
+      let line =
+        { line with define; uses; live_out = Temp.Set.union line.live_out uses }
+      in
       Hashtbl.set inst_info ~key:line_num ~data:line;
       gen_forward' t inst_info (line_num + 1) live_out_map
     | _ -> gen_forward' t inst_info line_num live_out_map)
@@ -240,7 +264,7 @@ let transform_temps_to_json (temps : (Temp.t * Register.t) option list) =
   List.map temps ~f:(fun x -> transform_temp_to_json x)
 ;;
 
-(* let gen_regalloc_info (inst_list : AS.instr list) =
+let gen_regalloc_info (inst_list : AS.instr list) =
   let inst_info = Hashtbl.create (module Int) in
   let inst_info = gen_forward inst_list inst_info 0 in
   let inst_list_rev = List.rev inst_list in
@@ -250,11 +274,11 @@ let transform_temps_to_json (temps : (Temp.t * Register.t) option list) =
   in
   let inst_no_sort = List.sort (Hashtbl.keys inst_info) ~compare:Int.compare in
   let ret = List.map inst_no_sort ~f:(fun no -> Hashtbl.find_exn inst_info no) in
-  (* let () = print_lines ret in *)
+  let () = print_lines ret in
   ret
-;; *)
+;;
 
-let gen_regalloc_info (inst_list : AS.instr list) =
+let gen_regalloc_info' (inst_list : AS.instr list) =
   let inst_info = Hashtbl.create (module Int) in
   let liveness = Liveness.gen_liveness inst_list in
   let inst_info = gen_forward' inst_list inst_info 0 liveness in
