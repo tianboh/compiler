@@ -1,6 +1,7 @@
 module Temp = Var.Temp
 module Register = Var.X86_reg
 module Reg_info = Program
+module AS = Inst.Pseudo
 
 type reg = Register.t
 
@@ -20,6 +21,8 @@ val seo : Temp.Set.t Temp.Map.t -> Reg_info.line list -> temp list
 val greedy :
   temp list -> Temp.Set.t Temp.Map.t -> reg Temp.Map.t -> reg Temp.Map.t
 
-val regalloc : Reg_info.temps_info -> (temp * reg) option list
+val regalloc : AS.instr list -> (temp * reg) option list
+
+val regalloc' : Reg_info.line list -> (temp * reg) option list
 
 val print_tmp_to_reg : reg Temp.Map.t -> unit

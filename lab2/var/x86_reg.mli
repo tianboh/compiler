@@ -24,3 +24,6 @@ val num_spill_reg : unit -> int
 val need_spill : t -> bool
 val get_base_pointer : unit -> t
 val spilled_idx : t -> int
+
+(* Number of hard registers *)
+val num_gen_reg : int

@@ -26,3 +26,6 @@ val create_no_t : int -> t -> t
 val name : t -> string
 val value : t -> int
 val is_reg : t -> bool
+
+(* return number of created temporaries so far *)
+val count : unit -> int

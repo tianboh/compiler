@@ -41,10 +41,13 @@ open Printf
 module Temp = Var.Temp
 module Register = Var.X86_reg
 module Reg_info = Program
+module AS = Inst.Pseudo
 
 type reg = Register.t
 type temp = Temp.t
 type allocations = (temp * temp) option list
+
+let threshold = 3000
 
 (* print adjacency list (interference graph) *)
 let print_adj adj =
@@ -270,17 +273,71 @@ let gen_tmp_to_reg_w_conv (prog : Reg_info.temps_info) =
   helper prog tmp_to_reg
 ;;
 
-let regalloc (prog : Reg_info.temps_info) : (Temp.t * Register.t) option list =
-  let adj = build_graph prog in
-  let seq = seo adj prog in
-  (* let tmp_to_reg = Temp.Map.empty in *)
-  let tmp_to_reg = gen_tmp_to_reg_w_conv prog in
-  let color = greedy seq adj tmp_to_reg in
-  (* let () = print_adj adj in
+let trans_operand (operand : AS.operand) =
+  match operand with
+  | AS.Temp t -> Temp.Set.of_list [ t ]
+  | AS.Imm _ -> Temp.Set.empty
+;;
+
+(* When there are too much temporaries, we spill them all to stacks. *)
+let rec collect_temp prog res =
+  match prog with
+  | [] -> res
+  | h :: t ->
+    (match h with
+    | AS.Binop binop ->
+      let res = Temp.Set.union res (trans_operand binop.dest) in
+      let res = Temp.Set.union res (trans_operand binop.lhs) in
+      let res = Temp.Set.union res (trans_operand binop.rhs) in
+      collect_temp t res
+    | AS.Mov mov ->
+      let res = Temp.Set.union res (trans_operand mov.dest) in
+      let res = Temp.Set.union res (trans_operand mov.src) in
+      collect_temp t res
+    | AS.CJump cjp ->
+      let res = Temp.Set.union res (trans_operand cjp.lhs) in
+      let res = Temp.Set.union res (trans_operand cjp.rhs) in
+      collect_temp t res
+    | AS.Ret ret ->
+      let res = Temp.Set.union res (trans_operand ret.var) in
+      collect_temp t res
+    | AS.Jump _ | AS.Label _ | AS.Directive _ | AS.Comment _ -> collect_temp t res)
+;;
+
+let gen_result_dummy temp_set =
+  let base = Register.num_gen_reg in
+  let temp_list = Temp.Set.to_list temp_set in
+  List.map temp_list ~f:(fun temp ->
+      let i = Temp.value temp in
+      Some (temp, Register.create_no (i + base)))
+;;
+
+let regalloc (assem_ps : AS.instr list) : (Temp.t * Register.t) option list =
+  if Temp.count () > threshold
+  then (
+    let temp_set = collect_temp assem_ps Temp.Set.empty in
+    gen_result_dummy temp_set)
+  else (
+    let prog = Program.gen_regalloc_info' assem_ps in
+    let adj = build_graph prog in
+    let seq = seo adj prog in
+    (* let tmp_to_reg = Temp.Map.empty in *)
+    let tmp_to_reg = gen_tmp_to_reg_w_conv prog in
+    let color = greedy seq adj tmp_to_reg in
+    (* let () = print_adj adj in
      let () = printf "SEO order\n" in
      let seq_l = List.map seq ~f:(fun x -> Temp.name x) in
      let () = List.iter ~f:(printf "%s ") seq_l in
      let () = print_tmp_to_reg color in
      let () = printf "\n" in *)
+    gen_result color prog)
+;;
+
+(* This is used for l1 checkpoint to match the API. *)
+let regalloc' (prog : Program.line list) : (Temp.t * Register.t) option list =
+  let adj = build_graph prog in
+  let seq = seo adj prog in
+  let tmp_to_reg = gen_tmp_to_reg_w_conv prog in
+  let color = greedy seq adj tmp_to_reg in
   gen_result color prog
 ;;
