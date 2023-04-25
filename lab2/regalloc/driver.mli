@@ -2,27 +2,19 @@ module Temp = Var.Temp
 module Register = Var.X86_reg
 module Reg_info = Program
 module AS = Inst.Pseudo
+module IG = Interference_graph
+open Core
 
 type reg = Register.t
-
 type temp = Temp.t
 
-type allocations = (temp * temp) option list
+val print_adj : 
+  (IG.Vertex.t, (IG.Vertex.t, IG.Vertex.comparator_witness) Base.Set.t,
+  IG.Vertex.comparator_witness)
+  Map_intf.Map.t -> unit
 
-val build_graph : Reg_info.temps_info -> Temp.Set.t Temp.Map.t
+val print_vertex_to_reg : (IG.Vertex.t, reg, IG.Vertex.comparator_witness) Map_intf.Map.t -> unit
 
-val gen_reg_table :
-  Reg_info.line list -> Temp.Set.t Temp.Map.t -> int Temp.Map.t
+val regalloc : AS.instr list -> (IG.Vertex.t * reg) option list
 
-val print_adj : Temp.Set.t Temp.Map.t -> unit
-
-val seo : Temp.Set.t Temp.Map.t -> Reg_info.line list -> temp list
-
-val greedy :
-  temp list -> Temp.Set.t Temp.Map.t -> reg Temp.Map.t -> reg Temp.Map.t
-
-val regalloc : AS.instr list -> (temp * reg) option list
-
-val regalloc' : Reg_info.line list -> (temp * reg) option list
-
-val print_tmp_to_reg : reg Temp.Map.t -> unit
+val regalloc_ckpt : Reg_info.line list -> (IG.Vertex.t * reg) option list

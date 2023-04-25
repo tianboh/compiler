@@ -133,7 +133,6 @@ let callee_saved () = Set.of_list [ 2; 6; 5; 8; 7 ]
 
 (* Caller-saved register are EAX(1), ECX(3), and EDX(4) *)
 let caller_saved () = Set.of_list [ 1; 3; 4 ]
-let reg_to_tmp idx = Temp.create_no (-idx)
 let tmp_to_reg (tmp : Temp.t) = -Temp.value tmp
 
 (* number of spilled register so far *)

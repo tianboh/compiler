@@ -13,12 +13,13 @@ open Core
 module Inst_reg_info = Json_reader.Lab1_checkpoint
 module AS = Inst.Pseudo
 module Temp = Var.Temp
+module IG = Interference_graph
 module Register = Var.X86_reg
 
 type line =
-  { uses : Temp.Set.t
-  ; define : Temp.Set.t
-  ; live_out : Temp.Set.t
+  { uses : IG.Vertex.Set.t
+  ; define : IG.Vertex.Set.t
+  ; live_out : IG.Vertex.Set.t
   ; move : bool
   ; line_number : int
   }
@@ -26,29 +27,22 @@ type line =
 type temps_info = line list
 
 (* Return None if define field is empty else Some Temp.t *)
-val get_def : line -> Temp.t option
+val get_def : line -> IG.Vertex.t option
 
-(* val gen_forward
-  :  AS.instr list
-  -> (int, line) Base.Hashtbl.t
-  -> int
-  -> (int, line) Base.Hashtbl.t *)
-
-val gen_backward
-  :  AS.instr list
-  -> (int, line) Base.Hashtbl.t
-  -> int
-  -> Temp.Set.t
-  -> (int, line) Base.Hashtbl.t
+val gen_forward
+  :  AS.instr list ->
+    (int, line) Base.Hashtbl.t ->
+    int ->
+    (int, (IG.Vertex.t, IG.Vertex.comparator_witness) Base.Set.t,
+     Core.Int.comparator_witness)
+    Map_intf.Map.t -> (int, line) Base.Hashtbl.t
 
 val transform_json_to_temp : Inst_reg_info.program -> line list
 
-val transform_temps_to_json
-  :  (Temp.t * Register.t) option list
-  -> Inst_reg_info.allocations
+val transform_vertices_to_json
+  : (IG.Vertex.t * Register.t) option list -> (string * string) option list
 
-val print_TempSet : (Temp.t, Temp.comparator_witness) Set_intf.Set.t -> unit
+val print_VertexSet : (IG.Vertex.t, IG.Vertex.comparator_witness) Base.Set.t -> unit
 val print_line : line -> unit
 val print_lines : line list -> unit
 val gen_regalloc_info : AS.instr list -> line list
-val gen_regalloc_info' : AS.instr list -> line list

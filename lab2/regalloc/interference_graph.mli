@@ -6,6 +6,7 @@ module Vertex : sig
     module T : sig 
         type t = Reg of X86_reg.t | Temp of Temp.t
     end
+    type t = T.t
     include Comparable.S with type t := T.t
 end
   
@@ -13,6 +14,7 @@ module Edge : sig
     module T : sig
         type t = Vertex.T.t * Vertex.T.t [@@deriving compare, hash, sexp]
     end
+    type t = T.t
     include Comparable.S with type t := T.t
 end
 

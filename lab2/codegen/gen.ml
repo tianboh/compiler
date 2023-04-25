@@ -37,6 +37,7 @@ module Temp = Var.Temp
 module Register = Var.X86_reg
 module Memory = Var.Memory
 module Label = Util.Label
+module IG = Regalloc.Interference_graph
 open Var.Layout
 
 let munch_op = function
@@ -159,23 +160,21 @@ module Pseudo = struct
 end
 
 module X86 = struct
-  let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t Temp.Map.t)
+  let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t IG.Vertex.Map.t)
       : AS_x86.operand
     =
     match operand with
     | Temp t ->
       let reg =
-        match Temp.Map.find reg_alloc_info t with
+        match IG.Vertex.Map.find reg_alloc_info (IG.Vertex.T.Temp t) with
         | Some s -> s
         | None ->
-          (* Consider two cases here:
-           * 1) Temp is pre-determined by input. Like l1-checkpoint %rax is written as %t-1
-           * 2) Some variable that is only declared but not defined during the whole program. 
+          (* Some variable that is only declared but not defined during the whole program. 
            * For example: int a; and no assignment afterwards.
            * In this case, we will use %eax to represent it. Notice that it is only a representation
            * for this uninitialized temporary, and %eax will not be assigned in the following instruction.
            * Therefore, no worry for the return value. *)
-          if Temp.value t < 0 then Register.tmp_to_reg t else Register.create_no 1
+          Register.create_no 1
       in
       if Register.need_spill reg then AS_x86.Mem (Memory.from_reg reg) else AS_x86.Reg reg
     | Imm i -> AS_x86.Imm i
@@ -258,7 +257,7 @@ module X86 = struct
   let rec _codegen_w_reg_rev
       res
       inst_list
-      (reg_alloc_info : Register.t Temp.Map.t)
+      (reg_alloc_info : Register.t IG.Vertex.Map.t)
       (reg_swap : Register.t)
     =
     match inst_list with
@@ -318,16 +317,18 @@ module X86 = struct
     ]
   ;;
 
-  let gen (inst_list : AS.instr list) (reg_alloc_info : (Temp.t * Register.t) option list)
+  let gen
+      (inst_list : AS.instr list)
+      (reg_alloc_info : (IG.Vertex.t * Register.t) option list)
       : AS_x86.instr list
     =
     let reg_alloc =
-      List.fold reg_alloc_info ~init:Temp.Map.empty ~f:(fun acc x ->
+      List.fold reg_alloc_info ~init:IG.Vertex.Map.empty ~f:(fun acc x ->
           match x with
           | None -> acc
           | Some x ->
             (match x with
-            | temp, reg -> Temp.Map.set acc ~key:temp ~data:reg))
+            | temp, reg -> IG.Vertex.Map.set acc ~key:temp ~data:reg))
     in
     let reg_swap = Register.swap () in
     let res_rev = _codegen_w_reg_rev [] inst_list reg_alloc reg_swap in

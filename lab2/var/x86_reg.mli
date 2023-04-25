@@ -13,7 +13,7 @@ val find_min_available : Set.t -> int
 (* returns the name of a temp *)
 val reg_to_str : ?layout:layout -> t -> string
 val reg_idx : t -> int
-val reg_to_tmp : t -> Temp.t
+(* val reg_to_tmp : t -> Temp.t *)
 val str_to_reg : string -> t
 val special_use : t -> bool
 val swap : unit -> t

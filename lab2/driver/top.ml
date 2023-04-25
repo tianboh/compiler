@@ -146,8 +146,8 @@ let process_checkpoint (cmd : cmd_line_args) =
       let input = Json_reader.Lab1_checkpoint.program_of_json input_json in
       let input_temp = Regalloc.Program.transform_json_to_temp input in
       (* let () = Regalloc.Program.print_lines input_temp in *)
-      let output = Regalloc.Driver.regalloc' input_temp in
-      let output' = Regalloc.Program.transform_temps_to_json output in
+      let output = Regalloc.Driver.regalloc_ckpt input_temp in
+      let output' = Regalloc.Program.transform_vertices_to_json output in
       let filename = base_filename ^ ".out" in
       Out_channel.with_file filename ~f:(fun out ->
           Out_channel.output_string

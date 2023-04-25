@@ -17,10 +17,11 @@ module AS = Inst.Pseudo
 module Temp = Var.Temp
 module Register = Var.X86_reg
 module Dfana = Flow.Dfana
+module IG = Interference_graph
 
 val gen_liveness : 
     AS.instr list ->
-    (int, (Temp.t, Temp.comparator_witness) Set_intf.Set.t,
+    (int, (IG.Vertex.t, IG.Vertex.comparator_witness) Base.Set.t,
      Core.Int.comparator_witness)
     Map_intf.Map.t
 val print_line : Dfana_info.line -> unit

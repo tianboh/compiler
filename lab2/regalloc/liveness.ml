@@ -18,6 +18,7 @@ module Temp = Var.Temp
 module Register = Var.X86_reg
 module Dfana = Flow.Dfana
 module Label = Util.Label
+module IG = Interference_graph
 
 let print_line (line : Dfana_info.line) =
   let () = printf "\n{gen: " in
@@ -41,7 +42,7 @@ let print_liveout (liveout : (int list * int list * int) list) =
       printf "\n")
 ;;
 
-(* map is from is a hash table with key : Temp.t and value Int.Set.t 
+(* map is from is a hash table with key : IG.Vertex.t and value Int.Set.t 
  * The value corresponds line number that define this variable.
  * t2l stands for temporary to line number set *)
 let rec gen_t2l (inst_list : AS.instr list) (line_no : int) map =
@@ -63,10 +64,12 @@ and update_map dest line_no map =
   | AS.Imm _ -> map
   | AS.Temp tmp ->
     let cur_line_set =
-      if Temp.Map.mem map tmp then Temp.Map.find_exn map tmp else Int.Set.empty
+      if IG.Vertex.Map.mem map (IG.Vertex.T.Temp tmp)
+      then IG.Vertex.Map.find_exn map (IG.Vertex.T.Temp tmp)
+      else Int.Set.empty
     in
     let new_line_set = Int.Set.add cur_line_set line_no in
-    Temp.Map.set map ~key:tmp ~data:new_line_set
+    IG.Vertex.Map.set map ~key:(IG.Vertex.T.Temp tmp) ~data:new_line_set
 ;;
 
 (* map is a hash table from label to line number *)
@@ -86,7 +89,7 @@ let rec gen_succ (inst_list : AS.instr list) (line_no : int) map =
 let _gen_df_info_helper (op : AS.operand) t2l =
   match op with
   | AS.Temp t ->
-    (match Temp.Map.find t2l t with
+    (match IG.Vertex.Map.find t2l (IG.Vertex.T.Temp t) with
     | None -> Int.Set.empty
     | Some s -> s)
   | AS.Imm _ -> Int.Set.empty
@@ -183,7 +186,7 @@ let rec _gen_df_info_rev (inst_list : AS.instr list) line_no t2l label_map res =
 ;;
 
 let gen_df_info (inst_list : AS.instr list) : Dfana_info.line list =
-  let t2l = Temp.Map.empty in
+  let t2l = IG.Vertex.Map.empty in
   let t2l = gen_t2l inst_list 0 t2l in
   let label_map = Label.Map.empty in
   let label_map = gen_succ inst_list 0 label_map in
@@ -215,7 +218,7 @@ let rec trans_liveness lo_int tmp_map res =
   | h :: t ->
     let _, out_int_list, line_no = h in
     let liveout =
-      List.fold out_int_list ~init:Temp.Set.empty ~f:(fun acc x ->
+      List.fold out_int_list ~init:IG.Vertex.Set.empty ~f:(fun acc x ->
           match Int.Map.find tmp_map x with
           | None ->
             let err_msg = sprintf "cannot find temporary def at line %d" x in
@@ -223,7 +226,7 @@ let rec trans_liveness lo_int tmp_map res =
           | Some s ->
             (match s with
             | AS.Imm _ -> failwith "liveout should not be immediate"
-            | AS.Temp t -> Temp.Set.add acc t))
+            | AS.Temp t -> IG.Vertex.Set.add acc (IG.Vertex.T.Temp t)))
     in
     let res = Int.Map.set res ~key:line_no ~data:liveout in
     trans_liveness t tmp_map res
