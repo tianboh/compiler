@@ -16,5 +16,3 @@ val print_adj :
 val print_vertex_to_reg : (IG.Vertex.t, reg, IG.Vertex.comparator_witness) Map_intf.Map.t -> unit
 
 val regalloc : AS.instr list -> (IG.Vertex.t * reg) option list
-
-val regalloc_ckpt : Reg_info.line list -> (IG.Vertex.t * reg) option list

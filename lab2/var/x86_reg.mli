@@ -19,7 +19,6 @@ val special_use : t -> bool
 val swap : unit -> t
 val callee_saved : unit -> Set.t
 val caller_saved : unit -> Set.t
-val tmp_to_reg : Temp.t -> t
 val num_spill_reg : unit -> int
 val need_spill : t -> bool
 val get_base_pointer : unit -> t

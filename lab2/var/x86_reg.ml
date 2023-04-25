@@ -133,7 +133,6 @@ let callee_saved () = Set.of_list [ 2; 6; 5; 8; 7 ]
 
 (* Caller-saved register are EAX(1), ECX(3), and EDX(4) *)
 let caller_saved () = Set.of_list [ 1; 3; 4 ]
-let tmp_to_reg (tmp : Temp.t) = -Temp.value tmp
 
 (* number of spilled register so far *)
 let num_spill_reg () = if !alloc_cnt < 16 then 0 else !alloc_cnt - 15

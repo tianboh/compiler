@@ -282,12 +282,3 @@ let regalloc (assem_ps : AS.instr list) : (IG.Vertex.t * Register.t) option list
      let () = printf "\n" in *)
     gen_result color prog)
 ;;
-
-(* This is used for l1 checkpoint to match the API. *)
-let regalloc_ckpt (prog : Program.line list) : (IG.Vertex.t * Register.t) option list =
-  let adj = build_graph prog IG.Vertex.Map.empty in
-  let seq = seo adj prog in
-  let vertex_to_reg = IG.Vertex.Map.empty in
-  let color = greedy seq adj vertex_to_reg in
-  gen_result color prog
-;;

@@ -1,4 +1,4 @@
-(* L1 Compiler
+(* L2 Compiler
  * Top Level Environment
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Alex Vaynberg <alv@andrew.cmu.edu>
@@ -39,10 +39,8 @@ type cmd_line_args =
   ; dump_ir : bool
   ; dump_assem : bool
   ; semcheck_only : bool
-  ; regalloc_only : bool
   ; emit : Emit.t
   ; opt_level : Opt_level.t
-  ; df_type : Df_analysis.t
   ; filename : string
   }
 
@@ -89,9 +87,6 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and semcheck_only =
     let doc = "If present, exit after semantic analysis." in
     flag (Arg.info [ "t"; "semcheck-only" ] ~doc)
-  and regalloc_only =
-    let doc = "Regalloc only for l1 checkpoint" in
-    flag (Arg.info [ "r"; "regalloc-only" ] ~doc)
   and emit =
     let doc = "[abs|x86-64] The type of assembly $(docv) to emit." in
     opt
@@ -104,15 +99,6 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
       Opt_level.conv
       ~default:Opt_level.Opt_none
       (Arg.info [ "O"; "opt" ] ~doc ~docv:"OPT")
-  and df_type =
-    let doc =
-      "[forward-may|forward-must|backward-may|backward-must|no-analysis] The type of \
-       dataflow analysis"
-    in
-    opt
-      Df_analysis.conv
-      ~default:Df_analysis.No_analysis
-      (Arg.info [ "r2"; "lab2 checkpoint" ] ~doc ~docv:"DF-ANALYSIS")
   and filename =
     let doc = "The source file $(docv) to compile." in
     Arg.(required (pos 0 (some non_dir_file) None (info [] ~doc ~docv:"FILE")))
@@ -124,46 +110,13 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   ; dump_ir
   ; dump_assem
   ; semcheck_only
-  ; regalloc_only
   ; emit
   ; opt_level
-  ; df_type
   ; filename
   }
 ;;
 
 let say_if (v : bool) (f : unit -> string) = if v then prerr_endline (f ())
-
-let process_checkpoint (cmd : cmd_line_args) =
-  match String.chop_suffix cmd.filename ~suffix:".in" with
-  | None ->
-    prerr_endline "Invalid input filename";
-    exit 1
-  | Some base_filename ->
-    let input_json = Yojson.Basic.from_file cmd.filename in
-    if cmd.regalloc_only
-    then (
-      let input = Json_reader.Lab1_checkpoint.program_of_json input_json in
-      let input_temp = Regalloc.Program.transform_json_to_temp input in
-      (* let () = Regalloc.Program.print_lines input_temp in *)
-      let output = Regalloc.Driver.regalloc_ckpt input_temp in
-      let output' = Regalloc.Program.transform_vertices_to_json output in
-      let filename = base_filename ^ ".out" in
-      Out_channel.with_file filename ~f:(fun out ->
-          Out_channel.output_string
-            out
-            (output'
-            |> Json_reader.Lab1_checkpoint.json_of_allocations
-            |> Yojson.Basic.to_string)))
-    else (
-      let input = Json_reader.Lab2_checkpoint.program_of_json input_json in
-      let output = Dfana.dfana input cmd.df_type in
-      let filename = base_filename ^ ".out" in
-      Out_channel.with_file filename ~f:(fun out ->
-          Out_channel.output_string
-            out
-            (output |> Json_reader.Lab2_checkpoint.json_of_dflines)))
-;;
 
 (* The main driver for the compiler: runs each phase. *)
 let compile (cmd : cmd_line_args) : unit =
@@ -220,17 +173,10 @@ let compile (cmd : cmd_line_args) : unit =
 (* failwith "error" *)
 
 let run (cmd : cmd_line_args) : unit =
-  match cmd.regalloc_only, cmd.df_type with
-  | true, No_analysis -> process_checkpoint cmd
-  | false, Forward_may -> process_checkpoint cmd
-  | false, Forward_must -> process_checkpoint cmd
-  | false, Backward_may -> process_checkpoint cmd
-  | false, Backward_must -> process_checkpoint cmd
-  | _, _ ->
-    (try compile cmd with
-    | Util.Error_msg.Error ->
-      prerr_endline "Compilation failed.";
-      exit 1)
+  try compile cmd with
+  | Util.Error_msg.Error ->
+    prerr_endline "Compilation failed.";
+    exit 1
 ;;
 
 (* Compiler entry point
