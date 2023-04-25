@@ -1,5 +1,4 @@
 open Core
-open Printf
 
 (*
  * This file contains necessary functions to allocate registers
@@ -35,87 +34,157 @@ open Printf
  *     Time complexity for coloring: O(v + e)
  *)
 module Temp = Var.Temp
+module Memory = Var.Memory
 module Register = Var.X86_reg
 module Reg_info = Program
 module AS = Inst.Pseudo
 module IG = Interference_graph
 
 type reg = Register.t
-type temp = Temp.t
+
+type dest =
+  | Reg of Register.t
+  | Mem of Memory.t
 
 let threshold = 3000
 
-(* print adjacency list (interference graph) *)
-let print_adj adj =
-  printf "\nprint adj\n";
-  let keys = IG.Vertex.Map.keys adj in
-  let sorted_keys = List.sort keys ~compare:IG.Vertex.compare in
-  let () =
-    List.iter sorted_keys ~f:(fun key ->
-        let s = IG.Vertex.Map.find_exn adj key in
-        let l = List.sort (IG.Vertex.Set.to_list s) ~compare:IG.Vertex.compare in
-        printf "From %s to\t" (IG.Print.pp_vertex key);
-        List.iter l ~f:(fun x -> printf "%s " (IG.Print.pp_vertex x));
-        printf "\n")
-  in
-  printf "\n\n"
-;;
+module Lazy = struct
+  (* When there are too many temporaries, we will not spend time on
+   * register allocation algorithm. Instead, we spill them all to memory.
+   * This will greatly reduce the time for reg alloc algorithm. *)
+  let trans_operand (operand : AS.operand) =
+    match operand with
+    | AS.Temp t -> IG.Vertex.Set.of_list [ IG.Vertex.T.Temp t ]
+    | AS.Imm _ -> IG.Vertex.Set.empty
+  ;;
+
+  let rec collect_vertex prog res =
+    match prog with
+    | [] -> res
+    | h :: t ->
+      (match h with
+      | AS.Binop binop ->
+        let res = IG.Vertex.Set.union res (trans_operand binop.dest) in
+        let res = IG.Vertex.Set.union res (trans_operand binop.lhs) in
+        let res = IG.Vertex.Set.union res (trans_operand binop.rhs) in
+        collect_vertex t res
+      | AS.Mov mov ->
+        let res = IG.Vertex.Set.union res (trans_operand mov.dest) in
+        let res = IG.Vertex.Set.union res (trans_operand mov.src) in
+        collect_vertex t res
+      | AS.CJump cjp ->
+        let res = IG.Vertex.Set.union res (trans_operand cjp.lhs) in
+        let res = IG.Vertex.Set.union res (trans_operand cjp.rhs) in
+        collect_vertex t res
+      | AS.Ret ret ->
+        let res = IG.Vertex.Set.union res (trans_operand ret.var) in
+        collect_vertex t res
+      | AS.Jump _ | AS.Label _ | AS.Directive _ | AS.Comment _ -> collect_vertex t res)
+  ;;
+
+  let gen_result_dummy vertex_set =
+    let base = Register.num_gen_reg in
+    let vertex_list = IG.Vertex.Set.to_list vertex_set in
+    List.map vertex_list ~f:(fun vtx ->
+        let reg =
+          match vtx with
+          | IG.Vertex.T.Reg r -> r
+          | IG.Vertex.T.Temp t -> Register.create_no (base + Temp.value t)
+        in
+        Some (vtx, reg))
+  ;;
+end
+
+module Print = struct
+  open Printf
+
+  (* print adjacency list (interference graph) *)
+  let print_adj adj =
+    printf "\nprint adj\n";
+    let keys = IG.Vertex.Map.keys adj in
+    let sorted_keys = List.sort keys ~compare:IG.Vertex.compare in
+    let () =
+      List.iter sorted_keys ~f:(fun key ->
+          let s = IG.Vertex.Map.find_exn adj key in
+          let l = List.sort (IG.Vertex.Set.to_list s) ~compare:IG.Vertex.compare in
+          printf "From %s to\t" (IG.Print.pp_vertex key);
+          List.iter l ~f:(fun x -> printf "%s " (IG.Print.pp_vertex x));
+          printf "\n")
+    in
+    printf "\n\n"
+  ;;
+
+  let print_vertex_to_reg (color : reg IG.Vertex.Map.t) =
+    let () = printf "\n\n==========\nVertex to register\n" in
+    let sorted_keys = List.sort (IG.Vertex.Map.keys color) ~compare:IG.Vertex.compare in
+    List.iter sorted_keys ~f:(fun k ->
+        let t = IG.Print.pp_vertex k in
+        let r = Register.reg_idx (IG.Vertex.Map.find_exn color k) in
+        printf "%s -> %d\n" t r);
+    let l = List.map (IG.Vertex.Map.data color) ~f:(fun x -> x) in
+    let s = Register.Set.of_list l in
+    printf "Used %d register\n" (Register.Set.length s)
+  ;;
+end
+
+module Helper = struct
+  let build_def_lo adj def s_lo =
+    let s_def = IG.Vertex.Set.of_list [ def ] in
+    IG.Vertex.Set.fold_right s_lo ~init:adj ~f:(fun v adj ->
+        let s_v =
+          match IG.Vertex.Map.find adj v with
+          | None -> IG.Vertex.Set.empty
+          | Some s -> s
+        in
+        let s_res = IG.Vertex.Set.union s_v s_def in
+        IG.Vertex.Map.set adj ~key:v ~data:s_res)
+  ;;
+
+  (* Build interference graph based on def and (live_out Union uses).
+   * The insight here is we cannot allocate/assign register for def with the same register as
+   * registers allocated for live_out temps.
+   * Theoretically, we don't need to build edge between def and uses. But In order to 
+   * make x86 assembly code generation easier, we don't allow uses and def to be assigned
+   * to the same register. This can be more flexible for x86 assembly code generation.
+   *)
+  let rec build_graph (prog : Reg_info.temps_info) adj =
+    match prog with
+    | [] -> adj
+    | h :: t ->
+      let adj =
+        match Reg_info.get_def h with
+        | None -> adj
+        | Some def ->
+          let s_def_nbr =
+            match IG.Vertex.Map.find adj def with
+            | Some s -> s
+            | None -> IG.Vertex.Set.empty
+          in
+          let s_lo = h.live_out in
+          let s_u = IG.Vertex.Set.union s_def_nbr s_lo in
+          let adj = IG.Vertex.Map.set adj ~key:def ~data:s_u in
+          build_def_lo adj def s_lo
+      in
+      build_graph t adj
+  ;;
+
+  (* Table store info from vertex to number which will be used in seo. *)
+  let gen_vertex_table prog =
+    let rec helper prog hash =
+      match prog with
+      | [] -> hash
+      | h :: t ->
+        (match Reg_info.get_def h with
+        | None -> helper t hash
+        | Some def_ ->
+          let hash = IG.Vertex.Map.set hash ~key:def_ ~data:0 in
+          helper t hash)
+    in
+    helper prog IG.Vertex.Map.empty
+  ;;
+end
 
 (* Build edge between def and live_out *)
-let build_def_lo adj def s_lo =
-  let s_def = IG.Vertex.Set.of_list [ def ] in
-  IG.Vertex.Set.fold_right s_lo ~init:adj ~f:(fun v adj ->
-      let s_v =
-        match IG.Vertex.Map.find adj v with
-        | None -> IG.Vertex.Set.empty
-        | Some s -> s
-      in
-      let s_res = IG.Vertex.Set.union s_v s_def in
-      IG.Vertex.Map.set adj ~key:v ~data:s_res)
-;;
-
-(* Build interference graph based on def and (live_out Union uses).
- * The insight here is we cannot allocate/assign register for def with the same register as
- * registers allocated for live_out temps.
- * Theoretically, we don't need to build edge between def and uses. But In order to 
- * make x86 assembly code generation easier, we don't allow uses and def to be assigned
- * to the same register. This can be more flexible for x86 assembly code generation.
- *)
-let rec build_graph (prog : Reg_info.temps_info) adj =
-  match prog with
-  | [] -> adj
-  | h :: t ->
-    let adj =
-      match Reg_info.get_def h with
-      | None -> adj
-      | Some def ->
-        let s_def_nbr =
-          match IG.Vertex.Map.find adj def with
-          | Some s -> s
-          | None -> IG.Vertex.Set.empty
-        in
-        let s_lo = h.live_out in
-        let s_u = IG.Vertex.Set.union s_def_nbr s_lo in
-        let adj = IG.Vertex.Map.set adj ~key:def ~data:s_u in
-        build_def_lo adj def s_lo
-    in
-    build_graph t adj
-;;
-
-(* Table store info from vertex to number which will be used in seo. *)
-let gen_vertex_table prog =
-  let rec helper prog hash =
-    match prog with
-    | [] -> hash
-    | h :: t ->
-      (match Reg_info.get_def h with
-      | None -> helper t hash
-      | Some def_ ->
-        let hash = IG.Vertex.Map.set hash ~key:def_ ~data:0 in
-        helper t hash)
-  in
-  helper prog IG.Vertex.Map.empty
-;;
 
 let rec _seo_rev adj vertex_table seq =
   match IG.Vertex.Map.is_empty vertex_table with
@@ -147,19 +216,19 @@ let rec _seo_rev adj vertex_table seq =
 ;;
 
 let seo adj prog =
-  let vertex_table = gen_vertex_table prog in
+  let vertex_table = Helper.gen_vertex_table prog in
   let seo_rev = _seo_rev adj vertex_table [] in
   List.rev seo_rev
 ;;
 
 (* Allocate register for vertex.
- * vertex_to_reg is a hashtable from vertex to registers.
+ * vertex_to_dest is a hashtable from vertex to registers.
  * nbr is the neighbor of vertex
  *)
-let alloc (nbr : IG.Vertex.Set.t) (vertex_to_reg : reg IG.Vertex.Map.t) : reg =
+let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : reg IG.Vertex.Map.t) : reg =
   let nbr_reg_l =
     IG.Vertex.Set.fold nbr ~init:[] ~f:(fun acc u ->
-        match IG.Vertex.Map.find vertex_to_reg u with
+        match IG.Vertex.Map.find vertex_to_dest u with
         | None -> acc
         | Some u' -> u' :: acc)
   in
@@ -169,23 +238,23 @@ let alloc (nbr : IG.Vertex.Set.t) (vertex_to_reg : reg IG.Vertex.Map.t) : reg =
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)
-let rec greedy seq adj vertex_to_reg =
+let rec greedy seq adj vertex_to_dest =
   match seq with
-  | [] -> vertex_to_reg
+  | [] -> vertex_to_dest
   | h :: t ->
     (match h with
     | IG.Vertex.T.Reg reg ->
-      let vertex_to_reg =
-        IG.Vertex.Map.set vertex_to_reg ~key:(IG.Vertex.T.Reg reg) ~data:reg
+      let vertex_to_dest =
+        IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Reg reg) ~data:reg
       in
-      greedy t adj vertex_to_reg
+      greedy t adj vertex_to_dest
     | IG.Vertex.T.Temp temp ->
       let nbr = IG.Vertex.Map.find_exn adj h in
-      let reg = alloc nbr vertex_to_reg in
-      let vertex_to_reg =
-        IG.Vertex.Map.set vertex_to_reg ~key:(IG.Vertex.T.Temp temp) ~data:reg
+      let reg = alloc nbr vertex_to_dest in
+      let vertex_to_dest =
+        IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Temp temp) ~data:reg
       in
-      greedy t adj vertex_to_reg)
+      greedy t adj vertex_to_dest)
 ;;
 
 let rec gen_result (color : reg IG.Vertex.Map.t) prog =
@@ -207,73 +276,18 @@ let rec gen_result (color : reg IG.Vertex.Map.t) prog =
       | IG.Vertex.T.Reg _ -> None :: gen_result color t))
 ;;
 
-let print_vertex_to_reg (color : reg IG.Vertex.Map.t) =
-  let () = printf "\n\n==========\nVertex to register\n" in
-  let sorted_keys = List.sort (IG.Vertex.Map.keys color) ~compare:IG.Vertex.compare in
-  List.iter sorted_keys ~f:(fun k ->
-      let t = IG.Print.pp_vertex k in
-      let r = Register.reg_idx (IG.Vertex.Map.find_exn color k) in
-      printf "%s -> %d\n" t r);
-  let l = List.map (IG.Vertex.Map.data color) ~f:(fun x -> x) in
-  let s = Register.Set.of_list l in
-  printf "Used %d register\n" (Register.Set.length s)
-;;
-
-let trans_operand (operand : AS.operand) =
-  match operand with
-  | AS.Temp t -> IG.Vertex.Set.of_list [ IG.Vertex.T.Temp t ]
-  | AS.Imm _ -> IG.Vertex.Set.empty
-;;
-
-(* When there are too much temporaries, we spill them all to stacks. *)
-let rec collect_vertex prog res =
-  match prog with
-  | [] -> res
-  | h :: t ->
-    (match h with
-    | AS.Binop binop ->
-      let res = IG.Vertex.Set.union res (trans_operand binop.dest) in
-      let res = IG.Vertex.Set.union res (trans_operand binop.lhs) in
-      let res = IG.Vertex.Set.union res (trans_operand binop.rhs) in
-      collect_vertex t res
-    | AS.Mov mov ->
-      let res = IG.Vertex.Set.union res (trans_operand mov.dest) in
-      let res = IG.Vertex.Set.union res (trans_operand mov.src) in
-      collect_vertex t res
-    | AS.CJump cjp ->
-      let res = IG.Vertex.Set.union res (trans_operand cjp.lhs) in
-      let res = IG.Vertex.Set.union res (trans_operand cjp.rhs) in
-      collect_vertex t res
-    | AS.Ret ret ->
-      let res = IG.Vertex.Set.union res (trans_operand ret.var) in
-      collect_vertex t res
-    | AS.Jump _ | AS.Label _ | AS.Directive _ | AS.Comment _ -> collect_vertex t res)
-;;
-
-let gen_result_dummy vertex_set =
-  let base = Register.num_gen_reg in
-  let vertex_list = IG.Vertex.Set.to_list vertex_set in
-  List.map vertex_list ~f:(fun vtx ->
-      let reg =
-        match vtx with
-        | IG.Vertex.T.Reg r -> r
-        | IG.Vertex.T.Temp t -> Register.create_no (base + Temp.value t)
-      in
-      Some (vtx, reg))
-;;
-
 let regalloc (assem_ps : AS.instr list) : (IG.Vertex.t * Register.t) option list =
   if Temp.count () > threshold
   then (
-    let vertex_set = collect_vertex assem_ps IG.Vertex.Set.empty in
-    gen_result_dummy vertex_set)
+    let vertex_set = Lazy.collect_vertex assem_ps IG.Vertex.Set.empty in
+    Lazy.gen_result_dummy vertex_set)
   else (
     let prog = Program.gen_regalloc_info assem_ps in
-    let adj = build_graph prog IG.Vertex.Map.empty in
+    let adj = Helper.build_graph prog IG.Vertex.Map.empty in
     let seq = seo adj prog in
-    (* let vertex_to_reg = IG.Vertex.Map.empty in *)
-    let vertex_to_reg = IG.Vertex.Map.empty in
-    let color = greedy seq adj vertex_to_reg in
+    (* let vertex_to_dest = IG.Vertex.Map.empty in *)
+    let vertex_to_dest = IG.Vertex.Map.empty in
+    let color = greedy seq adj vertex_to_dest in
     (* let () = print_adj adj in
      let () = printf "SEO order\n" in
      let seq_l = List.map seq ~f:(fun x -> IG.Vertex.name x) in

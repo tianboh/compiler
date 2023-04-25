@@ -1,18 +1,36 @@
 module Temp = Var.Temp
+module Memory = Var.Memory
 module Register = Var.X86_reg
 module Reg_info = Program
 module AS = Inst.Pseudo
 module IG = Interference_graph
-open Core
 
 type reg = Register.t
-type temp = Temp.t
 
-val print_adj : 
-  (IG.Vertex.t, (IG.Vertex.t, IG.Vertex.comparator_witness) Base.Set.t,
-  IG.Vertex.comparator_witness)
-  Map_intf.Map.t -> unit
-
-val print_vertex_to_reg : (IG.Vertex.t, reg, IG.Vertex.comparator_witness) Map_intf.Map.t -> unit
+type dest =
+  | Reg of Register.t
+  | Mem of Memory.t
 
 val regalloc : AS.instr list -> (IG.Vertex.t * reg) option list
+
+module Lazy : sig
+  val trans_operand : AS.operand -> IG.Vertex.Set.t
+  val collect_vertex : AS.instr list -> IG.Vertex.Set.t -> IG.Vertex.Set.t
+  val gen_result_dummy :
+    IG.Vertex.Set.t -> (IG.Vertex.t * Register.t) option list
+end
+
+module Print : sig
+  val print_adj : IG.Vertex.Set.t IG.Vertex.Map.t -> unit
+  val print_vertex_to_reg : reg IG.Vertex.Map.t -> unit
+end
+
+module Helper : sig
+  val build_def_lo :
+    IG.Vertex.Set.t IG.Vertex.Map.t ->
+    IG.Vertex.t -> IG.Vertex.Set.t -> IG.Vertex.Set.t IG.Vertex.Map.t
+  val build_graph :
+    Reg_info.temps_info ->
+    IG.Vertex.Set.t IG.Vertex.Map.t -> IG.Vertex.Set.t IG.Vertex.Map.t
+  val gen_vertex_table : Reg_info.line list -> int IG.Vertex.Map.t
+end
