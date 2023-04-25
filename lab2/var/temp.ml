@@ -29,14 +29,8 @@ let create_no (n : int) : t =
   t
 ;;
 
-let create_no_t (n : int) (t : t) : t =
-  let k = n + t in
-  k
-;;
-
 let count () = !counter
 let name t = "%t" ^ string_of_int t
 let value t = t
-let is_reg t = if t < 0 then true else false
 
 include Comparable.Make (T)
