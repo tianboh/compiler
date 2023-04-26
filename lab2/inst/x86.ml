@@ -150,8 +150,8 @@ let shift_maximum_bit = Int32.of_int_exn 31 (* inclusive *)
 let safe_mov (dest : operand) (src : operand) (layout : layout) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg (Register.swap ()); src = Mem src; layout }
-    ; Mov { dest = Mem dest; src = Reg (Register.swap ()); layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
+    ; Mov { dest = Mem dest; src = Reg Register.swap; layout }
     ]
   | _ -> [ Mov { dest; src; layout } ]
 ;;
@@ -159,8 +159,8 @@ let safe_mov (dest : operand) (src : operand) (layout : layout) =
 let safe_add (dest : operand) (src : operand) (layout : layout) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg (Register.swap ()); src = Mem src; layout }
-    ; Add { dest = Mem dest; src = Reg (Register.swap ()); layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
+    ; Add { dest = Mem dest; src = Reg Register.swap; layout }
     ]
   | _ -> [ Add { dest; src; layout } ]
 ;;
@@ -168,8 +168,8 @@ let safe_add (dest : operand) (src : operand) (layout : layout) =
 let safe_sub (dest : operand) (src : operand) (layout : layout) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg (Register.swap ()); src = Mem src; layout }
-    ; Sub { dest = Mem dest; src = Reg (Register.swap ()); layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
+    ; Sub { dest = Mem dest; src = Reg Register.swap; layout }
     ]
   | _ -> [ Sub { dest; src; layout } ]
 ;;
@@ -177,8 +177,8 @@ let safe_sub (dest : operand) (src : operand) (layout : layout) =
 let safe_and (dest : operand) (src : operand) (layout : layout) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg (Register.swap ()); src = Mem src; layout }
-    ; AND { dest = Mem dest; src = Reg (Register.swap ()); layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
+    ; AND { dest = Mem dest; src = Reg Register.swap; layout }
     ]
   | _ -> [ AND { dest; src; layout } ]
 ;;
@@ -186,8 +186,8 @@ let safe_and (dest : operand) (src : operand) (layout : layout) =
 let safe_or (dest : operand) (src : operand) (layout : layout) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg (Register.swap ()); src = Mem src; layout }
-    ; OR { dest = Mem dest; src = Reg (Register.swap ()); layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
+    ; OR { dest = Mem dest; src = Reg Register.swap; layout }
     ]
   | _ -> [ OR { dest; src; layout } ]
 ;;
@@ -195,8 +195,8 @@ let safe_or (dest : operand) (src : operand) (layout : layout) =
 let safe_xor (dest : operand) (src : operand) (layout : layout) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg (Register.swap ()); src = Mem src; layout }
-    ; XOR { dest = Mem dest; src = Reg (Register.swap ()); layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
+    ; XOR { dest = Mem dest; src = Reg Register.swap; layout }
     ]
   | _ -> [ XOR { dest; src; layout } ]
 ;;
@@ -215,7 +215,7 @@ let shift_check (shift_bit : operand) (fpe_label : Label.t) =
 let safe_sal (dest : operand) (src : operand) (layout : layout) (fpe_label : Label.t) =
   match dest, src with
   | _, Reg _ | _, Mem _ ->
-    let ecx = Register.create_no 3 in
+    let ecx = Register.RCX in
     (* when src is register/memory, SAL can only use %cl to shift. *)
     (Mov { dest = Reg ecx; src; layout } :: shift_check (Reg ecx) fpe_label)
     @ [ SAL { dest; src = Reg ecx; layout } ]
@@ -227,7 +227,7 @@ let safe_sal (dest : operand) (src : operand) (layout : layout) (fpe_label : Lab
 let safe_sar (dest : operand) (src : operand) (layout : layout) (fpe_label : Label.t) =
   match dest, src with
   | _, Reg _ | _, Mem _ ->
-    let ecx = Register.create_no 3 in
+    let ecx = Register.RCX in
     (* when src is register/memory, SAR can only use %cl to shift. *)
     (Mov { dest = Reg ecx; src; layout } :: shift_check (Reg ecx) fpe_label)
     @ [ SAR { dest; src = Reg ecx; layout } ]
@@ -236,9 +236,9 @@ let safe_sar (dest : operand) (src : operand) (layout : layout) (fpe_label : Lab
 
 let safe_ret (dest : operand) (layout : layout) =
   (* insts = [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] *)
-  [ Mov { dest = Reg (Register.create_no 1); src = dest; layout = DWORD }
-  ; Mov { dest = Reg (Register.create_no 8); src = Reg (Register.create_no 7); layout }
-  ; Pop { reg = Reg (Register.create_no 7); layout = QWORD }
+  [ Mov { dest = Reg Register.RAX; src = dest; layout = DWORD }
+  ; Mov { dest = Reg Register.RSP; src = Reg Register.RBP; layout }
+  ; Pop { reg = Reg Register.RBP; layout = QWORD }
   ; Ret
   ]
 ;;

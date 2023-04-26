@@ -52,9 +52,9 @@ type dest =
   | Mem of Memory.t
 
 let threshold = 2000
-let eax = Register.create_no 1
-let edx = Register.create_no 4
-let ecx = Register.create_no 3
+let eax = Register.RAX
+let ecx = Register.RCX
+let edx = Register.RDX
 
 module Lazy = struct
   (* When there are too many temporaries, we will not spend time on
@@ -91,7 +91,7 @@ module Lazy = struct
   ;;
 
   let gen_result_dummy vertex_set =
-    let base = Register.num_gen_reg in
+    let base = Register.num_reg in
     let vertex_list = IG.Vertex.Set.to_list vertex_set in
     List.map vertex_list ~f:(fun vtx ->
         let dest =
@@ -99,7 +99,7 @@ module Lazy = struct
           | IG.Vertex.T.Reg r -> Reg r
           | IG.Vertex.T.Temp t ->
             let idx = base + Temp.value t in
-            Mem (Memory.create idx (Register.get_base_pointer ()) idx 8)
+            Mem (Memory.create idx Register.RSP idx 8)
         in
         Some (vtx, dest))
   ;;
@@ -124,16 +124,19 @@ module Print = struct
     printf "\n\n"
   ;;
 
-  let print_vertex_to_reg (color : reg IG.Vertex.Map.t) =
+  let print_vertex_to_dest (color : dest IG.Vertex.Map.t) =
     let () = printf "\n\n==========\nVertex to register\n" in
     let sorted_keys = List.sort (IG.Vertex.Map.keys color) ~compare:IG.Vertex.compare in
     List.iter sorted_keys ~f:(fun k ->
         let t = IG.Print.pp_vertex k in
-        let r = Register.reg_idx (IG.Vertex.Map.find_exn color k) in
+        let r =
+          match IG.Vertex.Map.find_exn color k with
+          | Reg r -> Register.reg_idx r
+          | Mem m -> Memory.mem_idx m
+        in
         printf "%s -> %d\n" t r);
     let l = List.map (IG.Vertex.Map.data color) ~f:(fun x -> x) in
-    let s = Register.Set.of_list l in
-    printf "Used %d register\n" (Register.Set.length s)
+    printf "Used %d register\n" (List.length l)
   ;;
 end
 
@@ -282,12 +285,12 @@ let seo adj prog =
 ;;
 
 (* 
- * ESP(7) and EBP(8) are used to store stack pointer and base pointer respectively, 
+ * ESP(6) and EBP(7) are used to store stack pointer and base pointer respectively, 
  * we should not assign these two registers for general purpose use like register allocation. 
  * We also preserver r15(15) as a swap register, and do not assign it for register allocation.
  *)
 let special_use = function
-  | 7 | 8 | 15 -> true
+  | 6 | 7 | 15 -> true
   | _ -> false
 ;;
 
@@ -300,7 +303,7 @@ let find_min_available (nbr : Int.Set.t) (black_set : Int.Set.t) : int =
     then helper (idx + 1) nbr
     else idx
   in
-  helper 1 nbr
+  helper 0 nbr
 ;;
 
 (* Allocate register for vertex. Neighbors may be of register or 
@@ -336,9 +339,9 @@ let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest
   let nbr_int_s = Int.Set.of_list nbr_int_l in
   let black_set = Int.Set.of_list nbr_black_list in
   let r = find_min_available nbr_int_s black_set in
-  if r < Register.num_gen_reg
-  then Reg (Register.create_no r)
-  else Mem (Memory.create r (Register.get_base_pointer ()) r 8)
+  if r < Register.num_reg
+  then Reg (Register.idx_reg r)
+  else Mem (Memory.create r Register.RBP r 8)
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)
@@ -401,7 +404,7 @@ let regalloc (assem_ps : AS.instr list) : (IG.Vertex.t * dest) option list =
     let () = printf "SEO order\n" in
     let seq_l = List.map seq ~f:(fun x -> IG.Print.pp_vertex x) in
     let () = List.iter ~f:(printf "%s ") seq_l in
-    let () = Print.print_vertex_to_reg color in
+    let () = Print.print_vertex_to_dest color in
     let () = printf "\n" in *)
     gen_result color prog)
 ;;

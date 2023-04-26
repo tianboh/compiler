@@ -3,6 +3,7 @@ module Ast = Parser.Ast
 module Asm_ps = Inst.Pseudo
 module Asm_x86 = Inst.X86
 module Register = Var.X86_reg
+module Memory = Var.Memory
 
 let c0_main =
   match Sys.getenv "UNAME" with
@@ -50,7 +51,7 @@ let dump_asm_x86 file_name x86_asm =
       file_name
       ~f:(fun out ->
         let output_instr content = Out_channel.fprintf out "%s\n" content in
-        output_instr (Asm_x86.format_prologue (Register.num_spill_reg ())))
+        output_instr (Asm_x86.format_prologue Memory.get_allocated_count))
       ~append:true
   in
   (* Main body *)

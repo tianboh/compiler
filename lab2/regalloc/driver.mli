@@ -24,7 +24,7 @@ end
 
 module Print : sig
   val print_adj : IG.Vertex.Set.t IG.Vertex.Map.t -> unit
-  val print_vertex_to_reg : reg IG.Vertex.Map.t -> unit
+  val print_vertex_to_dest : dest IG.Vertex.Map.t -> unit
 end
 
 module Helper : sig

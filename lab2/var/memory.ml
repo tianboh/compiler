@@ -21,10 +21,19 @@ end
 
 include T
 
-let create index base offset size = { index; base; offset; size }
+let counter = ref 0
+let get_allocated_count = !counter
+
+let create index base offset size =
+  incr counter;
+  { index; base; offset; size }
+;;
 
 let mem_to_str t =
-  Printf.sprintf "%d(%s)" (-t.offset * t.size) (X86_reg.reg_to_str ~layout:QWORD t.base)
+  Printf.sprintf
+    "%d(%s)"
+    (-t.offset * t.size)
+    (X86_reg.reg_to_str ~layout:QWORD t.base)
 ;;
 
 let mem_idx (mem : t) = mem.index

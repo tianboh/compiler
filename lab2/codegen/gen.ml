@@ -177,7 +177,7 @@ module X86 = struct
            * In this case, we will use %eax to represent it. Notice that it is only a representation
            * for this uninitialized temporary, and %eax will not be assigned in the following instruction.
            * Therefore, no worry for the return value. *)
-          Regalloc.Reg (Register.create_no 1)
+          Regalloc.Reg Register.RAX
       in
       (match dest with
       | Regalloc.Reg r -> AS_x86.Reg r
@@ -185,8 +185,8 @@ module X86 = struct
     | Imm i -> AS_x86.Imm i
   ;;
 
-  let eax = AS_x86.Reg (Register.create_no 1)
-  let edx = AS_x86.Reg (Register.create_no 4)
+  let eax = AS_x86.Reg Register.RAX
+  let edx = AS_x86.Reg Register.RDX
   let fpe_label = Label.label (Some "fpe")
 
   (* We don't need to store eax because eax is not assigned to any temp.
@@ -314,7 +314,7 @@ module X86 = struct
   ;;
 
   let fpe_handler =
-    let ecx = Register.create_no 3 in
+    let ecx = Register.RCX in
     (* We use ecx as zero reg because it is saved for shift. *)
     [ AS_x86.Label fpe_label
     ; AS_x86.Mov { dest = Reg ecx; src = Imm Int32.zero; layout = DWORD }
@@ -335,7 +335,7 @@ module X86 = struct
             (match x with
             | temp, reg -> IG.Vertex.Map.set acc ~key:temp ~data:reg))
     in
-    let reg_swap = Register.swap () in
+    let reg_swap = Register.R15 in
     let res_rev = _codegen_w_reg_rev [] inst_list reg_alloc reg_swap in
     let res = List.rev res_rev in
     res @ fpe_handler

@@ -17,3 +17,5 @@ val create : int -> X86_reg.t -> int -> int -> t
 val mem_to_str : t -> string
 
 val mem_idx : t -> int
+
+val get_allocated_count : int
