@@ -18,6 +18,10 @@ open Core
  *     in the future, so it may not in live_out set, then scheduler may allocate a register
  *     which is already allocated for the live_out for the current register
  *     (because there is no edge between define and live_out).
+ *     Also, for special instructions like mul, div, mod, shift, we build edge between
+ *     those special registers,like eax and edx for div and mod, and live out temporaries.
+ *     This ensures that when these instructions are executed, we can use eax, edx for free.
+ *     In other words, we don't need to store their value before use them.
  *     PS:If we can eliminate redundant defination in SSA, which means every defination
  *     will be in the live_out set, then we can build clique purely based on live_out set.
  *     Time complexity: O(v + e)
@@ -30,7 +34,8 @@ open Core
  *     Time complexity for SEO: O(v + e)
  *   3) Greedy coloring based on SEO
  *     Greedy assign registers in SEO order. The rule is generate register with minimum index which
- *     is greater than its allocated neighbors.
+ *     is greater than its allocated neighbors. Also, we will avoid assign register to temporary if
+ *     that register is a neighbor of the temporary.
  *     Time complexity for coloring: O(v + e)
  *)
 module Temp = Var.Temp
@@ -46,7 +51,10 @@ type dest =
   | Reg of Register.t
   | Mem of Memory.t
 
-let threshold = 3000
+let threshold = 2000
+let eax = Register.create_no 1
+let edx = Register.create_no 4
+let ecx = Register.create_no 3
 
 module Lazy = struct
   (* When there are too many temporaries, we will not spend time on
@@ -128,16 +136,67 @@ module Print = struct
 end
 
 module Helper = struct
-  let build_def_lo adj def s_lo =
-    let s_def = IG.Vertex.Set.of_list [ def ] in
-    IG.Vertex.Set.fold_right s_lo ~init:adj ~f:(fun v adj ->
-        let s_v =
+  (* Build edge between vertices and vertex *)
+  let build_vtx_vtxs adj vertex vertices =
+    let s_vertex = IG.Vertex.Set.of_list [ vertex ] in
+    let s_vertex_nbr =
+      match IG.Vertex.Map.find adj vertex with
+      | None -> IG.Vertex.Set.empty
+      | Some s -> s
+    in
+    let s_vertex_nbr_union = IG.Vertex.Set.union s_vertex_nbr vertices in
+    let adj = IG.Vertex.Map.set adj ~key:vertex ~data:s_vertex_nbr_union in
+    IG.Vertex.Set.fold_right vertices ~init:adj ~f:(fun v adj ->
+        let s_vertices =
           match IG.Vertex.Map.find adj v with
           | None -> IG.Vertex.Set.empty
           | Some s -> s
         in
-        let s_res = IG.Vertex.Set.union s_v s_def in
+        let s_res = IG.Vertex.Set.union s_vertices s_vertex in
         IG.Vertex.Map.set adj ~key:v ~data:s_res)
+  ;;
+
+  (* This is how we reuse eax, edx, ecx and other special registers. 
+   * These registers(vertices) are connected to all live-out vertices.
+   * so when the instruction is executed, eax, edx and ecx will be
+   * available and do not need to use swap to store the info in eax, 
+   * edx and ecx. For example, for div instruction, we connect eax and
+   * edx to all current live out temporaries. For sal, sar instruction,
+   * we connect ecx to all current temporaries.
+   *)
+  let precolor adj def s_lo uses instr =
+    match instr with
+    | AS.Binop binop ->
+      (match binop.op with
+      | AS.Times ->
+        let def = IG.Vertex.Set.of_list [ def ] in
+        let s_l = IG.Vertex.Set.union s_lo def in
+        let s_l = IG.Vertex.Set.union s_l uses in
+        build_vtx_vtxs adj (IG.Vertex.T.Reg eax) s_l
+      | AS.Divided_by | AS.Modulo ->
+        let def = IG.Vertex.Set.of_list [ def ] in
+        let s_l = IG.Vertex.Set.union s_lo def in
+        let s_l = IG.Vertex.Set.union s_l uses in
+        let adj = build_vtx_vtxs adj (IG.Vertex.T.Reg eax) s_l in
+        build_vtx_vtxs adj (IG.Vertex.T.Reg edx) s_l
+      | AS.Right_shift | AS.Left_shift ->
+        let def = IG.Vertex.Set.of_list [ def ] in
+        let s_l = IG.Vertex.Set.union s_lo def in
+        let s_l = IG.Vertex.Set.union s_l uses in
+        build_vtx_vtxs adj (IG.Vertex.T.Reg ecx) s_l
+      | AS.Equal_eq | AS.Greater | AS.Greater_eq | AS.Less | AS.Less_eq | AS.Not_eq ->
+        let def = IG.Vertex.Set.of_list [ def ] in
+        let s_l = IG.Vertex.Set.union s_lo def in
+        let s_l = IG.Vertex.Set.union s_l uses in
+        build_vtx_vtxs adj (IG.Vertex.T.Reg eax) s_l
+      | AS.Plus | AS.Minus | AS.And | AS.Or | AS.Xor -> adj)
+    | AS.Ret _
+    | AS.Mov _
+    | AS.Jump _
+    | AS.CJump _
+    | AS.Label _
+    | AS.Directive _
+    | AS.Comment _ -> adj
   ;;
 
   (* Build interference graph based on def and (live_out Union uses).
@@ -147,12 +206,13 @@ module Helper = struct
    * make x86 assembly code generation easier, we don't allow uses and def to be assigned
    * to the same register. This can be more flexible for x86 assembly code generation.
    *)
-  let rec build_graph (prog : Reg_info.temps_info) adj =
-    match prog with
+  let rec build_graph reginfo_instr adj =
+    match reginfo_instr with
     | [] -> adj
     | h :: t ->
+      let reginfo, instr = h in
       let adj =
-        match Reg_info.get_def h with
+        match Reg_info.get_def reginfo with
         | None -> adj
         | Some def ->
           let s_def_nbr =
@@ -160,10 +220,10 @@ module Helper = struct
             | Some s -> s
             | None -> IG.Vertex.Set.empty
           in
-          let s_lo = h.live_out in
+          let s_lo = reginfo.live_out in
           let s_u = IG.Vertex.Set.union s_def_nbr s_lo in
-          let adj = IG.Vertex.Map.set adj ~key:def ~data:s_u in
-          build_def_lo adj def s_lo
+          let adj = precolor adj def s_lo reginfo.uses instr in
+          build_vtx_vtxs adj def s_u
       in
       build_graph t adj
   ;;
@@ -183,8 +243,6 @@ module Helper = struct
     helper prog IG.Vertex.Map.empty
   ;;
 end
-
-(* Build edge between def and live_out *)
 
 let rec _seo_rev adj vertex_table seq =
   match IG.Vertex.Map.is_empty vertex_table with
@@ -221,11 +279,27 @@ let seo adj prog =
   List.rev seo_rev
 ;;
 
-(* Allocate register for vertex.
+(* Allocate register for vertex. Neighbors may be of register or 
+ * temporary. If neighbor is register, put this register to blacklist
+ * so we will not assign this register to the current vertex.
  * vertex_to_dest is a hashtable from vertex to registers.
  * nbr is the neighbor of vertex
+ * 
+ * In a word, the chosen register whould satisfy below requirement
+ * 1) Not the same as hard registers of its neighbor. For example,
+ * if t is connected to rax, it will not be assigned as rax.
+ * 2) Minimum available registers among its temporary neighbors.
  *)
 let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : reg IG.Vertex.Map.t) : reg =
+  (* If a temporary is connected to a register, 
+   * we cannot assign this register to it. *)
+  let nbr_black_list =
+    IG.Vertex.Set.fold nbr ~init:[] ~f:(fun acc u ->
+        match u with
+        | IG.Vertex.T.Reg r -> r :: acc
+        | IG.Vertex.T.Temp _ -> acc)
+  in
+  (* Keep track of assigned registers for neighbor temporaries *)
   let nbr_reg_l =
     IG.Vertex.Set.fold nbr ~init:[] ~f:(fun acc u ->
         match IG.Vertex.Map.find vertex_to_dest u with
@@ -233,7 +307,8 @@ let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : reg IG.Vertex.Map.t) : reg =
         | Some u' -> u' :: acc)
   in
   let nbr_reg_s = Register.Set.of_list nbr_reg_l in
-  let r = Register.find_min_available nbr_reg_s in
+  let black_set = Register.Set.of_list nbr_black_list in
+  let r = Register.find_min_available nbr_reg_s black_set in
   Register.create_no r
 ;;
 
@@ -282,17 +357,22 @@ let regalloc (assem_ps : AS.instr list) : (IG.Vertex.t * Register.t) option list
     let vertex_set = Lazy.collect_vertex assem_ps IG.Vertex.Set.empty in
     Lazy.gen_result_dummy vertex_set)
   else (
-    let prog = Program.gen_regalloc_info assem_ps in
-    let adj = Helper.build_graph prog IG.Vertex.Map.empty in
+    let reginfo_instrs = Program.gen_regalloc_info assem_ps in
+    let adj = Helper.build_graph reginfo_instrs IG.Vertex.Map.empty in
+    let prog =
+      List.fold_left reginfo_instrs ~init:[] ~f:(fun acc line ->
+          let reginfo, _ = line in
+          reginfo :: acc)
+    in
     let seq = seo adj prog in
     (* let vertex_to_dest = IG.Vertex.Map.empty in *)
     let vertex_to_dest = IG.Vertex.Map.empty in
     let color = greedy seq adj vertex_to_dest in
-    (* let () = print_adj adj in
-     let () = printf "SEO order\n" in
-     let seq_l = List.map seq ~f:(fun x -> IG.Vertex.name x) in
-     let () = List.iter ~f:(printf "%s ") seq_l in
-     let () = print_vertex_to_reg color in
-     let () = printf "\n" in *)
+    (* let () = Print.print_adj adj in
+    let () = printf "SEO order\n" in
+    let seq_l = List.map seq ~f:(fun x -> IG.Print.pp_vertex x) in
+    let () = List.iter ~f:(printf "%s ") seq_l in
+    let () = Print.print_vertex_to_reg color in
+    let () = printf "\n" in *)
     gen_result color prog)
 ;;

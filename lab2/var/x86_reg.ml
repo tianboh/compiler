@@ -21,7 +21,7 @@ include Comparable.Make (T)
  * ECX(3) is preserved for left/right shift.
  *)
 let special_use = function
-  | 1 | 3 | 4 | 7 | 8 | 15 -> true
+  | 7 | 8 | 15 -> true
   | _ -> false
 ;;
 
@@ -35,9 +35,9 @@ let create_no (n : int) : t =
 ;;
 
 (* find minimum available register with neighbor nbr *)
-let find_min_available (nbr : Set.t) : int =
+let find_min_available (nbr : Set.t) (black_set : Set.t) : int =
   let rec helper (idx : t) (nbr : Set.t) =
-    if special_use idx
+    if special_use idx || Set.mem black_set idx
     then helper (idx + 1) nbr
     else if Set.mem nbr idx
     then helper (idx + 1) nbr

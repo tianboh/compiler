@@ -79,7 +79,7 @@ let print_lines (lines : line list) = List.iter lines ~f:(fun line -> print_line
 (* Generate define, use, move, liveout, line number. *)
 let rec gen_forward
     (inst_list : AS.instr list)
-    (inst_info : (int, line) Base.Hashtbl.t)
+    (inst_info : (int, line * AS.instr) Base.Hashtbl.t)
     (line_num : int)
     live_out_map
   =
@@ -99,7 +99,7 @@ let rec gen_forward
         ; live_out = IG.Vertex.Set.union line.live_out uses
         }
       in
-      Hashtbl.set inst_info ~key:line_num ~data:line;
+      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
     | AS.Mov mov ->
       let def = gen_VertexSet [ mov.dest ] in
@@ -112,7 +112,7 @@ let rec gen_forward
         ; live_out = IG.Vertex.Set.union line.live_out uses
         }
       in
-      Hashtbl.set inst_info ~key:line_num ~data:line;
+      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
     | AS.CJump cjp ->
       let define = gen_VertexSet [] in
@@ -120,7 +120,7 @@ let rec gen_forward
       let line =
         { line with define; uses; live_out = IG.Vertex.Set.union line.live_out uses }
       in
-      Hashtbl.set inst_info ~key:line_num ~data:line;
+      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
     | AS.Jump _ ->
       let define = gen_VertexSet [] in
@@ -128,7 +128,7 @@ let rec gen_forward
       let line =
         { line with define; uses; live_out = IG.Vertex.Set.union line.live_out uses }
       in
-      Hashtbl.set inst_info ~key:line_num ~data:line;
+      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
     | AS.Ret ret ->
       let define = gen_VertexSet [] in
@@ -136,7 +136,7 @@ let rec gen_forward
       let line =
         { line with define; uses; live_out = IG.Vertex.Set.union line.live_out uses }
       in
-      Hashtbl.set inst_info ~key:line_num ~data:line;
+      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
     | AS.Label _ ->
       let define = IG.Vertex.Set.empty in
@@ -144,7 +144,7 @@ let rec gen_forward
       let line =
         { line with define; uses; live_out = IG.Vertex.Set.union line.live_out uses }
       in
-      Hashtbl.set inst_info ~key:line_num ~data:line;
+      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
     | _ -> gen_forward t inst_info line_num live_out_map)
 ;;
@@ -206,6 +206,11 @@ let gen_regalloc_info (inst_list : AS.instr list) =
   let inst_info = gen_forward inst_list inst_info 0 liveness in
   let inst_no_sort = List.sort (Hashtbl.keys inst_info) ~compare:Int.compare in
   let ret = List.map inst_no_sort ~f:(fun no -> Hashtbl.find_exn inst_info no) in
-  (* let () = print_lines ret in *)
+  (* let lines =
+    List.fold_left ret ~init:[] ~f:(fun acc line ->
+        let reginfo, _ = line in
+        reginfo :: acc)
+  in
+  let () = print_lines lines in *)
   ret
 ;;

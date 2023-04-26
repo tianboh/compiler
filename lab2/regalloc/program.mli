@@ -9,7 +9,6 @@
 *)
 (* open Core *)
 
-open Core
 module Inst_reg_info = Json_reader.Lab1_checkpoint
 module AS = Inst.Pseudo
 module Temp = Var.Temp
@@ -29,14 +28,6 @@ type temps_info = line list
 (* Return None if define field is empty else Some Temp.t *)
 val get_def : line -> IG.Vertex.t option
 
-val gen_forward
-  :  AS.instr list ->
-    (int, line) Base.Hashtbl.t ->
-    int ->
-    (int, (IG.Vertex.t, IG.Vertex.comparator_witness) Base.Set.t,
-     Core.Int.comparator_witness)
-    Map_intf.Map.t -> (int, line) Base.Hashtbl.t
-
 val transform_json_to_temp : Inst_reg_info.program -> line list
 
 val transform_vertices_to_json
@@ -45,4 +36,4 @@ val transform_vertices_to_json
 val print_VertexSet : (IG.Vertex.t, IG.Vertex.comparator_witness) Base.Set.t -> unit
 val print_line : line -> unit
 val print_lines : line list -> unit
-val gen_regalloc_info : AS.instr list -> line list
+val gen_regalloc_info : AS.instr list -> (line * AS.instr) list

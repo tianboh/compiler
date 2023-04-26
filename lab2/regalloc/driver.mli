@@ -6,7 +6,9 @@ module AS = Inst.Pseudo
 module IG = Interference_graph
 
 type reg = Register.t
-
+val eax : reg
+val edx : reg
+val ecx : reg
 type dest =
   | Reg of Register.t
   | Mem of Memory.t
@@ -26,11 +28,16 @@ module Print : sig
 end
 
 module Helper : sig
-  val build_def_lo :
+  val build_vtx_vtxs :
     IG.Vertex.Set.t IG.Vertex.Map.t ->
     IG.Vertex.t -> IG.Vertex.Set.t -> IG.Vertex.Set.t IG.Vertex.Map.t
+  val precolor :
+    IG.Vertex.Set.t IG.Vertex.Map.t ->
+    IG.Vertex.t ->
+    IG.Vertex.Set.t ->
+    IG.Vertex.Set.t -> AS.instr -> IG.Vertex.Set.t IG.Vertex.Map.t
   val build_graph :
-    Reg_info.temps_info ->
+    (Reg_info.line * AS.instr) list ->
     IG.Vertex.Set.t IG.Vertex.Map.t -> IG.Vertex.Set.t IG.Vertex.Map.t
   val gen_vertex_table : Reg_info.line list -> int IG.Vertex.Map.t
 end
