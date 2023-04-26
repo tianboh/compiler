@@ -16,5 +16,4 @@ val create : int -> X86_reg.t -> int -> int -> t
 (* returns the address of a memory *)
 val mem_to_str : t -> string
 
-(* transform from spill register to memory *)
-val from_reg : X86_reg.t -> t
+val mem_idx : t -> int

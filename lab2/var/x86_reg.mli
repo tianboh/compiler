@@ -8,14 +8,12 @@ include Comparable.S with type t := t
 
 (* Create a register with index *)
 val create_no : int -> t
-val find_min_available : Set.t -> Set.t -> int
 
 (* returns the name of a temp *)
 val reg_to_str : ?layout:layout -> t -> string
 val reg_idx : t -> int
 (* val reg_to_tmp : t -> Temp.t *)
 val str_to_reg : string -> t
-val special_use : t -> bool
 val swap : unit -> t
 val callee_saved : unit -> Set.t
 val caller_saved : unit -> Set.t

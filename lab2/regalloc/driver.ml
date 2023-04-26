@@ -94,12 +94,14 @@ module Lazy = struct
     let base = Register.num_gen_reg in
     let vertex_list = IG.Vertex.Set.to_list vertex_set in
     List.map vertex_list ~f:(fun vtx ->
-        let reg =
+        let dest =
           match vtx with
-          | IG.Vertex.T.Reg r -> r
-          | IG.Vertex.T.Temp t -> Register.create_no (base + Temp.value t)
+          | IG.Vertex.T.Reg r -> Reg r
+          | IG.Vertex.T.Temp t ->
+            let idx = base + Temp.value t in
+            Mem (Memory.create idx (Register.get_base_pointer ()) idx 8)
         in
-        Some (vtx, reg))
+        Some (vtx, dest))
   ;;
 end
 
@@ -279,6 +281,28 @@ let seo adj prog =
   List.rev seo_rev
 ;;
 
+(* 
+ * ESP(7) and EBP(8) are used to store stack pointer and base pointer respectively, 
+ * we should not assign these two registers for general purpose use like register allocation. 
+ * We also preserver r15(15) as a swap register, and do not assign it for register allocation.
+ *)
+let special_use = function
+  | 7 | 8 | 15 -> true
+  | _ -> false
+;;
+
+(* find minimum available register with neighbor nbr *)
+let find_min_available (nbr : Int.Set.t) (black_set : Int.Set.t) : int =
+  let rec helper (idx : int) (nbr : Int.Set.t) =
+    if special_use idx || Set.mem black_set idx
+    then helper (idx + 1) nbr
+    else if Set.mem nbr idx
+    then helper (idx + 1) nbr
+    else idx
+  in
+  helper 1 nbr
+;;
+
 (* Allocate register for vertex. Neighbors may be of register or 
  * temporary. If neighbor is register, put this register to blacklist
  * so we will not assign this register to the current vertex.
@@ -290,26 +314,31 @@ let seo adj prog =
  * if t is connected to rax, it will not be assigned as rax.
  * 2) Minimum available registers among its temporary neighbors.
  *)
-let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : reg IG.Vertex.Map.t) : reg =
+let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest =
   (* If a temporary is connected to a register, 
    * we cannot assign this register to it. *)
   let nbr_black_list =
     IG.Vertex.Set.fold nbr ~init:[] ~f:(fun acc u ->
         match u with
-        | IG.Vertex.T.Reg r -> r :: acc
+        | IG.Vertex.T.Reg r -> Register.reg_idx r :: acc
         | IG.Vertex.T.Temp _ -> acc)
   in
   (* Keep track of assigned registers for neighbor temporaries *)
-  let nbr_reg_l =
+  let nbr_int_l =
     IG.Vertex.Set.fold nbr ~init:[] ~f:(fun acc u ->
         match IG.Vertex.Map.find vertex_to_dest u with
         | None -> acc
-        | Some u' -> u' :: acc)
+        | Some u' ->
+          (match u' with
+          | Reg r -> Register.reg_idx r :: acc
+          | Mem m -> Memory.mem_idx m :: acc))
   in
-  let nbr_reg_s = Register.Set.of_list nbr_reg_l in
-  let black_set = Register.Set.of_list nbr_black_list in
-  let r = Register.find_min_available nbr_reg_s black_set in
-  Register.create_no r
+  let nbr_int_s = Int.Set.of_list nbr_int_l in
+  let black_set = Int.Set.of_list nbr_black_list in
+  let r = find_min_available nbr_int_s black_set in
+  if r < Register.num_gen_reg
+  then Reg (Register.create_no r)
+  else Mem (Memory.create r (Register.get_base_pointer ()) r 8)
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)
@@ -320,19 +349,19 @@ let rec greedy seq adj vertex_to_dest =
     (match h with
     | IG.Vertex.T.Reg reg ->
       let vertex_to_dest =
-        IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Reg reg) ~data:reg
+        IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Reg reg) ~data:(Reg reg)
       in
       greedy t adj vertex_to_dest
     | IG.Vertex.T.Temp temp ->
       let nbr = IG.Vertex.Map.find_exn adj h in
-      let reg = alloc nbr vertex_to_dest in
+      let dest = alloc nbr vertex_to_dest in
       let vertex_to_dest =
-        IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Temp temp) ~data:reg
+        IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Temp temp) ~data:dest
       in
       greedy t adj vertex_to_dest)
 ;;
 
-let rec gen_result (color : reg IG.Vertex.Map.t) prog =
+let rec gen_result (color : dest IG.Vertex.Map.t) prog =
   match prog with
   | [] -> []
   | h :: t ->
@@ -341,17 +370,17 @@ let rec gen_result (color : reg IG.Vertex.Map.t) prog =
     | Some tmp ->
       (match tmp with
       | IG.Vertex.T.Temp _ ->
-        let reg = IG.Vertex.Map.find color tmp in
+        let dest = IG.Vertex.Map.find color tmp in
         let tk =
-          match reg with
+          match dest with
           | None -> None
-          | Some reg' -> Some (tmp, reg')
+          | Some dest' -> Some (tmp, dest')
         in
         tk :: gen_result color t
       | IG.Vertex.T.Reg _ -> None :: gen_result color t))
 ;;
 
-let regalloc (assem_ps : AS.instr list) : (IG.Vertex.t * Register.t) option list =
+let regalloc (assem_ps : AS.instr list) : (IG.Vertex.t * dest) option list =
   if Temp.count () > threshold
   then (
     let vertex_set = Lazy.collect_vertex assem_ps IG.Vertex.Set.empty in

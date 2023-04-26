@@ -13,13 +13,13 @@ type dest =
   | Reg of Register.t
   | Mem of Memory.t
 
-val regalloc : AS.instr list -> (IG.Vertex.t * reg) option list
+val regalloc : AS.instr list -> (IG.Vertex.t * dest) option list
 
 module Lazy : sig
   val trans_operand : AS.operand -> IG.Vertex.Set.t
   val collect_vertex : AS.instr list -> IG.Vertex.Set.t -> IG.Vertex.Set.t
   val gen_result_dummy :
-    IG.Vertex.Set.t -> (IG.Vertex.t * Register.t) option list
+    IG.Vertex.Set.t -> (IG.Vertex.t * dest) option list
 end
 
 module Print : sig

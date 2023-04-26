@@ -25,5 +25,5 @@ end
  end *)
 
 module X86 : sig
-  val gen : AS.instr list -> (IG.Vertex.t * Register.t) option list -> AS_x86.instr list
+  val gen : AS.instr list -> (IG.Vertex.t * Regalloc.Driver.dest) option list -> AS_x86.instr list
 end

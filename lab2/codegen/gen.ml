@@ -39,6 +39,7 @@ module Memory = Var.Memory
 module Label = Util.Label
 module IG = Regalloc.Interference_graph
 open Var.Layout
+module Regalloc = Regalloc.Driver
 
 let munch_op = function
   | T.Plus -> AS.Plus
@@ -160,12 +161,14 @@ module Pseudo = struct
 end
 
 module X86 = struct
-  let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Register.t IG.Vertex.Map.t)
+  let oprd_ps_to_x86
+      (operand : AS.operand)
+      (reg_alloc_info : Regalloc.dest IG.Vertex.Map.t)
       : AS_x86.operand
     =
     match operand with
     | Temp t ->
-      let reg =
+      let dest =
         match IG.Vertex.Map.find reg_alloc_info (IG.Vertex.T.Temp t) with
         | Some s -> s
         | None ->
@@ -174,9 +177,11 @@ module X86 = struct
            * In this case, we will use %eax to represent it. Notice that it is only a representation
            * for this uninitialized temporary, and %eax will not be assigned in the following instruction.
            * Therefore, no worry for the return value. *)
-          Register.create_no 1
+          Regalloc.Reg (Register.create_no 1)
       in
-      if Register.need_spill reg then AS_x86.Mem (Memory.from_reg reg) else AS_x86.Reg reg
+      (match dest with
+      | Regalloc.Reg r -> AS_x86.Reg r
+      | Regalloc.Mem m -> AS_x86.Mem m)
     | Imm i -> AS_x86.Imm i
   ;;
 
@@ -257,7 +262,7 @@ module X86 = struct
   let rec _codegen_w_reg_rev
       res
       inst_list
-      (reg_alloc_info : Register.t IG.Vertex.Map.t)
+      (reg_alloc_info : Regalloc.dest IG.Vertex.Map.t)
       (reg_swap : Register.t)
     =
     match inst_list with
@@ -319,7 +324,7 @@ module X86 = struct
 
   let gen
       (inst_list : AS.instr list)
-      (reg_alloc_info : (IG.Vertex.t * Register.t) option list)
+      (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) option list)
       : AS_x86.instr list
     =
     let reg_alloc =

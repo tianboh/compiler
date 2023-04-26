@@ -27,12 +27,6 @@ let mem_to_str t =
   Printf.sprintf "%d(%s)" (-t.offset * t.size) (X86_reg.reg_to_str ~layout:QWORD t.base)
 ;;
 
-let from_reg reg =
-  if X86_reg.need_spill reg
-  then (
-    let reg_idx = X86_reg.spilled_idx reg in
-    create reg_idx (X86_reg.get_base_pointer ()) reg_idx 8)
-  else failwith "general purpose register should not map to memory index"
-;;
+let mem_idx (mem : t) = mem.index
 
 include Comparable.Make (T)
