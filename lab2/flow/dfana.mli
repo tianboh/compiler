@@ -21,4 +21,6 @@ type block =
 val print_b2l : (int, int * int) Base.Hashtbl.t -> unit
 val print_l2b : (int, int) Base.Hashtbl.t -> unit
 val print_blocks : (int, block) Base.Hashtbl.t -> unit
+val print_IntSet : IntSet.t -> string
+val print_IntList : int list -> string
 val dfana : program -> Df_analysis.t -> dflines

@@ -187,6 +187,17 @@ let get_block_succ (ls : line list) l2b =
         | None -> -1)
 ;;
 
+let print_IntSet s =
+  let l = IntSet.to_list s in
+  let s = List.map l ~f:(fun x -> Int.to_string x) in
+  String.concat s ~sep:", "
+;;
+
+let print_IntList l =
+  let s = List.map l ~f:(fun x -> Int.to_string x) in
+  String.concat s ~sep:", "
+;;
+
 let get_block_gen_kill (ls : line list) =
   let gen = IntSet.empty in
   let kill = IntSet.empty in
@@ -277,29 +288,6 @@ let build_blocks_in_out blocks (df_type : Df_analysis.t) =
   blocks
 ;;
 
-(* 
-  build_logical_blocks calculate gen, kill, predecessor and successor field for each block including entry
-  and exit block.
-  These blocks are logical based on df_type. So we do not need to distinguish forward and backward analysis,
-  and we can just start from entry block to the end. To do so, we will swap successor or predecessors in backward analysis.
-  Also, gen and kill set of one block in backward analysis is different, so we will traverse from end to
-  the beginning in this case. This is already done in lss generated from group_lines_logical. Check comments
-  in function group_lines_logical for detail.
-  par lss: line list list. Each block has its line list composing it. line list in each block is reversed in 
-  backward analysis. So we can start from index 0 to the end and obey the traverse order.
-  par l2b: Hashtbl storing information from line number to block number.
-  par df_type: data analysis type
-  return: Hashtbl from block number to block.
-*)
-let build_logical_blocks lss l2b df_type =
-  let blocks = Hashtbl.create (module Int) in
-  let () = Hashtbl.set blocks ~key:(-1) ~data:(empty_blk (-1)) in
-  let blocks = build_blocks_gen_kill_succ lss l2b blocks in
-  let blocks = build_blocks_pred blocks in
-  let blocks = build_blocks_in_out blocks df_type in
-  blocks
-;;
-
 let print_blocks blocks =
   let blk_no_l = Hashtbl.keys blocks in
   let blk_no_l_sort = List.sort blk_no_l ~compare:Int.compare in
@@ -325,6 +313,29 @@ let print_blocks blocks =
       let () = printf "\nout " in
       let () = List.iter ~f:(printf "%d ") out_ in
       printf "\n")
+;;
+
+(* 
+  build_logical_blocks calculate gen, kill, predecessor and successor field for each block including entry
+  and exit block.
+  These blocks are logical based on df_type. So we do not need to distinguish forward and backward analysis,
+  and we can just start from entry block to the end. To do so, we will swap successor or predecessors in backward analysis.
+  Also, gen and kill set of one block in backward analysis is different, so we will traverse from end to
+  the beginning in this case. This is already done in lss generated from group_lines_logical. Check comments
+  in function group_lines_logical for detail.
+  par lss: line list list. Each block has its line list composing it. line list in each block is reversed in 
+  backward analysis. So we can start from index 0 to the end and obey the traverse order.
+  par l2b: Hashtbl storing information from line number to block number.
+  par df_type: data analysis type
+  return: Hashtbl from block number to block.
+*)
+let build_logical_blocks lss l2b df_type =
+  let blocks = Hashtbl.create (module Int) in
+  let () = Hashtbl.set blocks ~key:(-1) ~data:(empty_blk (-1)) in
+  let blocks = build_blocks_gen_kill_succ lss l2b blocks in
+  let blocks = build_blocks_pred blocks in
+  let blocks = build_blocks_in_out blocks df_type in
+  blocks
 ;;
 
 (* Generate an integer array: [init, init + n) *)
@@ -451,6 +462,12 @@ let process_line (line_info : line) (in_logical : IntSet.t) =
   let gen = IntSet.of_list line_info.gen in
   let kill = IntSet.of_list line_info.kill in
   let out_logical = IntSet.union gen (IntSet.diff in_logical kill) in
+  printf
+    "line_no %d, gen %s, kill %s\n"
+    line_info.line_number
+    (print_IntSet gen)
+    (print_IntSet kill);
+  printf "--line_no %d, out_logical %s\n" line_info.line_number (print_IntSet out_logical);
   out_logical
 ;;
 
@@ -528,6 +545,7 @@ let dfana (prog : program) (df_type : Df_analysis.t) =
   let lss = group_logical_block_lines prog df_type in
   let blocks_logical = build_logical_blocks lss l2b df_type in
   let blocks_res = dfs blocks_logical df_type in
+  print_blocks blocks_res;
   let res = blocks_to_lines blocks_res line_info b2l df_type in
   gen_res res
 ;;
