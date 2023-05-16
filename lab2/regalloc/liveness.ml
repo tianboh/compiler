@@ -91,15 +91,25 @@ let _gen_df_info_helper (op : AS.operand) t2l =
   | AS.Temp t ->
     (match IG.Vertex.Map.find t2l (IG.Vertex.T.Temp t) with
     | None -> Int.Set.empty
-    | Some s -> s)
+    | Some _ -> Int.Set.of_list [ Temp.value t ])
   | AS.Imm _ -> Int.Set.empty
 ;;
 
-let _gen_df_info_binop (line_no : int) (lhs : AS.operand) (rhs : AS.operand) t2l =
+let _gen_df_info_binop
+    (line_no : int)
+    (dest : AS.operand)
+    (lhs : AS.operand)
+    (rhs : AS.operand)
+    t2l
+  =
   let lhs_int_set = _gen_df_info_helper lhs t2l in
   let rhs_int_set = _gen_df_info_helper rhs t2l in
   let gen = Int.Set.union lhs_int_set rhs_int_set in
-  let kill = Int.Set.diff (Int.Set.of_list [ line_no ]) gen in
+  let kill =
+    match dest with
+    | Imm _ -> Int.Set.empty
+    | Temp t -> Int.Set.diff (Int.Set.of_list [ Temp.value t ]) gen
+  in
   let succ = [ line_no + 1 ] in
   let is_label = false in
   ({ gen = Int.Set.to_list gen
@@ -145,7 +155,8 @@ let rec _gen_df_info_rev (inst_list : AS.instr list) line_no t2l label_map res =
   | h :: t ->
     let line =
       match h with
-      | AS.Binop binop -> Some (_gen_df_info_binop line_no binop.lhs binop.rhs t2l)
+      | AS.Binop binop ->
+        Some (_gen_df_info_binop line_no binop.dest binop.lhs binop.rhs t2l)
       | AS.Mov mov -> Some (_gen_df_info_mov line_no mov.src t2l)
       | Jump jp ->
         let target_line_no = Label.Map.find_exn label_map jp.target in
@@ -212,21 +223,22 @@ let rec gen_temp (inst_list : AS.instr list) line_no map =
 (* Transform liveness information from int to temp. 
  * lo_int is the dataflow analysis result.
  * tmp_map is map from line_number to temporary *)
-let rec trans_liveness lo_int tmp_map res =
+let rec trans_liveness (lo_int : (int list * int list * int) list) tmp_map res =
   match lo_int with
   | [] -> res
   | h :: t ->
     let _, out_int_list, line_no = h in
     let liveout =
       List.fold out_int_list ~init:IG.Vertex.Set.empty ~f:(fun acc x ->
-          match Int.Map.find tmp_map x with
+          IG.Vertex.Set.add acc (IG.Vertex.T.Temp (Temp.create_no x))
+          (* match Int.Map.find tmp_map x with
           | None ->
             let err_msg = sprintf "cannot find temporary def at line %d" x in
             failwith err_msg
           | Some s ->
             (match s with
             | AS.Imm _ -> failwith "liveout should not be immediate"
-            | AS.Temp t -> IG.Vertex.Set.add acc (IG.Vertex.T.Temp t)))
+            | AS.Temp t -> IG.Vertex.Set.add acc (IG.Vertex.T.Temp t)) *))
     in
     let res = Int.Map.set res ~key:line_no ~data:liveout in
     trans_liveness t tmp_map res
