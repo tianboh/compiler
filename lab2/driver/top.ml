@@ -134,37 +134,6 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
 
 let say_if (v : bool) (f : unit -> string) = if v then prerr_endline (f ())
 
-let process_checkpoint (cmd : cmd_line_args) =
-  match String.chop_suffix cmd.filename ~suffix:".in" with
-  | None ->
-    prerr_endline "Invalid input filename";
-    exit 1
-  | Some base_filename ->
-    let input_json = Yojson.Basic.from_file cmd.filename in
-    if cmd.regalloc_only
-    then (
-      let input = Json_reader.Lab1_checkpoint.program_of_json input_json in
-      let input_temp = Regalloc.Program.transform_json_to_temp input in
-      (* let () = Regalloc.Program.print_lines input_temp in *)
-      let output = Regalloc.Driver.regalloc_ckpt input_temp in
-      let output' = Regalloc.Driver.transform_vertices_to_json output in
-      let filename = base_filename ^ ".out" in
-      Out_channel.with_file filename ~f:(fun out ->
-          Out_channel.output_string
-            out
-            (output'
-            |> Json_reader.Lab1_checkpoint.json_of_allocations
-            |> Yojson.Basic.to_string)))
-    else (
-      let input = Json_reader.Lab2_checkpoint.program_of_json input_json in
-      let output = Dfana.dfana input cmd.df_type in
-      let filename = base_filename ^ ".out" in
-      Out_channel.with_file filename ~f:(fun out ->
-          Out_channel.output_string
-            out
-            (output |> Json_reader.Lab2_checkpoint.json_of_dflines)))
-;;
-
 (* The main driver for the compiler: runs each phase. *)
 let compile (cmd : cmd_line_args) : unit =
   say_if cmd.verbose (fun () -> "Parsing... " ^ cmd.filename);
@@ -220,12 +189,13 @@ let compile (cmd : cmd_line_args) : unit =
 (* failwith "error" *)
 
 let run (cmd : cmd_line_args) : unit =
+  let f = cmd.filename in
   match cmd.regalloc_only, cmd.df_type with
-  | true, No_analysis -> process_checkpoint cmd
-  | false, Forward_may -> process_checkpoint cmd
-  | false, Forward_must -> process_checkpoint cmd
-  | false, Backward_may -> process_checkpoint cmd
-  | false, Backward_must -> process_checkpoint cmd
+  | true, No_analysis
+  | false, Forward_may
+  | false, Forward_must
+  | false, Backward_may
+  | false, Backward_must -> Ckpt.process_checkpoint f cmd.regalloc_only cmd.df_type
   | _, _ ->
     (try compile cmd with
     | Util.Error_msg.Error ->

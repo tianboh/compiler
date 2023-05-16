@@ -462,12 +462,12 @@ let process_line (line_info : line) (in_logical : IntSet.t) =
   let gen = IntSet.of_list line_info.gen in
   let kill = IntSet.of_list line_info.kill in
   let out_logical = IntSet.union gen (IntSet.diff in_logical kill) in
-  printf
+  (* printf
     "line_no %d, gen %s, kill %s\n"
     line_info.line_number
     (print_IntSet gen)
     (print_IntSet kill);
-  printf "--line_no %d, out_logical %s\n" line_info.line_number (print_IntSet out_logical);
+  printf "--line_no %d, out_logical %s\n" line_info.line_number (print_IntSet out_logical); *)
   out_logical
 ;;
 
@@ -545,7 +545,7 @@ let dfana (prog : program) (df_type : Df_analysis.t) =
   let lss = group_logical_block_lines prog df_type in
   let blocks_logical = build_logical_blocks lss l2b df_type in
   let blocks_res = dfs blocks_logical df_type in
-  print_blocks blocks_res;
+  (* print_blocks blocks_res; *)
   let res = blocks_to_lines blocks_res line_info b2l df_type in
   gen_res res
 ;;

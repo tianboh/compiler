@@ -400,12 +400,12 @@ let regalloc (assem_ps : AS.instr list) : (IG.Vertex.t * dest) option list =
     (* let vertex_to_dest = IG.Vertex.Map.empty in *)
     let vertex_to_dest = IG.Vertex.Map.empty in
     let color = greedy seq adj vertex_to_dest in
-    let () = Print.print_adj adj in
+    (* let () = Print.print_adj adj in
     let () = printf "SEO order\n" in
     let seq_l = List.map seq ~f:(fun x -> IG.Print.pp_vertex x) in
     let () = List.iter ~f:(printf "%s ") seq_l in
     let () = Print.print_vertex_to_dest color in
-    let () = printf "\n" in
+    let () = printf "\n" in *)
     gen_result color prog)
 ;;
 
