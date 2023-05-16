@@ -1,4 +1,4 @@
-(* L1 Compiler
+(* L2 Compiler
  * Top Level Environment
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Alex Vaynberg <alv@andrew.cmu.edu>
@@ -11,16 +11,20 @@
  *   - Switch from ocamlbuild to dune 2.7
  *   - TODO: Add support for expect tests
  *   - Update to Core v0.14
-*)
+ *)
 
 open Core
+
 (* open Json_reader *)
 open Args
 module AS_psu = Inst.Pseudo
 module AS_x86 = Inst.X86
 module Parse = Parser.Parse
+module Elab = Parser.Elab
 module Ast = Parser.Ast
-module Typechecker = Type.Typechecker
+module Cst = Parser.Cst
+module Typechecker = Semantic.Typechecker
+module Controlflow = Semantic.Controlflow
 module Dfana = Flow.Dfana
 module Tree = Parser.Tree
 module Trans = Parser.Trans
@@ -30,10 +34,11 @@ module Trans = Parser.Trans
 type cmd_line_args =
   { verbose : bool
   ; dump_parsing : bool
+  ; dump_cst : bool
   ; dump_ast : bool
   ; dump_ir : bool
   ; dump_assem : bool
-  ; typecheck_only : bool
+  ; semcheck_only : bool
   ; regalloc_only : bool
   ; emit : Emit.t
   ; opt_level : Opt_level.t
@@ -54,7 +59,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
    *
    * even if e1 is of type 'a Term.t, we can use x as having type 'a
    * in the body of e2.
-  *)
+   *)
   let module Let_syntax = struct
     let return = Term.pure
     let map ~f a = Term.(return f $ a)
@@ -69,6 +74,9 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and dump_parsing =
     let doc = "If present, print debug informaton from parsing." in
     flag (Arg.info [ "dump-parsing" ] ~doc)
+  and dump_cst =
+    let doc = "If present, print the parsed cst." in
+    flag (Arg.info [ "dump-cst" ] ~doc)
   and dump_ast =
     let doc = "If present, print the parsed ast." in
     flag (Arg.info [ "dump-ast" ] ~doc)
@@ -78,9 +86,9 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and dump_assem =
     let doc = "If present, print the final assembly." in
     flag (Arg.info [ "dump-assem" ] ~doc)
-  and typecheck_only =
-    let doc = "If present, exit after typechecking." in
-    flag (Arg.info [ "t"; "typecheck-only" ] ~doc)
+  and semcheck_only =
+    let doc = "If present, exit after semantic analysis." in
+    flag (Arg.info [ "t"; "semcheck-only" ] ~doc)
   and regalloc_only =
     let doc = "Regalloc only for l1 checkpoint" in
     flag (Arg.info [ "r"; "regalloc-only" ] ~doc)
@@ -97,7 +105,10 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
       ~default:Opt_level.Opt_none
       (Arg.info [ "O"; "opt" ] ~doc ~docv:"OPT")
   and df_type =
-    let doc = "[forward-may|forward-must|backward-may|backward-must|no-analysis] The type of dataflow analysis" in
+    let doc =
+      "[forward-may|forward-must|backward-may|backward-must|no-analysis] The type of \
+       dataflow analysis"
+    in
     opt
       Df_analysis.conv
       ~default:Df_analysis.No_analysis
@@ -108,10 +119,11 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   in
   { verbose
   ; dump_parsing
+  ; dump_cst
   ; dump_ast
   ; dump_ir
   ; dump_assem
-  ; typecheck_only
+  ; semcheck_only
   ; regalloc_only
   ; emit
   ; opt_level
@@ -122,57 +134,38 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
 
 let say_if (v : bool) (f : unit -> string) = if v then prerr_endline (f ())
 
-let process_checkpoint (cmd : cmd_line_args) =
-  match String.chop_suffix cmd.filename ~suffix:".in" with
-  | None ->
-    prerr_endline "Invalid input filename";
-    exit 1
-  | Some base_filename ->
-    let input_json = Yojson.Basic.from_file cmd.filename in
-    if cmd.regalloc_only then
-      let input = Json_reader.Lab1_checkpoint.program_of_json input_json in
-      let input_temp = Codegen.Program.transform_json_to_temp input in
-      (* let () = Codegen.Program.print_lines input_temp in *)
-      let output = Regalloc.regalloc input_temp in
-      let output' = Codegen.Program.transform_temps_to_json output in
-      let filename = base_filename ^ ".out" in
-      Out_channel.with_file filename ~f:(fun out ->
-          Out_channel.output_string
-            out
-            (output' |> Json_reader.Lab1_checkpoint.json_of_allocations |> Yojson.Basic.to_string))
-    else
-      let input = Json_reader.Lab2_checkpoint.program_of_json input_json in
-      let output = Dfana.dfana input cmd.df_type in
-      let filename = base_filename ^ ".out" in
-      Out_channel.with_file filename ~f:(fun out ->
-          Out_channel.output_string
-            out
-            (output |> Json_reader.Lab2_checkpoint.json_of_dflines)) 
-;;
-
 (* The main driver for the compiler: runs each phase. *)
 let compile (cmd : cmd_line_args) : unit =
   say_if cmd.verbose (fun () -> "Parsing... " ^ cmd.filename);
   if cmd.dump_parsing then ignore (Parsing.set_trace true : bool);
   (* Parse *)
-  let ast = Parse.parse cmd.filename in
+  let cst = Parse.parse cmd.filename in
+  say_if cmd.dump_cst (fun () -> Cst.Print.pp_program cst);
+  (* Elaborate *)
+  let ast = Elab.elaborate cst in
   say_if cmd.dump_ast (fun () -> Ast.Print.pp_program ast);
-  (* Typecheck *)
+  (* Semantic analysis *)
   say_if cmd.verbose (fun () -> "Checking...");
   Typechecker.typecheck ast;
-  if cmd.typecheck_only then exit 0;
+  Controlflow.cf_ret ast;
+  Controlflow.cf_init ast;
+  if cmd.semcheck_only then exit 0;
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Trans.translate ast in
-  say_if cmd.dump_ir (fun () -> Tree.Print.pp_program ir);
+  (* Okay, this is a hack, we will provide more comprehensive handling in lab3. 
+   * TODO: fix it! *)
+  let ir = Tree.Seq { head = Tree.Label (Util.Label.label (Some "main")); tail = ir } in
+  say_if cmd.dump_ir (fun () -> Tree.Print.pp_stm ir);
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
   let assem_ps = Codegen.Gen.Pseudo.gen ir in
-  let assem_ps = Codegen.Gen.Pseudo.optimize assem_ps in
+  (* let assem_ps = Codegen.Optimize.optimize assem_ps in *)
+  (* let () = Codegen.Gen.Pseudo.print_insts assem_ps in *)
   (* let stop = Unix.gettimeofday () in *)
   (* let () = Printf.printf "Execution time assem_ps: %fs\n%!" (stop -. start) in *)
-  say_if cmd.dump_assem (fun () -> List.to_string ~f:AS_psu.format assem_ps);
+  say_if cmd.dump_assem (fun () -> AS_psu.pp_program assem_ps "");
   match cmd.emit with
   (* Output: abstract 3-address assem *)
   | Abstract_assem ->
@@ -183,35 +176,37 @@ let compile (cmd : cmd_line_args) : unit =
     let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
     (* let start = Unix.gettimeofday () in *)
-    let program = Codegen.Program.gen_regalloc_info assem_ps in
     (* let stop = Unix.gettimeofday () in *)
     (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
     (* let start = Unix.gettimeofday () in *)
-    let reg_alloc_info = Regalloc.regalloc program in
+    let reg_alloc_info = Regalloc.Driver.regalloc assem_ps in
     (* let stop = Unix.gettimeofday () in *)
     (* let () = Printf.printf "Execution time reg_alloc_info: %fs\n%!" (stop -. start) in *)
     let assem_x86 = Codegen.Gen.X86.gen assem_ps reg_alloc_info in
     File.dump_asm_x86 file assem_x86
-    (* failwith "error" *)
 ;;
 
+(* failwith "error" *)
+
 let run (cmd : cmd_line_args) : unit =
+  let f = cmd.filename in
   match cmd.regalloc_only, cmd.df_type with
-  | (true, No_analysis) -> process_checkpoint cmd
-  | (false, Forward_may) -> process_checkpoint cmd
-  | (false, Forward_must) -> process_checkpoint cmd
-  | (false, Backward_may) -> process_checkpoint cmd
-  | (false, Backward_must) -> process_checkpoint cmd
-  | (_, _) -> try compile cmd with
+  | true, No_analysis
+  | false, Forward_may
+  | false, Forward_must
+  | false, Backward_may
+  | false, Backward_must -> Ckpt.process_checkpoint f cmd.regalloc_only cmd.df_type
+  | _, _ ->
+    (try compile cmd with
     | Util.Error_msg.Error ->
       prerr_endline "Compilation failed.";
-      exit 1
+      exit 1)
 ;;
 
 (* Compiler entry point
  * Use the cmd_line_term to parse the command line arguments, and pass the
  * parsed args to the run function.
-*)
+ *)
 let main () =
   let open Cmdliner in
   let cmd_line_info = Term.info "c0c" ~doc:"Compile a c0c source file." in

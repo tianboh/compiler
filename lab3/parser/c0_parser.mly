@@ -1,7 +1,7 @@
 %{
 (* L2 Compiler
  * L2 grammar
- * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
+ * Author: Tianbo Hao, Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  *
  * Modified: Anand Subramanian <asubrama@andrew.cmu.edu> Fall 2010
@@ -15,7 +15,7 @@
  *
  * Modified: Nick Roberts <nroberts@alumni.cmu.edu>
  *   - Update to use menhir instead of ocamlyacc.
- *   - Improve presentation of marked asts.
+ *   - Improve presentation of marked Csts.
  *
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  *)
@@ -37,14 +37,30 @@ let expand_asnop ~lhs ~op ~rhs
   (start_pos : Lexing.position)
   (end_pos : Lexing.position) =
     match lhs, op, rhs with
-    | id, None, exp -> Ast.Assign {name = Mark.data id; value = exp}
+    | id, None, exp -> Cst.Assign {name = Mark.data id; value = exp}
     | id, Some op, exp ->
-      let binop = Ast.Binop {
+      let binop = Cst.Binop {
         op;
-        lhs = Mark.map lhs ~f:(fun id -> Ast.Var id);
+        lhs = Mark.map lhs ~f:(fun id -> Cst.Var id);
         rhs = exp;
       } in
-      Ast.Assign {name = Mark.data id; value = mark binop start_pos end_pos}
+      Cst.Assign {name = Mark.data id; value = mark binop start_pos end_pos}
+
+(* expand_postop (id, "postop") region = "id = id postop 1"
+ * syntactically expands a compound post operator
+ *)
+let expand_postop lhs op 
+  (start_pos : Lexing.position) =
+    let op = match op with | Cst.Plus_plus -> Cst.Plus  | Cst.Minus_minus -> Cst.Minus in
+    match lhs, op with
+    | id, op ->
+      let binop = Cst.Binop {
+        op;
+        lhs = Mark.map lhs ~f:(fun id -> Cst.Var id);
+        rhs = Mark.naked (Cst.Const_int Int32.one);
+      } in
+      Cst.Assign {name = Mark.data id; value = mark binop start_pos start_pos}
+
 
 %}
 
@@ -56,27 +72,36 @@ let expand_asnop ~lhs ~op ~rhs
 (* Data type values *)
 %token <Int32.t> Dec_const
 %token <Int32.t> Hex_const
-%token <Bool.t> Bool_const
+%token True
+%token False
 (* Keywords *)
 %token Main
+%token If
+%token Else
+%token While
+%token For
 %token Return
 (* Special characters *)
 %token L_brace R_brace
 %token L_paren R_paren
 %token Eof
 %token Semicolon
-%token Unary
-(* Below are binary operators *) 
-%token Plus Minus Star Slash Percent
-%token Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq
-// %token Minus_minus Plus_plus
-%token Logic_and Logic_or           (* Logic op: && || *)
-%token Bit_and Bit_or Bit_xor       (* Bitwise op: & | ^ *)
+(* Binary operators *) 
+%token Plus Minus Star Slash Percent Less Less_eq Greater Greater_eq Equal_eq Not_eq
+        And_and Or_or And Or Left_shift Right_shift Hat (* bitwise exclusive or *)
+(* postop *)
+%token Minus_minus Plus_plus
+(* unop *)
+%token Excalmation_mark (* logical not *) Dash_mark (* bitwise not *) Negative (* This is a placeholder for minus *)
+(* assign op *)
+%token Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq And_eq Or_eq Hat_eq Left_shift_eq Right_shift_eq
+(* Ternary op *)
+%token Question_mark Colon
 (* Others *)
 // %token <Int32.t> Dbg_line
 // %token <Int32.t> Dbg_col
 
-(* Unary is a dummy terminal.
+(* Negative is a dummy terminal.
  * We need dummy terminals if we wish to assign a precedence
  * to a production that does not correspond to the precedence of
  * the rightmost terminal in that production.
@@ -87,29 +112,52 @@ let expand_asnop ~lhs ~op ~rhs
  * Minus_minus is a dummy terminal to parse-fail on.
  *)
 
+(*
+ * Operation declared before has lower precedence. Check 
+ * https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf
+ * for detailed operation precedence in L2 grammar.
+ *)
+%right Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq And_eq Or_eq Hat_eq Left_shift_eq Right_shift_eq
+%right Question_mark Colon
+%left Or_or
+%left And_and
+%left Or
+%left Hat
+%left And
+%left Equal_eq Not_eq
+%left Less Less_eq Greater Greater_eq
+%left Left_shift Right_shift
 %left Plus Minus
 %left Star Slash Percent
-%right Unary
+%right Negative Excalmation_mark Dash_mark Plus_plus Minus_minus
 
 %start program
 
 (* It's only necessary to provide the type of the start rule,
  * but it can improve the quality of parser type errors to annotate
  * the types of other rules.
+ *
+ * The way we organize below types is based on the grammer
+ * Check https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf
+ * Page 3 for more details.
+ *
  *)
-%type <Ast.mstm list> program
-%type <Ast.dtype> dtype
-%type <Ast.mstm list> stms
-%type <Ast.stm> stm
-%type <Ast.decl> decl
-%type <Ast.stm> simp
+%type <Cst.block> program
+%type <Cst.block> block
+%type <Cst.dtype> dtype
+%type <Cst.decl> decl
+// %type <Cst.stms> stms
+%type <Cst.stm> stm
+%type <Cst.mstms> mstms
+%type <Cst.simp> simp
 %type <Symbol.t> lvalue
-%type <Ast.exp> exp
+%type <Cst.control> control
+%type <Cst.exp> exp
 %type <Core.Int32.t> int_const
-%type <Core.Bool.t> bool_const
-%type <Ast.binop option> asnop
-%type <Ast.binop> binop
-// %type <Ast.postop> postop
+%type <Cst.binop option> asnop
+%type <Cst.binop> binop
+%type <Cst.unop> unop
+%type <Cst.postop> postop
 
 %%
 
@@ -117,12 +165,16 @@ program :
   | Int;
     Main;
     L_paren R_paren;
-    L_brace;
-    body = stms;
-    R_brace;
+    block = block
     Eof;
-      { body }
+      { block }
   ;
+
+block : 
+   | L_brace;
+     body = mstms;
+     R_brace;
+      { body }
 
 (* This higher-order rule produces a marked result of whatever the
  * rule passed as argument will produce.
@@ -135,49 +187,53 @@ m(x) :
       { mark x $startpos(x) $endpos(x) }
   ;
 
-stms :
+dtype : 
+  | Int;
+      { Cst.Int }
+  | Bool;
+      { Cst.Bool }
+
+decl :
+  | t = dtype; ident = Ident;
+      { Cst.New_var { t = t; name = ident } }
+  | t = dtype; ident = Ident; Assign; e = m(exp);
+      { Cst.Init { t = t; name = ident; value = e } }
+  | Int; Main;
+      { Cst.New_var {t = Int; name = Symbol.symbol "main"} }
+  | Int; Main; Assign; e = m(exp);
+      { Cst.Init {t = Int; name = Symbol.symbol "main"; value = e} }
+  | Bool; Main;
+      { Cst.New_var {t = Bool; name = Symbol.symbol "main"} }
+  | Bool; Main; Assign; e = m(exp);
+      { Cst.Init {t = Bool; name = Symbol.symbol "main"; value = e} }
+  ;
+
+mstms :
   | (* empty *)
       { [] }
-  | L_brace; body = stms; R_brace;
-      { body }
-  | hd = m(stm); tl = stms;
+  | hd = m(stm); tl = mstms;
       { hd :: tl }
   ;
 
 stm :
-  | d = decl; Semicolon;
-      { Ast.Declare d }
   | s = simp; Semicolon;
-      { s }
-  | Return; e = m(exp); Semicolon;
-      { Ast.Return e }
-  ;
+      { Cst.Simp s }
+  | c = control;
+      { Cst.Control c }
+  | b = block;
+      { Cst.Block b }
 
-dtype : 
-  | Int;
-      { Ast.Int }
-  | Bool;
-      {Ast.Bool}
-
-decl :
-  | t = dtype; ident = Ident;
-      { Ast.New_var { t = t; name = ident } }
-  | t = dtype; ident = Ident; Assign; e = m(exp);
-      { Ast.Init { t = t; name = ident; value = e } }
-  | Int; Main;
-      { Ast.New_var {t = Int; name = Symbol.symbol "main"} }
-  | Int; Main; Assign; e = m(exp);
-      { Ast.Init {t = Int; name = Symbol.symbol "main"; value = e} }
   ;
 
 simp :
-  | lhs = m(lvalue);
-    op = asnop;
-    rhs = m(exp);
+  | lhs = m(lvalue); op = asnop; rhs = m(exp);
       { expand_asnop ~lhs ~op ~rhs $startpos(lhs) $endpos(rhs) }
-  // | lhs = m(lvalue)
-  //   op = postop;
-  //   { expand_}
+  | lhs = m(lvalue); op = postop;
+      { expand_postop lhs op $startpos(lhs)}
+  | d = decl;
+      { Cst.Declare d }
+  | e = m(exp);
+      { Cst.Sexp e }
   ;
 
 lvalue :
@@ -189,23 +245,51 @@ lvalue :
       { lhs }
   ;
 
+control : 
+  | If; L_paren; e = m(exp); R_paren; s = m(stm);
+      { Cst.If {cond = e; true_stm = s; false_stm = None} }
+  | If; L_paren; e = m(exp); R_paren; true_stm = m(stm); Else; false_stm = m(stm);
+      { Cst.If {cond = e; true_stm = true_stm; false_stm = Some false_stm} }
+  | While; L_paren; e = m(exp); R_paren; s = m(stm);
+      { Cst.While {cond = e; body = s} }
+  | For; L_paren; Semicolon; e = m(exp); Semicolon; R_paren; s = m(stm);
+      { Cst.For {init = None; cond = e; iter = None; body = s} }
+  | For; L_paren; init = m(simp); Semicolon; e = m(exp); Semicolon; R_paren; s = m(stm);
+      { Cst.For {init = Some init; cond = e; iter = None; body = s} }
+  | For; L_paren; Semicolon; e = m(exp); Semicolon; iter = m(simp); R_paren; s = m(stm);
+      { Cst.For {init = None; cond = e; iter = Some iter; body = s} }
+  | For; L_paren; init = m(simp); Semicolon; e = m(exp); Semicolon; iter = m(simp); R_paren; s = m(stm);
+      { Cst.For {init = Some init; cond = e; iter = Some iter; body = s} }
+  | Return; e = m(exp); Semicolon;
+      { Cst.Return e }
+
 exp :
   | L_paren; e = exp; R_paren;
-      { e }
+    { e }
   | c = int_const;
-      { Ast.Const_int c }
+    { Cst.Const_int c }
   | Main;
-      { Ast.Var (Symbol.symbol "main") }
-  | b = bool_const;
-      { Ast.Const_bool b }
-  | ident = Ident;
-      { Ast.Var ident }
+    { Cst.Var (Symbol.symbol "main") }
+  | True;
+    { Cst.True }
+  | False;
+    { Cst.False }
+  | ident = lvalue; 
+    { Cst.Var ident }
+  | unop = unop; e = m(exp);
+    { Cst.Unop {op = unop; operand = e} }
   | lhs = m(exp);
     op = binop;
     rhs = m(exp);
-      { Ast.Binop { op; lhs; rhs; } }
-  | Minus; e = m(exp); %prec Unary
-      { Ast.Unop { op = Ast.Negative; operand = e; } }
+    { Cst.Binop { op; lhs; rhs; } }
+  | Minus; e = m(exp); %prec Negative
+    { Cst.Unop { op = Cst.Negative; operand = e; } }
+  | Excalmation_mark; e = m(exp); %prec Excalmation_mark
+    { Cst.Unop {op = Cst.Excalmation_mark; operand = e; } }
+  | Dash_mark; e = m(exp); %prec Dash_mark
+    { Cst.Unop {op = Cst.Dash_mark; operand = e; } }
+  | cond = m(exp); Question_mark; true_exp = m(exp); Colon; false_exp = m(exp);
+    { Cst.Terop {cond = cond; true_exp = true_exp; false_exp = false_exp} }
   ;
 
 int_const :
@@ -215,11 +299,6 @@ int_const :
       { c }
   ;
 
-bool_const : 
-  | b = Bool_const;
-    { b }
-  ;
-
 (* See the menhir documentation for %inline.
  * This allows us to factor out binary operators while still
  * having the correct precedence for binary operator expressions.
@@ -227,40 +306,80 @@ bool_const :
 %inline
 binop :
   | Plus;
-      { Ast.Plus }
+    { Cst.Plus }
   | Minus;
-      { Ast.Minus }
+    { Cst.Minus }
   | Star;
-      { Ast.Times }
+    { Cst.Times }
   | Slash;
-      { Ast.Divided_by }
+    { Cst.Divided_by }
   | Percent;
-      { Ast.Modulo }
-  | Logic_and;
-      { Ast.Logic_and }
-  | Logic_or;
-      { Ast.Logic_or }
-  | Bit_and;
-      { Ast.Bit_and }
-  | Bit_or;
-      { Ast.Bit_or }
-  | Bit_xor;
-      { Ast.Bit_xor }
+    { Cst.Modulo }
+  | And_and;
+    { Cst.And_and }
+  | Or_or;
+    { Cst.Or_or }
+  | And;
+    { Cst.And }
+  | Or;
+    { Cst.Or }
+  | Less
+    { Cst.Less }
+  | Less_eq
+    { Cst.Less_eq }
+  | Greater
+    { Cst.Greater }
+  | Greater_eq
+    { Cst.Greater_eq }
+  | Equal_eq
+    { Cst.Equal_eq }
+  | Not_eq
+    { Cst.Not_eq }
+  | Left_shift
+    { Cst.Left_shift }
+  | Right_shift
+    { Cst.Right_shift }
+  | Hat
+    { Cst.Hat }
+  ;
+
+unop : 
+  | Excalmation_mark
+    { Cst.Excalmation_mark }
+  | Dash_mark
+    { Cst.Dash_mark }
+  ;
+
+postop : 
+  | Plus_plus
+    { Cst.Plus_plus }
+  | Minus_minus
+    { Cst.Minus_minus }
   ;
 
 asnop :
   | Assign
       { None }
   | Plus_eq
-      { Some Ast.Plus }
+      { Some Cst.Plus }
   | Minus_eq
-      { Some Ast.Minus }
+      { Some Cst.Minus }
   | Star_eq
-      { Some Ast.Times }
+      { Some Cst.Times }
   | Slash_eq
-      { Some Ast.Divided_by }
+      { Some Cst.Divided_by }
   | Percent_eq
-      { Some Ast.Modulo }
+      { Some Cst.Modulo }
+  | And_eq
+      { Some Cst.And }
+  | Hat_eq
+      { Some Cst.Hat }
+  | Or_eq
+      { Some Cst.Or }
+  | Left_shift_eq
+      { Some Cst.Left_shift }
+  | Right_shift_eq
+      { Some Cst.Right_shift }
   ;
 
 %%

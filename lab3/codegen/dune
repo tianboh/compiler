@@ -1,6 +1,6 @@
 (library
  (name codegen)
- (libraries core var parser inst json_reader)
+ (libraries core var parser inst json_reader regalloc)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))

@@ -4,7 +4,7 @@
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  * Modified: Alice Rao <alrao@andrew.cmu.edu>
  * Modified: Nick Roberts <nroberts@alumni.cmu.edu>
-*)
+ *)
 
 open Core
 
@@ -21,6 +21,10 @@ include T
 let cache : t String.Table.t = String.Table.create ()
 let next_unique_id = ref 0
 
+(* Variables declared in an outer scope (either as function parameters of
+ * an enclosing block) can not be declared again in an inner block with the
+ * same name. According to https://c0.cs.cmu.edu/docs/c0-reference.pdf Sec 6.5
+ * In other words, Symbol.name can be used as the hash key. *)
 let symbol (name : string) : t =
   match Hashtbl.find cache name with
   | Some t -> t

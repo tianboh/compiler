@@ -462,12 +462,12 @@ let process_line (line_info : line) (in_logical : IntSet.t) =
   let gen = IntSet.of_list line_info.gen in
   let kill = IntSet.of_list line_info.kill in
   let out_logical = IntSet.union gen (IntSet.diff in_logical kill) in
-  (* printf
+  printf
     "line_no %d, gen %s, kill %s\n"
     line_info.line_number
     (print_IntSet gen)
     (print_IntSet kill);
-  printf "--line_no %d, out_logical %s\n" line_info.line_number (print_IntSet out_logical); *)
+  printf "--line_no %d, out_logical %s\n" line_info.line_number (print_IntSet out_logical);
   out_logical
 ;;
 

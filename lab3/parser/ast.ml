@@ -1,6 +1,9 @@
-(* L1 Compiler
+(* L2 Compiler
  * Abstract Syntax Trees
- * Author: Alex Vaynberg
+ *
+ * AUthor: Tianbo Hao
+ *
+ * Created: Alex Vaynberg
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  *
  * Modified: Anand Subramanian <asubrama@andrew.cmu.edu> Fall 2010
@@ -15,115 +18,149 @@ module Mark = Util.Mark
 module Symbol = Util.Symbol
 
 type binop =
+  (* II *)
   | Plus
   | Minus
   | Times
   | Divided_by
   | Modulo
-  | Logic_and
-  | Logic_or
-  | Bit_and
-  | Bit_or
-  | Bit_xor
+  | And
+  | Or
+  | Hat
+  | Right_shift
+  | Left_shift
+  (* IB *)
+  | Equal_eq
+  | Greater
+  | Greater_eq
+  | Less
+  | Less_eq
+  | Not_eq
 
-type unop = Negative
-
-(* Notice that the subexpressions of an expression are marked.
- * (That is, the subexpressions are of type exp Mark.t, not just
- * type exp.) This means that source code location (a src_span) is
- * associated with the subexpression. Currently, the typechecker uses
- * this source location to print more helpful error messages.
- *
- * It's the parser and lexer's job to associate src_span locations with each
- * ast. It's instructive, but not necessary, to closely read the source code
- * for c0_parser.mly, c0_lexer.mll, and parse.ml to get a good idea of how
- * src_spans are created.
- *
- * Check out the Mark module for ways of converting a marked expression into
- * the original expression or to the src_span location. You could also just
- * look at how the typechecker gets the src_span from an expression when it
- * prints error messages.
- *
- * It's completely possible to remove Marks entirely from your compiler, but
- * it will be harder to figure out typechecking errors for later labs.
- *)
 type exp =
   | Var of Symbol.t
   | Const_int of Int32.t
-  | Const_bool of Bool.t
+  | True
+  | False
   | Binop of
       { op : binop
       ; lhs : mexp
       ; rhs : mexp
       }
-  | Unop of
-      { op : unop
-      ; operand : mexp
+  | Terop of
+      { cond : mexp
+      ; true_exp : mexp
+      ; false_exp : mexp
       }
 
 and mexp = exp Mark.t
 
-type dtype = 
-| Int
-| Bool
-
-type decl =
-  | New_var of { t : dtype; name : Symbol.t }
-  | Init of { t : dtype; name : Symbol.t; value : mexp}
+type dtype =
+  | Int
+  | Bool
 
 type stm =
-  | Declare of decl
-  | Assign of {name : Symbol.t ; value : mexp}
+  | Assign of
+      { name : Symbol.t
+      ; value : mexp
+      }
+  | If of
+      { cond : mexp
+      ; true_stm : mstm
+      ; false_stm : mstm
+      }
+  | While of
+      { cond : mexp
+      ; body : mstm
+      }
   | Return of mexp
+  | Nop
+  | Seq of
+      { head : mstm
+      ; tail : mstm
+      }
+  | Declare of
+      { t : dtype
+      ; name : Symbol.t
+      ; tail : mstm
+      }
+  (* This is used for special case in elaboration from CST simp case. 
+   * Also expression as statement is legal according to 
+   * https://c0.cs.cmu.edu/docs/c0-reference.pdf Section 6.2,
+   * Such a statement evaluates e, incurring all of its effects, 
+   * and then discards the return value if there is any *)
+  | Sexp of mexp
 
 and mstm = stm Mark.t
 
-type program = mstm list
+type program = mstm
 
 module Print = struct
+  let pp_dtype = function
+    | Int -> "int"
+    | Bool -> "bool"
+  ;;
+
   let pp_binop = function
     | Plus -> "+"
     | Minus -> "-"
     | Times -> "*"
     | Divided_by -> "/"
     | Modulo -> "%"
-    | Logic_and -> "&&"
-    | Logic_or -> "||"
-    | Bit_and -> "&"
-    | Bit_or -> "|"
-    | Bit_xor -> "^"
-  ;;
-
-  let pp_unop = function
-    | Negative -> "-"
+    | And -> "&"
+    | Or -> "|"
+    | Hat -> "^"
+    | Right_shift -> ">>"
+    | Left_shift -> "<<"
+    (* IB *)
+    | Equal_eq -> "=="
+    | Greater -> ">"
+    | Greater_eq -> ">="
+    | Less -> "<"
+    | Less_eq -> "<="
+    | Not_eq -> "!="
   ;;
 
   let rec pp_exp = function
     | Var id -> Symbol.name id
     | Const_int c -> Int32.to_string c
-    | Const_bool b -> Bool.to_string b
-    | Unop unop -> sprintf "%s(%s)" (pp_unop unop.op) (pp_mexp unop.operand)
+    | True -> "true"
+    | False -> "false"
     | Binop binop ->
       sprintf "(%s %s %s)" (pp_mexp binop.lhs) (pp_binop binop.op) (pp_mexp binop.rhs)
+    | Terop terop ->
+      sprintf
+        "(%s ? %s : %s)"
+        (pp_mexp terop.cond)
+        (pp_mexp terop.true_exp)
+        (pp_mexp terop.false_exp)
 
   and pp_mexp e = pp_exp (Mark.data e)
 
-  let pp_dtype = function
-  | Int -> "int"
-  | Bool -> "bool"
-
-  let pp_decl = function
-    | New_var id -> sprintf "%s %s;" (pp_dtype id.t) (Symbol.name id.name)
-    | Init id -> sprintf "%s %s = %s;" (pp_dtype id.t) (Symbol.name id.name) (pp_mexp id.value)
-  ;;
-
   let rec pp_stm = function
-    | Declare d -> pp_decl d
-    | Assign id -> sprintf "%s = %s;" (Symbol.name id.name) (pp_mexp id.value)
-    | Return e -> sprintf "return %s;" (pp_mexp e)
+    | Assign asn_ast ->
+      sprintf "Assign (%s = %s;)" (Symbol.name asn_ast.name) (pp_mexp asn_ast.value)
+    | If if_ast ->
+      sprintf
+        "if(%s){ %s } else { %s }"
+        (pp_mexp if_ast.cond)
+        (pp_mstm if_ast.true_stm)
+        (pp_mstm if_ast.false_stm)
+    | While while_ast ->
+      sprintf "while(%s){%s}" (pp_mexp while_ast.cond) (pp_mstm while_ast.body)
+    | Return ret -> sprintf "return %s" (pp_mexp ret)
+    | Nop -> ""
+    | Seq seq_ast -> sprintf "%s %s" (pp_mstm seq_ast.head) (pp_mstm seq_ast.tail)
+    | Declare decl_ast ->
+      sprintf
+        "decl{%s %s; %s}"
+        (pp_dtype decl_ast.t)
+        (Symbol.name decl_ast.name)
+        (pp_mstm decl_ast.tail)
+    | Sexp sexp -> "Sexp " ^ pp_mexp sexp ^ ";"
 
-  and pp_mstm stm = pp_stm (Mark.data stm)
-  and pp_stms stms = String.concat (List.map ~f:(fun stm -> pp_mstm stm ^ "\n") stms)
+  and pp_mstm stm = pp_stm (Mark.data stm) ^ "\n"
+  (* and pp_stms stms = String.concat (List.map ~f:(fun stm -> pp_mstm stm ^ "\n") stms) *)
 
-  let pp_program stms = "{\n" ^ pp_stms stms ^ "}"
+  let pp_program stms = "{\n" ^ pp_mstm stms ^ "}"
 end
