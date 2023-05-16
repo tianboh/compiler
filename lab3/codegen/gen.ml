@@ -85,17 +85,17 @@ module Pseudo = struct
     | T.Temp t -> AS.Mov { dest; src = AS.Temp t } :: rev_acc
     | T.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
     | T.Sexp sexp ->
-      let stm_rev = munch_stm_rev sexp.stm in
+      let stm_rev = munch_stms_rev sexp.stm [] in
       let ret = stm_rev @ rev_acc in
       munch_exp_acc dest sexp.exp ret
 
   (* munch_binop_acc dest (binop, e1, e2) rev_acc
-   *
-   * generates instructions to achieve dest <- e1 binop e2
-   *
-   * Much like munch_exp, this returns the result of appending the
-   * instructions in reverse to the accumulator argument, rev_acc.
-   *)
+*
+* generates instructions to achieve dest <- e1 binop e2
+*
+* Much like munch_exp, this returns the result of appending the
+* instructions in reverse to the accumulator argument, rev_acc.
+*)
   and munch_binop_acc
       (dest : AS.operand)
       ((binop, e1, e2) : T.binop * T.exp * T.exp)
@@ -120,7 +120,7 @@ module Pseudo = struct
      * reverse the list before returning. *)
     List.rev (munch_exp_acc dest exp [])
 
-  and munch_stm_rev stm =
+  and munch_stm_rev (stm : T.stm) =
     (* Return a reversed AS.instr list. *)
     match stm with
     | T.Move mv -> munch_exp_acc (AS.Temp mv.dest) mv.src []
@@ -137,26 +137,22 @@ module Pseudo = struct
       let rhs_inst_rev = munch_exp_acc rhs cjmp.rhs [] in
       (AS.CJump { lhs; op; rhs; target = cjmp.target_stm } :: rhs_inst_rev) @ lhs_inst_rev
     | T.Label l -> [ AS.Label l ]
-    | T.Seq seq -> munch_stm_rev seq.tail @ munch_stm_rev seq.head
     | T.Nop -> []
     | T.NExp nexp ->
       let t = AS.Temp (Temp.create ()) in
       munch_exp_acc t nexp []
-  ;;
 
-  (* To codegen a series of statements, just concatenate the results of
-   * codegen-ing each statement. *)
-  let gen (stm : T.program) =
-    let res_rev = munch_stm_rev stm in
-    List.rev res_rev
-  ;;
-
-  let rec print_insts insts =
-    match insts with
-    | [] -> ()
+  and munch_stms_rev stms res =
+    match stms with
+    | [] -> res
     | h :: t ->
-      let () = printf "%s\n" (AS.format h) in
-      print_insts t
+      let stm = munch_stm_rev h in
+      munch_stms_rev t res @ stm
+  ;;
+
+  let gen (stms : T.program) =
+    let res_rev = munch_stms_rev stms [] in
+    List.rev res_rev
   ;;
 end
 

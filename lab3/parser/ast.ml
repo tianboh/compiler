@@ -1,7 +1,6 @@
-(* L2 Compiler
- * Abstract Syntax Trees
- *
- * AUthor: Tianbo Hao
+(* L3 Compiler
+ * Abstract Syntax Trees for L3
+ * Provide gdecl as a higher level for statement.
  *
  * Created: Alex Vaynberg
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
@@ -9,6 +8,7 @@
  * Modified: Anand Subramanian <asubrama@andrew.cmu.edu> Fall 2010
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  * Modified: Alice Rao <alrao@andrew.cmu.edu>
+ * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
  *
  * Forward compatible fragment of C0
  *)
@@ -160,7 +160,7 @@ module Print = struct
     | Sexp sexp -> "Sexp " ^ pp_mexp sexp ^ ";"
 
   and pp_mstm stm = pp_stm (Mark.data stm) ^ "\n"
-  (* and pp_stms stms = String.concat (List.map ~f:(fun stm -> pp_mstm stm ^ "\n") stms) *)
+  and pp_stms stms = String.concat (List.map ~f:(fun stm -> pp_mstm stm ^ "\n") stms)
 
-  let pp_program stms = "{\n" ^ pp_mstm stms ^ "}"
+  let pp_program program = pp_mstm program
 end

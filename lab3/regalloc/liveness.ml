@@ -250,9 +250,9 @@ let rec trans_liveness (lo_int : (int list * int list * int) list) tmp_map res =
 
 let gen_liveness (inst_list : AS.instr list) =
   let df_info = gen_df_info inst_list in
-  let () = print_df_info df_info in
+  (* let () = print_df_info df_info in *)
   let lo_int = Dfana.dfana df_info Args.Df_analysis.Backward_may in
   let tmp_map = gen_temp inst_list 0 Int.Map.empty in
-  let () = print_liveout lo_int in
+  (* let () = print_liveout lo_int in *)
   trans_liveness lo_int tmp_map Int.Map.empty
 ;;
