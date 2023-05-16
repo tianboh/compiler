@@ -1,4 +1,4 @@
-(* L1 Compiler
+(* L2 Compiler
  * Parsing
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
@@ -25,9 +25,9 @@ let initialize_lexbuf (filename : string) : Lexing.lexbuf -> unit =
     lexbuf.lex_curr_p <- pos
 ;;
 
-let parse (filename : string) : Ast.program =
+let parse (filename : string) : Cst.program =
   try
-    let ast =
+    let cst =
       In_channel.with_file filename ~f:(fun chan ->
           let lexbuf = Lexing.from_channel chan in
           initialize_lexbuf filename lexbuf;
@@ -35,7 +35,9 @@ let parse (filename : string) : Ast.program =
           | _ ->
             (* Parse error; attempt to print a helpful error message. *)
             let src_span =
-              Util.Mark.of_positions Lexing.(lexbuf.lex_start_p) Lexing.(lexbuf.lex_curr_p)
+              Util.Mark.of_positions
+                Lexing.(lexbuf.lex_start_p)
+                Lexing.(lexbuf.lex_curr_p)
             in
             Util.Error_msg.error C0_lexer.errors (Some src_span) ~msg:"Parse error.";
             raise Util.Error_msg.Error)
@@ -44,7 +46,7 @@ let parse (filename : string) : Ast.program =
     then (
       Out_channel.prerr_endline "Lex error.";
       raise Util.Error_msg.Error)
-    else ast
+    else cst
   with
   | Sys_error s ->
     (* Probably file not found or permissions errors. *)
@@ -58,7 +60,7 @@ let%expect_test "Test parsing of an empty program" =
     Lexing.from_string "int main() {int x = 3; int y = -x + 4; return x + y * x / 3; }"
   in
   let program = C0_parser.program C0_lexer.initial lexbuf in
-  print_endline (Ast.Print.pp_program program);
+  print_endline (Cst.Print.pp_program program);
   [%expect
     {|
     {

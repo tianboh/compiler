@@ -12,7 +12,9 @@ open Core
 module T = struct
   type t = int [@@deriving sexp, compare, hash]
 end
+
 include T
+
 let counter = ref 1
 let reset () = counter := 1
 
@@ -22,20 +24,13 @@ let create () =
   t
 ;;
 
-let create_no (n:int) : t = 
+let create_no (n : int) : t =
   let t = n in
   t
 ;;
 
-let create_no_t (n : int) (t : t) : t =
-  let k = n + t in
-  k
-;;
-
+let count () = !counter
 let name t = "%t" ^ string_of_int t
-
 let value t = t
-
-let is_reg t = if t < 0 then true else false
 
 include Comparable.Make (T)
