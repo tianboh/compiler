@@ -138,6 +138,8 @@ let idx_reg = function
   | _ -> failwith "invalid index for reg"
 ;;
 
+let tmp_to_reg (tmp : Temp.t) = -Temp.value tmp
+
 let str_to_reg (str : string) =
   match String.lowercase str with
   | "%rax" | "%eax" | "%ax" | "%al" -> RAX

@@ -15,7 +15,8 @@ module AS = Inst.Pseudo
 module Temp = Var.Temp
 module IG = Interference_graph
 module Register = Var.X86_reg
-open Var.Layout
+module Memory = Var.Memory
+(* open Var.Layout *)
 
 type line =
   { uses : IG.Vertex.Set.t
@@ -188,16 +189,6 @@ let transform_str_to_temp (line : Inst_reg_info.line) =
 
 let transform_json_to_temp (program : Inst_reg_info.program) =
   List.map program ~f:(fun line -> transform_str_to_temp line)
-;;
-
-let transform_vertex_to_json (vertex : (IG.Vertex.t * Register.t) option) =
-  match vertex with
-  | None -> None
-  | Some (vtx, reg) -> Some (IG.Print.pp_vertex vtx, Register.reg_to_str ~layout:DWORD reg)
-;;
-
-let transform_vertices_to_json (vertices : (IG.Vertex.t * Register.t) option list) =
-  List.map vertices ~f:(fun x -> transform_vertex_to_json x)
 ;;
 
 let gen_regalloc_info (inst_list : AS.instr list) =

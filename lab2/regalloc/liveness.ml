@@ -121,9 +121,13 @@ let _gen_df_info_binop
     : Dfana_info.line)
 ;;
 
-let _gen_df_info_mov (line_no : int) (src : AS.operand) t2l =
+let _gen_df_info_mov (line_no : int) (dest : AS.operand) (src : AS.operand) t2l =
   let gen = _gen_df_info_helper src t2l in
-  let kill = Int.Set.diff (Int.Set.of_list [ line_no ]) gen in
+  let kill =
+    match dest with
+    | Imm _ -> Int.Set.empty
+    | Temp t -> Int.Set.diff (Int.Set.of_list [ Temp.value t ]) gen
+  in
   let succ = [ line_no + 1 ] in
   let is_label = false in
   ({ gen = Int.Set.to_list gen
@@ -157,7 +161,7 @@ let rec _gen_df_info_rev (inst_list : AS.instr list) line_no t2l label_map res =
       match h with
       | AS.Binop binop ->
         Some (_gen_df_info_binop line_no binop.dest binop.lhs binop.rhs t2l)
-      | AS.Mov mov -> Some (_gen_df_info_mov line_no mov.src t2l)
+      | AS.Mov mov -> Some (_gen_df_info_mov line_no mov.dest mov.src t2l)
       | Jump jp ->
         let target_line_no = Label.Map.find_exn label_map jp.target in
         Some
@@ -246,9 +250,9 @@ let rec trans_liveness (lo_int : (int list * int list * int) list) tmp_map res =
 
 let gen_liveness (inst_list : AS.instr list) =
   let df_info = gen_df_info inst_list in
-  (* let () = print_df_info df_info in *)
+  let () = print_df_info df_info in
   let lo_int = Dfana.dfana df_info Args.Df_analysis.Backward_may in
   let tmp_map = gen_temp inst_list 0 Int.Map.empty in
-  (* let () = print_liveout lo_int in *)
+  let () = print_liveout lo_int in
   trans_liveness lo_int tmp_map Int.Map.empty
 ;;
