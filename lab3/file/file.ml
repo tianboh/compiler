@@ -16,8 +16,8 @@ let dump_asm_ps file_name ps_asm =
       let output_instr instr =
         match instr with
         | Asm_ps.Label _ | Asm_ps.Directive _ ->
-          Out_channel.fprintf out "%s\n" (Asm_ps.format instr)
-        | _ -> Out_channel.fprintf out "\t%s\n" (Asm_ps.format instr)
+          Out_channel.fprintf out "%s\n" (Asm_ps.pp_instr instr)
+        | _ -> Out_channel.fprintf out "\t%s\n" (Asm_ps.pp_instr instr)
       in
       output_instr (Asm_ps.Directive (".file\t\"" ^ file_name ^ "\""));
       output_instr (Asm_ps.Directive ".function\tmain()");

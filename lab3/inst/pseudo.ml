@@ -77,7 +77,7 @@ type instr =
 
 (* functions that format assembly output *)
 
-let format_binop = function
+let pp_binop = function
   | Plus -> "+"
   | Minus -> "-"
   | Times -> "*"
@@ -96,39 +96,39 @@ let format_binop = function
   | Not_eq -> "!="
 ;;
 
-let format_operand = function
+let pp_operand = function
   | Imm n -> "$" ^ Int32.to_string n
   | Temp t -> Temp.name t
 ;;
 
-let format = function
+let pp_instr = function
   | Binop binop ->
     sprintf
       "%s <-- %s %s %s"
-      (format_operand binop.dest)
-      (format_operand binop.lhs)
-      (format_binop binop.op)
-      (format_operand binop.rhs)
-  | Mov mv -> sprintf "%s <-- %s" (format_operand mv.dest) (format_operand mv.src)
+      (pp_operand binop.dest)
+      (pp_operand binop.lhs)
+      (pp_binop binop.op)
+      (pp_operand binop.rhs)
+  | Mov mv -> sprintf "%s <-- %s" (pp_operand mv.dest) (pp_operand mv.src)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
   | CJump cjp ->
     sprintf
       "cjump(%s %s %s) %s"
-      (format_operand cjp.lhs)
-      (format_binop cjp.op)
-      (format_operand cjp.rhs)
+      (pp_operand cjp.lhs)
+      (pp_binop cjp.op)
+      (pp_operand cjp.rhs)
       (Label.name cjp.target)
   | Label label -> sprintf "%s" (Label.content label)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
-  | Ret ret -> sprintf "return %s" (format_operand ret.var)
+  | Ret ret -> sprintf "return %s" (pp_operand ret.var)
 ;;
 
 let rec pp_program (program : instr list) res =
   match program with
   | [] -> res
   | h :: t ->
-    let inst_str = format h ^ "\n" in
+    let inst_str = pp_instr h ^ "\n" in
     let res = res ^ inst_str in
     pp_program t res
 ;;

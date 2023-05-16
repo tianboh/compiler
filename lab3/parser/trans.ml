@@ -1,15 +1,16 @@
-(* L2 Compiler
+(* L3 Compiler
  * AST -> IR Translator
  *
- * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
- * Created: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
+ * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified by: Alex Vaynberg <alv@andrew.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
+ * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
 open Core
 module A = Ast
 module S = Util.Symbol.Map
+module Symbol = Util.Symbol
 module T = Tree
 module Label = Util.Label
 module Mark = Util.Mark
@@ -59,6 +60,7 @@ let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) =
       }
   (* 
    * CJump cond target_true
+   * target_dummy
    * Jump target_false
    * target_true:
    * a <- true_exp;
@@ -75,21 +77,20 @@ let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) =
     let temp = Temp.create () in
     let label_true = Label.label (Some "terop_true") in
     let label_false = Label.label (Some "terop_false") in
+    let label_dummy = Label.label (Some "cjp_dummy") in
     let label_ter_end = Label.label (Some "terop_end") in
     let lhs, op, rhs = gen_cond cond_raw in
-    let seq_rev1 =
-      T.Seq
-        { head = T.Move { dest = temp; src = false_exp }; tail = T.Label label_ter_end }
-    in
-    let seq_rev2 = T.Seq { head = T.Label label_false; tail = seq_rev1 } in
-    let seq_rev3 = T.Seq { head = T.Jump label_ter_end; tail = seq_rev2 } in
-    let seq_rev4 =
-      T.Seq { head = T.Move { dest = temp; src = true_exp }; tail = seq_rev3 }
-    in
-    let seq_rev5 = T.Seq { head = T.Label label_true; tail = seq_rev4 } in
-    let seq_rev6 = T.Seq { head = T.Jump label_false; tail = seq_rev5 } in
     let seq =
-      T.Seq { head = T.CJump { lhs; op; rhs; target_stm = label_true }; tail = seq_rev6 }
+      [ T.CJump { lhs; op; rhs; target_stm = label_true }
+      ; T.Label label_dummy
+      ; T.Jump label_false
+      ; T.Label label_true
+      ; T.Move { dest = temp; src = true_exp }
+      ; T.Jump label_ter_end
+      ; T.Label label_false
+      ; T.Move { dest = temp; src = false_exp }
+      ; T.Label label_ter_end
+      ]
     in
     T.Sexp { stm = seq; exp = T.Temp temp }
 
@@ -100,42 +101,35 @@ and trans_mexp mexp env = trans_exp (Mark.data mexp) env
  * So env will update in different context. 
  * 2) env is only a map from variable name to temporary, it doesn't care the 
  * content of temporary. So we only add this linkage in declaration. *)
-
-let rec trans_stm (ast : A.program) (env : Temp.t S.t) : T.program =
+let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t) : T.stm list =
   match Mark.data ast with
   | A.Assign asn_ast ->
     let dest = S.find_exn env asn_ast.name in
     let value = trans_mexp asn_ast.value env in
-    T.Move { dest; src = value }
+    T.Move { dest; src = value } :: acc
   | A.If if_ast ->
     (* 
-     *  CJump cond true_label
+     *  CJump cond label_true
+     *  label_false
      *  false_stm
-     *  Jump converge_label
-     *  true_label
+     *  Jump label_conv
+     *  label_true
      *  true_stm
-     *  converge_label
+     *  label_conv
      *  rest code blah blah
      *)
     let cond_raw = trans_mexp if_ast.cond env in
+    let label_false = Label.label (Some "if_false") in
     let label_true = Label.label (Some "if_true") in
     let label_conv = Label.label (Some "if_conv") in
-    let false_stm = trans_stm if_ast.false_stm env in
+    let false_stm = trans_stm_rev if_ast.false_stm [] env in
+    let true_stm = trans_stm_rev if_ast.true_stm [] env in
     let lhs, op, rhs = gen_cond cond_raw in
-    let seq_false =
-      T.Seq
-        { head = T.CJump { lhs; op; rhs; target_stm = label_true }
-        ; tail = T.Seq { head = false_stm; tail = T.Jump label_conv }
-        }
-    in
-    let true_stm = trans_stm if_ast.true_stm env in
-    let seq_true =
-      T.Seq
-        { head = T.Label label_true
-        ; tail = T.Seq { head = true_stm; tail = T.Label label_conv }
-        }
-    in
-    T.Seq { head = seq_false; tail = seq_true }
+    (T.Label label_conv :: true_stm)
+    @ [ T.Label label_true; T.Jump label_conv ]
+    @ false_stm
+    @ [ T.CJump { lhs; op; rhs; target_stm = label_true }; T.Label label_false ]
+    @ acc
   | A.While while_ast ->
     (* 
      * Jump label_loop_stop
@@ -144,37 +138,36 @@ let rec trans_stm (ast : A.program) (env : Temp.t S.t) : T.program =
      * label_loop_stop
      * CJump cond label_loop_start *)
     let cond_raw = trans_mexp while_ast.cond env in
-    let body = trans_stm while_ast.body env in
+    let body = trans_stm_rev while_ast.body [] env in
     let label_loop_start = Label.label (Some "loop_start") in
     let label_loop_stop = Label.label (Some "loop_stop") in
     let lhs, op, rhs = gen_cond cond_raw in
-    let seq1 =
-      T.Seq
-        { head = T.Label label_loop_stop
-        ; tail = T.CJump { lhs; op; rhs; target_stm = label_loop_start }
-        }
-    in
-    let seq2 = T.Seq { head = body; tail = seq1 } in
-    let seq3 = T.Seq { head = T.Label label_loop_start; tail = seq2 } in
-    let seq4 = T.Seq { head = T.Jump label_loop_stop; tail = seq3 } in
-    seq4
+    [ T.CJump { lhs; op; rhs; target_stm = label_loop_start }; T.Label label_loop_stop ]
+    @ body
+    @ [ T.Label label_loop_start ]
+    @ [ T.Jump label_loop_stop ]
+    @ acc
   | A.Return ret_ast ->
     let exp = trans_mexp ret_ast env in
     let ret = T.Return exp in
-    T.Seq { head = ret; tail = T.Label (Label.label (Some "afterlife")) }
-  | A.Nop -> T.Nop
+    [ T.Label (Label.label (Some "afterlife")); ret ] @ acc
+  | A.Nop -> T.Nop :: acc
   | A.Seq seq_ast ->
-    let head = trans_stm seq_ast.head env in
-    let tail = trans_stm seq_ast.tail env in
-    T.Seq { head; tail }
+    let head = trans_stm_rev seq_ast.head [] env in
+    let tail = trans_stm_rev seq_ast.tail [] env in
+    tail @ head @ acc
   | A.Declare decl_ast ->
     let temp = Temp.create () in
     let env' = S.add_exn env ~key:decl_ast.name ~data:temp in
-    let tail = trans_stm decl_ast.tail env' in
-    tail
+    let tail = trans_stm_rev decl_ast.tail [] env' in
+    tail @ acc
   | A.Sexp sexp_ast ->
     let exp = trans_mexp sexp_ast env in
-    T.NExp exp
+    T.NExp exp :: acc
 ;;
 
-let translate (stms : A.program) : T.program = trans_stm stms S.empty
+let translate (program : A.program) : T.program =
+  let env = S.empty in
+  let blk_rev = trans_stm_rev program [] env in
+  List.rev blk_rev
+;;
