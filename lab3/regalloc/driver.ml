@@ -216,19 +216,18 @@ module Helper = struct
     | [] -> adj
     | h :: t ->
       let reginfo, instr = h in
+      let defs = Reg_info.get_defs reginfo in
       let adj =
-        match Reg_info.get_def reginfo with
-        | None -> adj
-        | Some def ->
-          let s_def_nbr =
-            match IG.Vertex.Map.find adj def with
-            | Some s -> s
-            | None -> IG.Vertex.Set.empty
-          in
-          let s_lo = reginfo.live_out in
-          let s_u = IG.Vertex.Set.union s_def_nbr s_lo in
-          let adj = precolor adj def s_lo reginfo.uses instr in
-          build_vtx_vtxs adj def s_u
+        IG.Vertex.Set.fold defs ~init:adj ~f:(fun acc_adj def ->
+            let s_def_nbr =
+              match IG.Vertex.Map.find adj def with
+              | Some s -> s
+              | None -> IG.Vertex.Set.empty
+            in
+            let s_lo = reginfo.live_out in
+            let s_u = IG.Vertex.Set.union s_def_nbr s_lo in
+            let acc_adj = precolor acc_adj def s_lo reginfo.uses instr in
+            build_vtx_vtxs acc_adj def s_u)
       in
       build_graph t adj
   ;;
@@ -239,11 +238,13 @@ module Helper = struct
       match prog with
       | [] -> hash
       | h :: t ->
-        (match Reg_info.get_def h with
-        | None -> helper t hash
-        | Some def_ ->
-          let hash = IG.Vertex.Map.set hash ~key:def_ ~data:0 in
-          helper t hash)
+        let defs = Reg_info.get_defs h in
+        let hash =
+          IG.Vertex.Set.fold defs ~init:hash ~f:(fun acc_hash def_ ->
+              let acc_hash = IG.Vertex.Map.set acc_hash ~key:def_ ~data:0 in
+              acc_hash)
+        in
+        helper t hash
     in
     helper prog IG.Vertex.Map.empty
   ;;
@@ -368,19 +369,21 @@ let rec gen_result (color : dest IG.Vertex.Map.t) prog =
   match prog with
   | [] -> []
   | h :: t ->
-    (match Reg_info.get_def h with
-    | None -> None :: gen_result color t
-    | Some tmp ->
-      (match tmp with
-      | IG.Vertex.T.Temp _ ->
-        let dest = IG.Vertex.Map.find color tmp in
-        let tk =
-          match dest with
-          | None -> None
-          | Some dest' -> Some (tmp, dest')
-        in
-        tk :: gen_result color t
-      | IG.Vertex.T.Reg _ -> None :: gen_result color t))
+    let defs = Reg_info.get_defs h in
+    let assign_l =
+      IG.Vertex.Set.fold defs ~init:[] ~f:(fun acc def ->
+          match def with
+          | IG.Vertex.T.Temp _ ->
+            let dest = IG.Vertex.Map.find color def in
+            let tk =
+              match dest with
+              | None -> None
+              | Some dest' -> Some (def, dest')
+            in
+            tk :: acc
+          | IG.Vertex.T.Reg _ -> None :: acc)
+    in
+    assign_l @ gen_result color t
 ;;
 
 let regalloc (assem_ps : AS.instr list) : (IG.Vertex.t * dest) option list =

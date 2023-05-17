@@ -24,14 +24,8 @@ type line =
   ; line_number : int
   }
 
-(* Return None if define field is empty else Some Temp.t *)
-let get_def line =
-  if IG.Vertex.Set.is_empty line.define
-  then None
-  else (
-    let l = IG.Vertex.Set.to_list line.define in
-    Some (List.last_exn l))
-;;
+(* Return all the temporary/register in line.define *)
+let get_defs line = line.define
 
 type temps_info = line list
 
