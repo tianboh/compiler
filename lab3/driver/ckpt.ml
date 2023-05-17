@@ -26,7 +26,7 @@ let process_checkpoint
     if regalloc_only
     then (
       let input = Json_reader.Lab1_checkpoint.program_of_json input_json in
-      let input_temp = Regalloc.Program.transform_json_to_temp input in
+      let input_temp = Regalloc.Ckpt.transform_json_to_temp input in
       (* let () = Regalloc.Program.print_lines input_temp in *)
       let output = Regalloc.Ckpt.regalloc_ckpt input_temp in
       let output' = Regalloc.Ckpt.transform_vertices_to_json output in

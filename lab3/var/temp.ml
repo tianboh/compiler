@@ -15,8 +15,8 @@ end
 
 include T
 
-let counter = ref 1
-let reset () = counter := 1
+let counter = ref 16
+let reset () = counter := 16
 
 let create () =
   let t = !counter in
@@ -24,7 +24,7 @@ let create () =
   t
 ;;
 
-let create_no (n : int) : t =
+let of_int (n : int) : t =
   let t = n in
   t
 ;;
