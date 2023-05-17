@@ -10,7 +10,7 @@
   var
   regalloc
   util
-  parser
+  front
   semantic
   flow
   codegen

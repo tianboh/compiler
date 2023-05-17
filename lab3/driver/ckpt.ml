@@ -1,16 +1,16 @@
 open Core
 open Args
-module AS_psu = Inst.Pseudo
+module AS_psu = Middle.Inst
 module AS_x86 = Inst.X86
-module Parse = Parser.Parse
-module Elab = Parser.Elab
-module Ast = Parser.Ast
-module Cst = Parser.Cst
+module Parse = Front.Parse
+module Elab = Front.Elab
+module Ast = Front.Ast
+module Cst = Front.Cst
 module Typechecker = Semantic.Typechecker
 module Controlflow = Semantic.Controlflow
 module Dfana = Flow.Dfana
-module Tree = Parser.Tree
-module Trans = Parser.Trans
+module Tree = Middle.Tree
+module Trans = Middle.Trans
 
 let process_checkpoint
     (filename : string)

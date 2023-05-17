@@ -38,7 +38,7 @@
  *)
 
 open Core
-module A = Parser.Ast
+module A = Front.Ast
 module S = Util.Symbol.Map
 module Symbol = Util.Symbol
 module Mark = Util.Mark

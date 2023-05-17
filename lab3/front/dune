@@ -1,5 +1,5 @@
 (library
- (name parser)
+ (name front)
  (libraries core cmdliner yojson json_reader args inst var util)
  (inline_tests)
  (preprocess

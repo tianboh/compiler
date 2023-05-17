@@ -1,6 +1,6 @@
 open Core
-module Ast = Parser.Ast
-module Asm_ps = Inst.Pseudo
+module Ast = Front.Ast
+module Asm_ps = Middle.Inst
 module Asm_x86 = Inst.X86
 module Register = Var.X86_reg
 module Memory = Var.Memory
