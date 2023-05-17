@@ -10,7 +10,6 @@
   Pseudo assembly instruction list -> register allocation info
 *)
 open Core
-module Inst_reg_info = Json_reader.Lab1_checkpoint
 module AS = Middle.Inst
 module Temp = Var.Temp
 module IG = Interference_graph
@@ -64,13 +63,13 @@ let print_VertexSet (ts : IG.Vertex.Set.t) =
 ;;
 
 let print_line (line : line) =
-  let () = printf "\n{def: " in
-  let () = print_VertexSet line.define in
-  let () = printf "\nuses: " in
-  let () = print_VertexSet line.uses in
-  let () = printf "\nlive_out: " in
-  let () = print_VertexSet line.live_out in
-  let () = printf "\nmove: %b" line.move in
+  printf "\n{def: ";
+  print_VertexSet line.define;
+  printf "\nuses: ";
+  print_VertexSet line.uses;
+  printf "\nlive_out: ";
+  print_VertexSet line.live_out;
+  printf "\nmove: %b" line.move;
   printf "\nline_number: %d}\n" line.line_number
 ;;
 
@@ -149,47 +148,6 @@ let rec gen_forward
     | _ -> gen_forward t inst_info line_num live_out_map)
 ;;
 
-let gen_VertexSet (l : string list) =
-  let rec _gen_VertexList (l : string list) (res : IG.Vertex.t list) =
-    match l with
-    | [] -> res
-    | h :: t ->
-      (match h with
-      | "" -> _gen_VertexList t res
-      | _ ->
-        (match h.[1] with
-        | 't' ->
-          let str_l = String.split_on_chars ~on:[ 't' ] h in
-          let idx = Int.of_string (List.last_exn str_l) in
-          let temp = Temp.create_no idx in
-          _gen_VertexList t (IG.Vertex.T.Temp temp :: res)
-        | 'r' | 's' ->
-          let reg = Register.str_to_reg h in
-          _gen_VertexList t (IG.Vertex.T.Reg reg :: res)
-        | _ -> _gen_VertexList t res))
-  in
-  let l = _gen_VertexList l [] in
-  IG.Vertex.Set.of_list l
-;;
-
-(* When read from json file(l1 checkpoint), we need to transform
-   the information from string info to line declared in this file.
-   We will ignore register string during transformation because we
-   only need to assign temp to registers.
-*)
-let transform_str_to_temp (line : Inst_reg_info.line) =
-  { define = gen_VertexSet [ line.define ]
-  ; uses = gen_VertexSet line.uses
-  ; live_out = gen_VertexSet line.live_out
-  ; move = line.move
-  ; line_number = line.line_number
-  }
-;;
-
-let transform_json_to_temp (program : Inst_reg_info.program) =
-  List.map program ~f:(fun line -> transform_str_to_temp line)
-;;
-
 let gen_regalloc_info (inst_list : AS.instr list) =
   let inst_info = Hashtbl.create (module Int) in
   let liveness = Liveness.gen_liveness inst_list in
@@ -201,6 +159,6 @@ let gen_regalloc_info (inst_list : AS.instr list) =
         let reginfo, _ = line in
         reginfo :: acc)
   in
-  let () = print_lines lines in *)
+  print_lines lines; *)
   ret
 ;;

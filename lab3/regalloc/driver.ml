@@ -400,33 +400,11 @@ let regalloc (assem_ps : AS.instr list) : (IG.Vertex.t * dest) option list =
     (* let vertex_to_dest = IG.Vertex.Map.empty in *)
     let vertex_to_dest = IG.Vertex.Map.empty in
     let color = greedy seq adj vertex_to_dest in
-    (* let () = Print.print_adj adj in
-    let () = printf "SEO order\n" in
+    (* Print.print_adj adj;
+    printf "SEO order\n";
     let seq_l = List.map seq ~f:(fun x -> IG.Print.pp_vertex x) in
-    let () = List.iter ~f:(printf "%s ") seq_l in
-    let () = Print.print_vertex_to_dest color in
-    let () = printf "\n" in *)
+    List.iter ~f:(printf "%s ") seq_l;
+    Print.print_vertex_to_dest color;
+    printf "\n"; *)
     gen_result color prog)
-;;
-
-let transform_vertex_to_json (vertex : (IG.Vertex.t * dest) option) =
-  match vertex with
-  | None -> None
-  | Some (vtx, dest) ->
-    (match dest with
-    | Reg reg -> Some (IG.Print.pp_vertex vtx, Register.reg_to_str ~layout:DWORD reg)
-    | Mem m -> Some (IG.Print.pp_vertex vtx, Memory.mem_to_str m))
-;;
-
-let transform_vertices_to_json (vertices : (IG.Vertex.t * dest) option list) =
-  List.map vertices ~f:(fun x -> transform_vertex_to_json x)
-;;
-
-let regalloc_ckpt (prog : Program.line list) : (IG.Vertex.t * dest) option list =
-  let prog_dummy = List.map prog ~f:(fun x -> x, AS.Comment "") in
-  let adj = Helper.build_graph prog_dummy IG.Vertex.Map.empty in
-  let seq = seo adj prog in
-  let vertex_to_reg = IG.Vertex.Map.empty in
-  let color = greedy seq adj vertex_to_reg in
-  gen_result color prog
 ;;
