@@ -142,7 +142,7 @@ let rec gen_forward
     | _ -> gen_forward t inst_info line_num live_out_map)
 ;;
 
-let gen_regalloc_info (inst_list : AS.instr list) =
+let gen_regalloc_info (inst_list : AS.program) =
   let inst_info = Hashtbl.create (module Int) in
   let liveness = Liveness.gen_liveness inst_list in
   let inst_info = gen_forward inst_list inst_info 0 liveness in

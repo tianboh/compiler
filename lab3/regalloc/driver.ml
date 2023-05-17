@@ -386,7 +386,7 @@ let rec gen_result (color : dest IG.Vertex.Map.t) prog =
     assign_l @ gen_result color t
 ;;
 
-let regalloc (assem_ps : AS.instr list) : (IG.Vertex.t * dest) option list =
+let regalloc (assem_ps : AS.program) : (IG.Vertex.t * dest) option list =
   if Temp.count () > threshold
   then (
     let vertex_set = Lazy.collect_vertex assem_ps IG.Vertex.Set.empty in

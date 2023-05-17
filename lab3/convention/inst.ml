@@ -1,37 +1,38 @@
-(* L2 Compiler
- * Assembly language
- * Created: Kaustuv Chaudhuri <kaustuv+@andrew.cmu.edu>
- * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
- * Modified By: Alex Vaynberg <alv@andrew.cmu.edu>
- * Modified: Frank Pfenning <fp@cs.cmu.edu>
- * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
+(* L3 Compiler
+ * Convention layer between middle and back-end.
+ * Once we finish a backend, we need to generate
+ * code following this convention. register alloc
+ * module will use this convention to build 
+ * interference graph.
  *
- * Pseudo assembly code feature
- * 1) 3-operand format instructions and arbitrarily many temps.
- * These temps will be mapped to registers eventually.
- * 2) Compared with IR, pseudo assembly code is more low-level
- * because there is no statement anymore. In fact, IR statement
- * is more of instruction and IR exp is more of operand.
- * 3) Also, the operand for instruction is not nested anymore.
- * For example, IR level support:
- *   type exp = | binop {op; lhs : exp; rhs : exp}
- * However, in pseudo code assembly, operand of binop can only 
- * be of Imm, Temp or reg.
+ * This is a API that each convention 
+ * (x86, arm, etc) should follow. 
+ *
+ * Compared with IR inst, this module has operand
+ * of type register, and also add def-use info
+ * for each instruction.
+ *
+ * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
+
 open Core
 module Register = Var.X86_reg
 module Temp = Var.Temp
 module Label = Util.Label
+module Symbol = Util.Symbol
+module AS = Middle.Inst
 
-(* Notice that pure pseudo assembly does not assign register to each temp, so 
- * operand does not contain register type. Register is assigned in x86 assemb. 
- *  
- * However, when we use gen_pseudo_x86 function, the operand will contain x86 
- * register because of some conventions.
- *)
 type operand =
   | Imm of Int32.t
   | Temp of Temp.t
+  | Reg of Register.t
+
+type line =
+  { uses : operand list
+  ; defines : operand list
+  ; live_out : operand list
+  ; move : bool
+  }
 
 type bin_op =
   | Plus
@@ -57,27 +58,37 @@ type instr =
       ; dest : operand
       ; lhs : operand
       ; rhs : operand
+      ; line : line
       }
   | Mov of
       { dest : operand
       ; src : operand
+      ; line : line
       }
-  | Jump of { target : Label.t }
+  | Jump of
+      { target : Label.t
+      ; line : line
+      }
   | CJump of
       { (*Jump if cond == 1*)
         lhs : operand
       ; op : bin_op
       ; rhs : operand
       ; target : Label.t
+      ; line : line
       }
-  | Ret of { var : operand }
-  | Label of Label.t
+  | Ret of
+      { var : operand
+      ; line : line
+      }
+  | Label of
+      { label : Label.t
+      ; line : line
+      }
   | Directive of string
   | Comment of string
 
 type program = instr list
-
-(* functions that format assembly output *)
 
 let pp_binop = function
   | Plus -> "+"
@@ -101,9 +112,10 @@ let pp_binop = function
 let pp_operand = function
   | Imm n -> "$" ^ Int32.to_string n
   | Temp t -> Temp.name t
+  | Reg r -> Register.reg_to_str r
 ;;
 
-let pp_instr = function
+let pp_inst = function
   | Binop binop ->
     sprintf
       "%s <-- %s %s %s"
@@ -120,7 +132,7 @@ let pp_instr = function
       (pp_binop cjp.op)
       (pp_operand cjp.rhs)
       (Label.name cjp.target)
-  | Label label -> sprintf "%s" (Label.content label)
+  | Label label -> sprintf "%s" (Label.content label.label)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
   | Ret ret -> sprintf "return %s" (pp_operand ret.var)
@@ -130,7 +142,7 @@ let rec pp_program (program : instr list) res =
   match program with
   | [] -> res
   | h :: t ->
-    let inst_str = pp_instr h ^ "\n" in
-    let res = res ^ inst_str in
+    let fdefn_str = pp_inst h ^ "\n" in
+    let res = res ^ fdefn_str in
     pp_program t res
 ;;
