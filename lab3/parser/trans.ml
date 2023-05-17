@@ -59,15 +59,15 @@ let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) =
       ; rhs = trans_mexp binop.rhs env
       }
   (* 
-   * CJump cond target_true
-   * target_dummy
+   * CJump cond label_true
+   * label_dummy
    * Jump target_false
-   * target_true:
+   * label_true:
    * a <- true_exp;
-   * Jump target_ter_end
-   * target_false:
+   * Jump label_ter_end
+   * label_false:
    * a <- false_exp
-   * target_ter_end:
+   * label_ter_end:
    * restcode
    *)
   | A.Terop terop ->
@@ -128,7 +128,7 @@ let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t) : T.s
     (T.Label label_conv :: true_stm)
     @ [ T.Label label_true; T.Jump label_conv ]
     @ false_stm
-    @ [ T.CJump { lhs; op; rhs; target_stm = label_true }; T.Label label_false ]
+    @ [ T.Label label_false; T.CJump { lhs; op; rhs; target_stm = label_true } ]
     @ acc
   | A.While while_ast ->
     (* 
@@ -136,13 +136,19 @@ let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t) : T.s
      * label_loop_start
      * body
      * label_loop_stop
-     * CJump cond label_loop_start *)
+     * CJump cond label_loop_start
+     * label_loop_dummy
+     * rest blah blah *)
     let cond_raw = trans_mexp while_ast.cond env in
     let body = trans_stm_rev while_ast.body [] env in
     let label_loop_start = Label.label (Some "loop_start") in
     let label_loop_stop = Label.label (Some "loop_stop") in
+    let label_loop_dummy = Label.label (Some "loop_dummy") in
     let lhs, op, rhs = gen_cond cond_raw in
-    [ T.CJump { lhs; op; rhs; target_stm = label_loop_start }; T.Label label_loop_stop ]
+    [ T.Label label_loop_dummy
+    ; T.CJump { lhs; op; rhs; target_stm = label_loop_start }
+    ; T.Label label_loop_stop
+    ]
     @ body
     @ [ T.Label label_loop_start ]
     @ [ T.Jump label_loop_stop ]

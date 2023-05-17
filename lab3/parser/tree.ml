@@ -81,7 +81,10 @@ and stm =
   | Return of exp
   | Jump of Label.t
   | CJump of
-      { (* Jump if lhs op rhs is true*)
+      { (* Jump if lhs op rhs is true. If CJump appears, it must be 
+         * followed by a label. This is a requirement by dataflow 
+         * analysis implementation. In other words, CJump can only
+         * be at the end of each block. *)
         lhs : exp
       ; op : binop
       ; rhs : exp
