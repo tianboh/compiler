@@ -29,8 +29,8 @@
  *)
 
 open Core
-module T = Parser.Tree
-module AS = Inst.Pseudo
+module T = Middle.Tree
+module AS = Middle.Inst
 module AS_x86 = Inst.X86
 module Reg_info = Json_reader.Lab1_checkpoint
 module Temp = Var.Temp
@@ -40,121 +40,6 @@ module Label = Util.Label
 module IG = Regalloc.Interference_graph
 open Var.Layout
 module Regalloc = Regalloc.Driver
-
-let munch_op = function
-  | T.Plus -> AS.Plus
-  | T.Minus -> AS.Minus
-  | T.Times -> AS.Times
-  | T.Divided_by -> AS.Divided_by
-  | T.Modulo -> AS.Modulo
-  | T.And -> AS.And
-  | T.Or -> AS.Or
-  | T.Xor -> AS.Xor
-  | T.Right_shift -> AS.Right_shift
-  | T.Left_shift -> AS.Left_shift
-  | T.Equal_eq -> AS.Equal_eq
-  | T.Greater -> AS.Greater
-  | T.Greater_eq -> AS.Greater_eq
-  | T.Less -> AS.Less
-  | T.Less_eq -> AS.Less_eq
-  | T.Not_eq -> AS.Not_eq
-;;
-
-module Pseudo = struct
-  (* munch_exp_acc dest exp rev_acc
-   *
-   * Suppose we have the statement:
-   *   dest <-- exp
-   *
-   * If the codegened statements for this are:
-   *   s1; s2; s3; s4;
-   *
-   * Then this function returns the result:
-   *   s4 :: s3 :: s2 :: s1 :: rev_acc
-   *
-   * I.e., rev_acc is an accumulator argument where the codegen'ed
-   * statements are built in reverse. This allows us to create the
-   * statements in linear time rather than quadratic time (for highly
-   * nested expressions).
-   *)
-  let rec munch_exp_acc (dest : AS.operand) (exp : T.exp) (rev_acc : AS.instr list)
-      : AS.instr list
-    =
-    match exp with
-    | T.Const i -> AS.Mov { dest; src = AS.Imm i } :: rev_acc
-    | T.Temp t -> AS.Mov { dest; src = AS.Temp t } :: rev_acc
-    | T.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
-    | T.Sexp sexp ->
-      let stm_rev = munch_stms_rev sexp.stm [] in
-      let ret = stm_rev @ rev_acc in
-      munch_exp_acc dest sexp.exp ret
-
-  (* munch_binop_acc dest (binop, e1, e2) rev_acc
-*
-* generates instructions to achieve dest <- e1 binop e2
-*
-* Much like munch_exp, this returns the result of appending the
-* instructions in reverse to the accumulator argument, rev_acc.
-*)
-  and munch_binop_acc
-      (dest : AS.operand)
-      ((binop, e1, e2) : T.binop * T.exp * T.exp)
-      (rev_acc : AS.instr list)
-      : AS.instr list
-    =
-    let op = munch_op binop in
-    (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
-    let t1 = Temp.create () in
-    let t2 = Temp.create () in
-    let rev_acc' =
-      rev_acc |> munch_exp_acc (AS.Temp t1) e1 |> munch_exp_acc (AS.Temp t2) e2
-    in
-    AS.Binop { op; dest; lhs = AS.Temp t1; rhs = AS.Temp t2 } :: rev_acc'
-
-  and munch_exp : AS.operand -> T.exp -> AS.instr list =
-   (* munch_exp dest exp
-    * Generates instructions for dest <-- exp.
-    *)
-   fun dest exp ->
-    (* Since munch_exp_acc returns the reversed accumulator, we must
-     * reverse the list before returning. *)
-    List.rev (munch_exp_acc dest exp [])
-
-  and munch_stm_rev (stm : T.stm) =
-    (* Return a reversed AS.instr list. *)
-    match stm with
-    | T.Move mv -> munch_exp_acc (AS.Temp mv.dest) mv.src []
-    | T.Return e ->
-      let t = Temp.create () in
-      let inst = munch_exp_acc (AS.Temp t) e [] in
-      AS.Ret { var = AS.Temp t } :: inst
-    | Jump jmp -> [ AS.Jump { target = jmp } ]
-    | T.CJump cjmp ->
-      let lhs = AS.Temp (Temp.create ()) in
-      let op = munch_op cjmp.op in
-      let rhs = AS.Temp (Temp.create ()) in
-      let lhs_inst_rev = munch_exp_acc lhs cjmp.lhs [] in
-      let rhs_inst_rev = munch_exp_acc rhs cjmp.rhs [] in
-      (AS.CJump { lhs; op; rhs; target = cjmp.target_stm } :: rhs_inst_rev) @ lhs_inst_rev
-    | T.Label l -> [ AS.Label l ]
-    | T.Nop -> []
-    | T.NExp nexp ->
-      let t = AS.Temp (Temp.create ()) in
-      munch_exp_acc t nexp []
-
-  and munch_stms_rev stms res =
-    match stms with
-    | [] -> res
-    | h :: t ->
-      let stm = munch_stm_rev h in
-      munch_stms_rev t res @ stm
-  ;;
-
-  let gen (stms : T.program) =
-    let res_rev = munch_stms_rev stms [] in
-    List.rev res_rev
-  ;;
-end
 
 module X86 = struct
   let oprd_ps_to_x86

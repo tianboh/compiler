@@ -8,9 +8,8 @@
  *)
 
 open Core
-module T = Parser.Tree
-module AS = Inst.Pseudo
-module AS_x86 = Inst.X86
+module T = Tree
+module AS = Inst
 module Reg_info = Json_reader.Lab1_checkpoint
 module Temp = Var.Temp
 module Register = Var.X86_reg

@@ -1,6 +1,6 @@
 (library
  (name file)
- (libraries core var parser inst)
+ (libraries core var front middle inst)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))

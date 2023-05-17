@@ -1,6 +1,6 @@
 (library
  (name semantic)
- (libraries core parser util)
+ (libraries core front util)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))

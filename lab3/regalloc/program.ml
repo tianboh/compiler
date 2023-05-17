@@ -11,12 +11,11 @@
 *)
 open Core
 module Inst_reg_info = Json_reader.Lab1_checkpoint
-module AS = Inst.Pseudo
+module AS = Middle.Inst
 module Temp = Var.Temp
 module IG = Interference_graph
 module Register = Var.X86_reg
 module Memory = Var.Memory
-(* open Var.Layout *)
 
 type line =
   { uses : IG.Vertex.Set.t

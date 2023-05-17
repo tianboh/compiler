@@ -4,7 +4,7 @@ module Temp = Var.Temp
 module Memory = Var.Memory
 module Register = Var.X86_reg
 module Reg_info = Program
-module AS = Inst.Pseudo
+module AS = Middle.Inst
 module IG = Interference_graph
 
 let transform_vertex_to_json (vertex : (IG.Vertex.t * dest) option) =

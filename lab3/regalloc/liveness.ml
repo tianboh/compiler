@@ -13,7 +13,7 @@
  *)
 open Core
 module Dfana_info = Json_reader.Lab2_checkpoint
-module AS = Inst.Pseudo
+module AS = Middle.Inst
 module Temp = Var.Temp
 module Register = Var.X86_reg
 module Dfana = Flow.Dfana

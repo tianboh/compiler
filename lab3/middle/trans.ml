@@ -8,7 +8,7 @@
  * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
 open Core
-module A = Ast
+module A = Front.Ast
 module S = Util.Symbol.Map
 module Symbol = Util.Symbol
 module T = Tree
