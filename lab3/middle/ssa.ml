@@ -289,7 +289,11 @@ let rec _rename blk blk_map env dt =
     let blk_new = { blk with body = body_new } in
     let succs = Int.Set.to_list blk_new.succ in
     let blk_map = _rename_succ blk_new.no succs env_new blk_map in
-    let children = Int.Map.find_exn dt blk_new.no in
+    let children =
+      match Int.Map.find dt blk_new.no with
+      | Some s -> s
+      | None -> Int.Set.empty
+    in
     let blk_map, env_new =
       Int.Set.fold children ~init:(blk_map, env_new) ~f:(fun acc child ->
           let blk_map_acc, env_acc = acc in
