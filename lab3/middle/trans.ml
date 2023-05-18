@@ -156,8 +156,8 @@ let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t) : T.s
   | A.Return ret_ast ->
     let exp = trans_mexp ret_ast env in
     let ret = T.Return exp in
-    [ T.Label (Label.label (Some "afterlife")); ret ] @ acc
-  | A.Nop -> T.Nop :: acc
+    ret :: acc
+  | A.Nop -> acc
   | A.Seq seq_ast ->
     let head = trans_stm_rev seq_ast.head [] env in
     let tail = trans_stm_rev seq_ast.tail [] env in
@@ -179,3 +179,4 @@ let translate (program : A.program) : T.program =
   let program = Tree.Label (Util.Label.label (Some "main")) :: blk in
   Ssa.run program
 ;;
+(* program *)
