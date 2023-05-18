@@ -175,5 +175,7 @@ let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t) : T.s
 let translate (program : A.program) : T.program =
   let env = S.empty in
   let blk_rev = trans_stm_rev program [] env in
-  List.rev blk_rev
+  let blk = List.rev blk_rev in
+  let program = Tree.Label (Util.Label.label (Some "main")) :: blk in
+  Ssa.run program
 ;;

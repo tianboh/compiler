@@ -42,14 +42,18 @@ let rec group_stm
   match stms with
   | [] ->
     let last_blk = List.rev acc_stms_rev in
-    let blks_rev = last_blk :: acc_blks_rev in
+    let blks_rev =
+      if List.is_empty last_blk then acc_blks_rev else last_blk :: acc_blks_rev
+    in
     let blks = List.rev blks_rev in
     blks, label_map
   | h :: t ->
     (match h with
     | Label label ->
       let blk = List.rev acc_stms_rev in
-      let acc_blks_rev = blk :: acc_blks_rev in
+      let acc_blks_rev =
+        if List.is_empty blk then acc_blks_rev else blk :: acc_blks_rev
+      in
       let label_no = List.length acc_blks_rev in
       let label_map = Label.Map.add_exn label_map ~key:label ~data:label_no in
       group_stm t [ T.Label label ] acc_blks_rev label_map
@@ -103,7 +107,7 @@ let rec _build_block blks label_map res : block Int.Map.t =
 ;;
 
 let build_block (f_body : T.stm list) =
-  let blks, label_map = group_stm f_body [] [ [] ] Label.Map.empty in
+  let blks, label_map = group_stm f_body [] [] Label.Map.empty in
   let blk_map = _build_block blks label_map Int.Map.empty in
   let entry_blk = { body = []; no = -2; succ = Int.Set.of_list [ 0 ] } in
   let exit_blk = { body = []; no = -1; succ = Int.Set.empty } in
@@ -136,20 +140,29 @@ let build_pred (blk_map : block Int.Map.t) : Int.Set.t Int.Map.t =
   _build_pred blks res
 ;;
 
+(* Use dfs to calculate postorder *)
 let rec postorder visited blk_no blk_map order : int list * Int.Set.t =
+  (* printf "visit %d\n" blk_no; *)
   let blk = Int.Map.find_exn blk_map blk_no in
-  if Int.Set.is_subset blk.succ ~of_:visited
-  then blk.no :: order, visited
-  else (
-    let order, visited =
-      Int.Set.fold blk.succ ~init:(order, visited) ~f:(fun acc succ ->
-          let acc_order, acc_visited = acc in
-          if Int.Set.mem acc_visited succ
-          then acc
-          else postorder acc_visited succ blk_map acc_order)
-    in
-    let visited = Int.Set.add visited blk_no in
-    blk.no :: order, visited)
+  let ret =
+    if Int.Set.is_subset blk.succ ~of_:visited
+    then order @ [ blk.no ], visited
+    else (
+      let order, visited =
+        Int.Set.fold blk.succ ~init:(order, visited) ~f:(fun acc succ ->
+            let acc_order, acc_visited = acc in
+            if Int.Set.mem acc_visited succ
+            then acc
+            else postorder acc_visited succ blk_map acc_order)
+      in
+      let visited = Int.Set.add visited blk_no in
+      order @ [ blk.no ], visited)
+  in
+  (* let ret_order, _ = ret in *)
+  (* printf
+    "acc order: %s\n"
+    (List.map ret_order ~f:(fun x -> Int.to_string x) |> String.concat ~sep:" "); *)
+  ret
 ;;
 
 (* Find nearest common root for both b1 and b2. *)
@@ -201,12 +214,18 @@ let rec _idom (idom_map : int Int.Map.t) changed pred_map order =
           let new_idom = List.nth_exn pred 0 in
           let pred' = List.sub pred ~pos:1 ~len:(List.length pred - 1) in
           let new_idom = _idom_trav_par pred' new_idom idom_map in
-          if phys_equal (Int.Map.find_exn idom_map node) new_idom
-          then acc_changed, acc_idom_map
-          else (
+          match Int.Map.find acc_idom_map node with
+          | None ->
             let acc_idom_map = Int.Map.set acc_idom_map ~key:node ~data:new_idom in
             let acc_changed = true in
-            acc_changed, acc_idom_map))
+            acc_changed, acc_idom_map
+          | Some s ->
+            if phys_equal s new_idom
+            then acc_changed, acc_idom_map
+            else (
+              let acc_idom_map = Int.Map.set acc_idom_map ~key:node ~data:new_idom in
+              let acc_changed = true in
+              acc_changed, acc_idom_map))
     in
     _idom idom_map changed pred_map order
   | false -> idom_map
@@ -217,7 +236,6 @@ let rec _idom (idom_map : int Int.Map.t) changed pred_map order =
  *)
 let idom blk_map pred_map =
   let idom_map = Int.Map.empty in
-  let idom_map = Int.Map.set idom_map ~key:(-2) ~data:(-2) in
   let changed = true in
   let post_order, _ = postorder Int.Set.empty (-2) blk_map [] in
   let rev_post_order = List.rev post_order in
@@ -259,9 +277,19 @@ let _build_DF node preds idom_map df : Int.Set.t Int.Map.t =
 let build_DF blk_map pred_map idom =
   let nodes = Int.Map.keys blk_map in
   let df = Int.Map.empty in
-  List.fold nodes ~init:df ~f:(fun df_acc node ->
-      let preds = Int.Map.find_exn pred_map node in
-      if Int.Set.length preds >= 2 then _build_DF node preds idom df_acc else df_acc)
+  let df =
+    List.fold nodes ~init:df ~f:(fun df_acc node ->
+        (* For entry and exit block, they doesn't have dominance frontier
+         * For unreachable block like .afterlife, it doesn't either. *)
+        if node < 0 || not (Int.Map.mem pred_map node)
+        then Int.Map.set df_acc ~key:node ~data:Int.Set.empty
+        else (
+          let preds = Int.Map.find_exn pred_map node in
+          if Int.Set.length preds >= 2 then _build_DF node preds idom df_acc else df_acc))
+  in
+  (* Fill up blocks that are not frontier of any blocks *)
+  Int.Map.mapi blk_map ~f:(fun ~key:k ~data:_ ->
+      if Int.Map.mem df k then Int.Map.find_exn df k else Int.Set.empty)
 ;;
 
 (* build dominance tree, which is reverse of idom *)
@@ -276,12 +304,37 @@ let build_DT idom =
       Int.Map.set acc ~key:parent ~data:children)
 ;;
 
+let print_idom idom =
+  Int.Map.iteri idom ~f:(fun ~key:k ~data:d -> printf "block %d idom is %d\n" k d)
+;;
+
+let print_df df =
+  Int.Map.iteri df ~f:(fun ~key:k ~data:d ->
+      let df_k =
+        Int.Set.to_list d
+        |> List.map ~f:(fun x -> Int.to_string x)
+        |> String.concat ~sep:", "
+      in
+      printf "block %d dominance frontier is %s\n" k df_k)
+;;
+
+let print_blk blk_map =
+  let keys = Int.Map.keys blk_map in
+  let sorted_key = List.sort keys ~compare:Int.compare in
+  List.iter sorted_key ~f:(fun blk_no ->
+      let blk = Int.Map.find_exn blk_map blk_no in
+      printf "block %d\n%s\n" blk_no (T.Print.pp_program blk.body))
+;;
+
 (* Return dominance frontier, dominate tree, pred_map and blk_map *)
 let run (f_body : T.stm list) =
   let blk_map = build_block f_body in
   let pred_map = build_pred blk_map in
   let idom = idom blk_map pred_map in
+  (* print_idom idom; *)
   let df = build_DF blk_map pred_map idom in
+  (* print_df df; *)
   let dt = build_DT idom in
+  (* print_blk blk_map; *)
   df, dt, pred_map, blk_map
 ;;
