@@ -12,6 +12,7 @@
   util
   front
   semantic
+  convention
   flow
   codegen
   file)

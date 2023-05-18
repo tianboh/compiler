@@ -13,7 +13,7 @@
  *)
 open Core
 module Dfana_info = Json_reader.Lab2_checkpoint
-module AS = Middle.Inst
+module AS = Convention.Inst
 module Temp = Var.Temp
 module Register = Var.X86_reg
 module Dfana = Flow.Dfana
@@ -49,33 +49,19 @@ let rec gen_succ (inst_list : AS.instr list) (line_no : int) map =
   | h :: t ->
     (match h with
     | AS.Label l ->
-      let map = Label.Map.set map ~key:l ~data:line_no in
+      let map = Label.Map.set map ~key:l.label ~data:line_no in
       gen_succ t (line_no + 1) map
     | AS.Jump _ | AS.CJump _ | AS.Ret _ | AS.Mov _ | AS.Binop _ ->
       gen_succ t (line_no + 1) map
     | AS.Directive _ | AS.Comment _ -> gen_succ t line_no map)
 ;;
 
-let _gen_df_info_helper (op : AS.operand) =
-  match op with
-  | AS.Temp t -> Int.Set.of_list [ Temp.value t ]
-  | AS.Imm _ -> Int.Set.empty
-;;
-
-let _gen_df_info_binop
-    (line_no : int)
-    (dest : AS.operand)
-    (lhs : AS.operand)
-    (rhs : AS.operand)
-  =
-  let lhs_int_set = _gen_df_info_helper lhs in
-  let rhs_int_set = _gen_df_info_helper rhs in
-  let gen = Int.Set.union lhs_int_set rhs_int_set in
-  let kill =
-    match dest with
-    | Imm _ -> Int.Set.empty
-    | Temp t -> Int.Set.diff (Int.Set.of_list [ Temp.value t ]) gen
-  in
+let[@warning "-8"] _gen_df_info_binop (line_no : int) (AS.Binop binop) =
+  let uses = binop.line.uses in
+  let defs = binop.line.defines in
+  let gen = Int.Set.of_list (AS.to_int_list uses) in
+  let kill = Int.Set.of_list (AS.to_int_list defs) in
+  let kill = Int.Set.diff kill gen in
   let succ = [ line_no + 1 ] in
   let is_label = false in
   ({ gen = Int.Set.to_list gen
@@ -87,13 +73,11 @@ let _gen_df_info_binop
     : Dfana_info.line)
 ;;
 
-let _gen_df_info_mov (line_no : int) (dest : AS.operand) (src : AS.operand) =
-  let gen = _gen_df_info_helper src in
-  let kill =
-    match dest with
-    | Imm _ -> Int.Set.empty
-    | Temp t -> Int.Set.diff (Int.Set.of_list [ Temp.value t ]) gen
-  in
+let[@warning "-8"] _gen_df_info_mov (line_no : int) (AS.Mov mov) =
+  let defs, uses = mov.line.defines, mov.line.uses in
+  let gen = Int.Set.of_list (AS.to_int_list uses) in
+  let kill = Int.Set.of_list (AS.to_int_list defs) in
+  let kill = Int.Set.diff kill gen in
   let succ = [ line_no + 1 ] in
   let is_label = false in
   ({ gen = Int.Set.to_list gen
@@ -105,11 +89,10 @@ let _gen_df_info_mov (line_no : int) (dest : AS.operand) (src : AS.operand) =
     : Dfana_info.line)
 ;;
 
-let _gen_df_info_cjump line_no (lhs : AS.operand) (rhs : AS.operand) label_map target =
-  let lhs_int_set = _gen_df_info_helper lhs in
-  let rhs_int_set = _gen_df_info_helper rhs in
-  let gen = Int.Set.union lhs_int_set rhs_int_set in
-  let cond_target_line_no = Label.Map.find_exn label_map target in
+let[@warning "-8"] _gen_df_info_cjump line_no (AS.CJump cjump) label_map =
+  let uses = cjump.line.uses in
+  let gen = Int.Set.of_list (AS.to_int_list uses) in
+  let cond_target_line_no = Label.Map.find_exn label_map cjump.target in
   ({ gen = Int.Set.to_list gen
    ; kill = []
    ; succ = [ line_no + 1; cond_target_line_no ]
@@ -125,8 +108,9 @@ let rec _gen_df_info_rev (inst_list : AS.instr list) line_no label_map res =
   | h :: t ->
     let line =
       match h with
-      | AS.Binop binop -> Some (_gen_df_info_binop line_no binop.dest binop.lhs binop.rhs)
-      | AS.Mov mov -> Some (_gen_df_info_mov line_no mov.dest mov.src)
+      (* | AS.Binop binop -> Some (_gen_df_info_binop line_no binop.dest binop.lhs binop.rhs) *)
+      | AS.Binop binop -> Some (_gen_df_info_binop line_no (AS.Binop binop))
+      | AS.Mov mov -> Some (_gen_df_info_mov line_no (AS.Mov mov))
       | Jump jp ->
         let target_line_no = Label.Map.find_exn label_map jp.target in
         Some
@@ -137,13 +121,11 @@ let rec _gen_df_info_rev (inst_list : AS.instr list) line_no label_map res =
            ; line_number = line_no
            }
             : Dfana_info.line)
-      | CJump cjp ->
-        Some (_gen_df_info_cjump line_no cjp.lhs cjp.rhs label_map cjp.target)
+      | CJump cjp -> Some (_gen_df_info_cjump line_no (CJump cjp) label_map)
       | Ret ret ->
-        let gen_int_set = _gen_df_info_helper ret.var in
         Some
-          ({ gen = Int.Set.to_list gen_int_set
-           ; kill = []
+          ({ gen = AS.to_int_list ret.line.uses
+           ; kill = AS.to_int_list ret.line.defines
            ; succ = []
            ; is_label = false
            ; line_number = line_no
@@ -165,6 +147,8 @@ let rec _gen_df_info_rev (inst_list : AS.instr list) line_no label_map res =
     | Some line_s -> _gen_df_info_rev t (line_no + 1) label_map (line_s :: res))
 ;;
 
+(* Generate information for each instruction. Info includes
+ * gen, kill, succ, is_label, line_number *)
 let gen_df_info (inst_list : AS.instr list) : Dfana_info.line list =
   let label_map = Label.Map.empty in
   let label_map = gen_succ inst_list 0 label_map in
