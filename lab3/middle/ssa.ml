@@ -26,6 +26,14 @@ type ssa_block =
   ; succ : Int.Set.t
   }
 
+let print_blk blk_map =
+  let keys = Int.Map.keys blk_map in
+  let sorted_key = List.sort keys ~compare:Int.compare in
+  List.iter sorted_key ~f:(fun blk_no ->
+      let blk = Int.Map.find_exn blk_map blk_no in
+      printf "block %d\n%s\n" blk_no (T.Print.pp_program blk.body))
+;;
+
 (* environment for rename.
  * For each temporary, track its most recent index.
  * Also, store the stack of temporaries during parsing the D-tree. *)
@@ -292,6 +300,7 @@ let rec _rename blk blk_map env dt =
     blk_map, env_end
 ;;
 
+(* rename phi operand and dest in the dominance frontier *)
 let rename blk_map dt =
   let env = { index = Temp.Map.empty; stack = Temp.Map.empty } in
   let env = init_env env (Int.Map.data blk_map) in
@@ -322,12 +331,23 @@ let rec _decompose_blk phis (tail_map : T.stm list Int.Map.t) =
 
 (* Remove phi function by adding tail_map statements to block*)
 let to_dblock ssa_blk_map tail_map =
+  (* print_blk ssa_blk_map; *)
+  (* Int.Map.iteri tail_map ~f:(fun ~key:blk_no ~data:stms ->
+      let tail_stm = T.Print.pp_program stms in
+      printf "ssa block %d tail %s" blk_no tail_stm); *)
   let dblk_map = Int.Map.empty in
-  Int.Map.fold tail_map ~init:dblk_map ~f:(fun ~key:blk_no ~data:move_stms acc ->
-      let ssa_blk = Int.Map.find_exn ssa_blk_map blk_no in
-      let body = ssa_blk.body @ move_stms in
-      let dblk = ({ body; no = ssa_blk.no; succ = ssa_blk.succ } : D.block) in
-      Int.Map.set acc ~key:blk_no ~data:dblk)
+  let ret =
+    Int.Map.fold ssa_blk_map ~init:dblk_map ~f:(fun ~key:blk_no ~data:ssa_blk acc ->
+        let body =
+          match Int.Map.find tail_map blk_no with
+          | None -> ssa_blk.body
+          | Some s -> ssa_blk.body @ s
+        in
+        let dblk = ({ body; no = ssa_blk.no; succ = ssa_blk.succ } : D.block) in
+        Int.Map.set acc ~key:blk_no ~data:dblk)
+  in
+  (* Dominator.print_blk ret; *)
+  ret
 ;;
 
 (* Handle phi function at each block blk.
@@ -358,12 +378,22 @@ let decompose ssa_blk_map pred_map =
  * dt: dominance tree. Map for parent block_number -> children block_number set.
  * pred_map: predecesor map, block_number -> block_number set
  * blk_map: block number -> block *)
-let run df dt pred_map (blk_map : D.block Int.Map.t) : T.stm list =
+let run (program : T.stm list) : T.stm list =
+  let df, dt, pred_map, blk_map = Dominator.run program in
   let ssa_blk_map = build_ssa_block blk_map in
+  (* printf "build_ssa_block\n";
+  print_blk ssa_blk_map; *)
   let defsites = get_defsites ssa_blk_map in
+  (* printf "get_defsites\n";
+  print_blk ssa_blk_map; *)
   let ssa_blk_map = insert ssa_blk_map defsites df pred_map in
+  (* printf "insert\n";
+  print_blk ssa_blk_map; *)
   let ssa_blk_map, _ = rename ssa_blk_map dt in
+  (* printf "rename\n";
+  print_blk ssa_blk_map; *)
   let blk_map = decompose ssa_blk_map pred_map in
+  (* Dominator.print_blk blk_map; *)
   let blks = Int.Map.to_alist ~key_order:`Increasing blk_map in
   List.fold blks ~init:[] ~f:(fun acc blk_tuple ->
       let _, blk = blk_tuple in
