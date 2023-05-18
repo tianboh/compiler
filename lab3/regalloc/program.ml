@@ -4,13 +4,13 @@
   declared in json_reader.Lab1_checkpoint.ml
 
   The basic idea is to generate infocmrtion including
-  "define", "use", "live_out", "move" and "line_num" info
+  "defines", "use", "live_out", "move" and "line_num" info
   for each pseudo assembly instruction.
 
   Pseudo assembly instruction list -> register allocation info
 *)
 open Core
-module AS = Middle.Inst
+module AS = Convention.Inst
 module Temp = Var.Temp
 module IG = Interference_graph
 module Register = Var.X86_reg
@@ -18,27 +18,27 @@ module Memory = Var.Memory
 
 type line =
   { uses : IG.Vertex.Set.t
-  ; define : IG.Vertex.Set.t
+  ; defines : IG.Vertex.Set.t
   ; live_out : IG.Vertex.Set.t
   ; move : bool
   ; line_number : int
   }
 
-(* Return all the temporary/register in line.define *)
-let get_defs line = line.define
+(* Return all the temporary/register in line.defines *)
+let get_defs line = line.defines
 
 type temps_info = line list
 
 let empty_line line_num live_out =
   { uses = IG.Vertex.Set.empty
-  ; define = IG.Vertex.Set.empty
+  ; defines = IG.Vertex.Set.empty
   ; live_out
   ; move = false
   ; line_number = line_num
   }
 ;;
 
-(* Transform pseudo operands of type temp and imm to temp set*)
+(* Transform pseudo operands of type temp, imm, reg to reg/temp set*)
 let gen_VertexSet (l : AS.operand list) =
   let rec _filter_imm (l : AS.operand list) (res : IG.Vertex.t list) =
     match l with
@@ -46,7 +46,8 @@ let gen_VertexSet (l : AS.operand list) =
     | h :: t ->
       (match h with
       | Imm _ -> _filter_imm t res
-      | Temp temp -> _filter_imm t (IG.Vertex.T.Temp temp :: res))
+      | Temp temp -> _filter_imm t (IG.Vertex.T.Temp temp :: res)
+      | Reg r -> _filter_imm t (IG.Vertex.T.Reg r :: res))
   in
   let l = _filter_imm l [] in
   IG.Vertex.Set.of_list l
@@ -58,7 +59,7 @@ let print_VertexSet (ts : IG.Vertex.Set.t) =
 
 let print_line (line : line) =
   printf "\n{def: ";
-  print_VertexSet line.define;
+  print_VertexSet line.defines;
   printf "\nuses: ";
   print_VertexSet line.uses;
   printf "\nlive_out: ";
@@ -69,7 +70,7 @@ let print_line (line : line) =
 
 let print_lines (lines : line list) = List.iter lines ~f:(fun line -> print_line line)
 
-(* Generate define, use, move, liveout, line number. *)
+(* Generate defines, use, move, liveout, line number. *)
 let rec gen_forward
     (inst_list : AS.instr list)
     (inst_info : (int, line * AS.instr) Base.Hashtbl.t)
@@ -83,11 +84,11 @@ let rec gen_forward
     let line = empty_line line_num live_out in
     (match h with
     | AS.Binop binop ->
-      let def = gen_VertexSet [ binop.dest ] in
-      let uses = gen_VertexSet [ binop.lhs; binop.rhs ] in
+      let def = gen_VertexSet binop.line.defines in
+      let uses = gen_VertexSet binop.line.uses in
       let line =
         { line with
-          define = def
+          defines = def
         ; uses
         ; live_out = IG.Vertex.Set.union line.live_out uses
         }
@@ -95,11 +96,11 @@ let rec gen_forward
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
     | AS.Mov mov ->
-      let def = gen_VertexSet [ mov.dest ] in
-      let uses = gen_VertexSet [ mov.src ] in
+      let def = gen_VertexSet mov.line.defines in
+      let uses = gen_VertexSet mov.line.uses in
       let line =
         { line with
-          define = def
+          defines = def
         ; uses
         ; move = true
         ; live_out = IG.Vertex.Set.union line.live_out uses
@@ -108,34 +109,34 @@ let rec gen_forward
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
     | AS.CJump cjp ->
-      let define = gen_VertexSet [] in
-      let uses = gen_VertexSet [ cjp.lhs; cjp.rhs ] in
+      let defines = gen_VertexSet cjp.line.defines in
+      let uses = gen_VertexSet cjp.line.uses in
       let line =
-        { line with define; uses; live_out = IG.Vertex.Set.union line.live_out uses }
+        { line with defines; uses; live_out = IG.Vertex.Set.union line.live_out uses }
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | AS.Jump _ ->
-      let define = gen_VertexSet [] in
-      let uses = gen_VertexSet [] in
+    | AS.Jump jp ->
+      let defines = gen_VertexSet jp.line.defines in
+      let uses = gen_VertexSet jp.line.uses in
       let line =
-        { line with define; uses; live_out = IG.Vertex.Set.union line.live_out uses }
+        { line with defines; uses; live_out = IG.Vertex.Set.union line.live_out uses }
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
     | AS.Ret ret ->
-      let define = gen_VertexSet [] in
-      let uses = gen_VertexSet [ ret.var ] in
+      let defines = gen_VertexSet ret.line.defines in
+      let uses = gen_VertexSet ret.line.uses in
       let line =
-        { line with define; uses; live_out = IG.Vertex.Set.union line.live_out uses }
+        { line with defines; uses; live_out = IG.Vertex.Set.union line.live_out uses }
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
     | AS.Label _ ->
-      let define = IG.Vertex.Set.empty in
+      let defines = IG.Vertex.Set.empty in
       let uses = IG.Vertex.Set.empty in
       let line =
-        { line with define; uses; live_out = IG.Vertex.Set.union line.live_out uses }
+        { line with defines; uses; live_out = IG.Vertex.Set.union line.live_out uses }
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map

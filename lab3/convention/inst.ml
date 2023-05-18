@@ -90,6 +90,14 @@ type instr =
 
 type program = instr list
 
+let to_int_list (operands : operand list) : int list =
+  List.fold operands ~init:[] ~f:(fun acc x ->
+      match x with
+      | Imm _ -> acc
+      | Temp t -> Temp.value t :: acc
+      | Reg r -> Register.reg_idx r :: acc)
+;;
+
 let pp_binop = function
   | Plus -> "+"
   | Minus -> "-"

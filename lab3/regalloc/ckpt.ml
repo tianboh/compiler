@@ -4,7 +4,7 @@ module Temp = Var.Temp
 module Memory = Var.Memory
 module Register = Var.X86_reg
 module Reg_info = Program
-module AS = Middle.Inst
+module AS = Convention.Inst
 module IG = Interference_graph
 module Inst_reg_info = Json_reader.Lab1_checkpoint
 
@@ -37,7 +37,7 @@ let gen_VertexSet (l : string list) =
    only need to assign temp to registers.
 *)
 let transform_str_to_temp (line : Inst_reg_info.line) : Program.line =
-  { define = gen_VertexSet [ line.define ]
+  { defines = gen_VertexSet [ line.define ]
   ; uses = gen_VertexSet line.uses
   ; live_out = gen_VertexSet line.live_out
   ; move = line.move

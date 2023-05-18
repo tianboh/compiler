@@ -87,6 +87,7 @@ let[@warning "-8"] gen_cjump (Src.CJump cjump) =
 
 let[@warning "-8"] gen_ret (Src.Ret ret) =
   let line = empty_line () in
+  let line = { line with defines = [ Dest.Reg rax ]; uses = [ trans_operand ret.var ] } in
   let var = trans_operand ret.var in
   Dest.Ret { var; line }
 ;;
