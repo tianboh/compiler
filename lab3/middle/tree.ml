@@ -150,7 +150,7 @@ module Print : PRINT = struct
     | NExp nexp -> pp_exp nexp ^ "\n"
 
   and pp_stms (stms : stm list) =
-    List.map (fun stm -> pp_stm stm) stms |> String.concat "\n"
+    List.map (fun stm -> pp_stm stm) stms |> String.concat "  "
   ;;
 
   let pp_program program = pp_stms program

@@ -3,6 +3,9 @@
  * Here, I use minimal SSA through dominance frontier to make
  * sure that phi function is inserted in a minimal time.
  *
+ * Check https://www.cs.rice.edu/~keith/EMBED/dom.pdf for 
+ * algorithm details.
+ *
  * Author: Tianbo Hao<tianboh@alumni.cmu.edu>
  *)
 open Core
@@ -10,11 +13,14 @@ module T = Tree
 module D = Dominator
 module Temp = Var.Temp
 
-(* dest = phi(src1, ..., srcn) 
+(* dest = phi(src1, ..., srcn). Since dest and src may change
+ * during rename procedure, we keep track of the original dest
+ * name for each phi.
  * src is a hashmap from predecessor k to its subscript.
  * key: predecessor block number k, value: current subscript for k *)
 type phi =
-  { dest : Temp.t
+  { name : Temp.t
+  ; dest : Temp.t
   ; src : Temp.t option Int.Map.t
   }
 
@@ -26,24 +32,70 @@ type ssa_block =
   ; succ : Int.Set.t
   }
 
-let print_blk blk_map =
-  let keys = Int.Map.keys blk_map in
-  let sorted_key = List.sort keys ~compare:Int.compare in
-  List.iter sorted_key ~f:(fun blk_no ->
-      let blk = Int.Map.find_exn blk_map blk_no in
-      printf "block %d\n%s\n" blk_no (T.Print.pp_program blk.body))
-;;
-
 (* environment for rename.
- * For each temporary, track its most recent index.
- * Also, store the stack of temporaries during parsing the D-tree. *)
+ * Store the stack of temporaries during parsing the D-tree. 
+ * Some temporaries may be renamed during process, so we need
+ * to track its original name in root map.
+ * key in index and stack are original temporary name. 
+ * root keeps track of each temporary's original name *)
 type env =
-  { index : Temp.t Temp.Map.t
-  ; stack : Temp.t List.t Temp.Map.t
+  { stack : Temp.t List.t Temp.Map.t
+  ; root : Temp.t Temp.Map.t
   }
 
-(* Store generated temp -> original temp *)
-let backtracker = ref Temp.Map.empty
+module type PRINT = sig
+  val pp_phi : phi -> unit
+  val pp_phis : phi list -> unit
+  val pp_blk : ssa_block Int.Map.t -> unit
+  val pp_env : env -> unit
+end
+
+module Print : PRINT = struct
+  let pp_phi phi =
+    let src_l =
+      Int.Map.fold phi.src ~init:[] ~f:(fun ~key:k ~data:d acc ->
+          match d with
+          | None -> sprintf "operand from parent %d not assigned yet" k :: acc
+          | Some s -> Temp.name s :: acc)
+    in
+    printf
+      "%s = phi(%s), orig name %s\n"
+      (Temp.name phi.dest)
+      (String.concat src_l ~sep:", ")
+      (Temp.name phi.name)
+  ;;
+
+  let pp_phis phis = List.iter phis ~f:(fun phi -> pp_phi phi)
+
+  let pp_blk (blk_map : ssa_block Int.Map.t) =
+    let keys = Int.Map.keys blk_map in
+    let sorted_key = List.sort keys ~compare:Int.compare in
+    List.iter sorted_key ~f:(fun blk_no ->
+        let blk = Int.Map.find_exn blk_map blk_no in
+        printf "block %d\n" blk_no;
+        pp_phis blk.phis;
+        printf "%s\n" (T.Print.pp_program blk.body))
+  ;;
+
+  let pp_env env =
+    printf "print env\n";
+    Temp.Map.iteri env.stack ~f:(fun ~key:k ~data:d ->
+        let stack = List.map d ~f:(fun x -> Temp.name x) |> String.concat ~sep:", " in
+        printf "  temporary %s, stack %s\n" (Temp.name k) stack);
+    Temp.Map.iteri env.root ~f:(fun ~key:k ~data:d ->
+        printf "  root: %s, child: %s\n" (Temp.name d) (Temp.name k))
+  ;;
+end
+
+(* Update new_temp's root to old_temp's root. because move: old_temp -> new_temp happend *)
+let update_root env old_temp new_temp =
+  let original_root =
+    match Temp.Map.find env.root old_temp with
+    | Some s -> s
+    | None -> old_temp
+  in
+  { env with root = Temp.Map.set env.root ~key:new_temp ~data:original_root }
+;;
 
 let build_ssa_block (blk_map : D.block Int.Map.t) : ssa_block Int.Map.t =
   Int.Map.map blk_map ~f:(fun blk ->
@@ -106,7 +158,7 @@ let rec insert_df (temp : Temp.t) df_map df_list acc_blk_map acc_new_def_site pr
         Int.Set.fold preds ~init:Int.Map.empty ~f:(fun acc pred ->
             Int.Map.set acc ~key:pred ~data:None)
       in
-      let new_phi = { src; dest } in
+      let new_phi = { name = dest; src; dest } in
       let blk_df = { blk_df with phis = new_phi :: blk_df.phis } in
       let acc_blk_map = Int.Map.set acc_blk_map ~key:blk_df.no ~data:blk_df in
       let acc_new_def_site = blk_df.no :: acc_new_def_site in
@@ -140,10 +192,16 @@ let rec rename_exp (exp : T.exp) (env : env) : T.exp =
   match exp with
   | Const c -> Const c
   | Temp temp ->
-    Temp
-      (match Temp.Map.find env.index temp with
-      | None -> temp
-      | Some s -> s)
+    (* In some special cases, exp may be used when there is such temp stack
+     * For example, in ternary op, statements are executed for side effect, 
+     * and there is not blocks explicitly. So the end exp may not be denoted
+     * but not defined in previous statements besides this sexp.stm *)
+    let temp_stack =
+      match Temp.Map.find env.stack temp with
+      | None -> [ temp ]
+      | Some s -> s
+    in
+    Temp (List.hd_exn temp_stack)
   | Binop binop ->
     let lhs_new = rename_exp binop.lhs env in
     let rhs_new = rename_exp binop.rhs env in
@@ -182,12 +240,16 @@ and rename_def (stm : T.stm) (env : env) : T.stm * env =
   match stm with
   | Move move ->
     let dest_new = Temp.create () in
-    backtracker := Temp.Map.set !backtracker ~key:dest_new ~data:move.dest;
-    let index = Temp.Map.set env.index ~key:move.dest ~data:dest_new in
-    let stack_temp = Temp.Map.find_exn env.stack move.dest in
-    let stack_temp = dest_new :: stack_temp in
-    let stack = Temp.Map.set env.stack ~key:move.dest ~data:stack_temp in
-    let env = { index; stack } in
+    let env = update_root env move.dest dest_new in
+    let dest_new_root = Temp.Map.find_exn env.root dest_new in
+    let stack_temp =
+      match Temp.Map.find env.stack dest_new_root with
+      | None -> [ dest_new ]
+      | Some s -> dest_new :: s
+    in
+    let stack = Temp.Map.set env.stack ~key:dest_new_root ~data:stack_temp in
+    let env = { env with stack } in
+    (* printf "rename_move def from %s to %s\n" (Temp.name move.dest) (Temp.name dest_new); *)
     let move = T.Move { move with dest = dest_new } in
     move, env
   | Return ret -> Return ret, env
@@ -203,6 +265,25 @@ and rename_stm stm env : T.stm * env =
   rename_def stm env
 ;;
 
+let rec rename_phis (phis : phi list) (env : env) (phis_new : phi list) : phi list * env =
+  match phis with
+  | [] -> phis_new, env
+  | h :: t ->
+    let dest_new = Temp.create () in
+    let env = update_root env h.name dest_new in
+    let stack_temp =
+      match Temp.Map.find env.stack h.name with
+      | None -> [ dest_new ]
+      | Some s -> dest_new :: s
+    in
+    let stack = Temp.Map.set env.stack ~key:h.name ~data:stack_temp in
+    let env = { env with stack } in
+    (* printf "rename_phi def from %s to %s\n" (Temp.name h.dest) (Temp.name dest_new); *)
+    let phi_new = { h with dest = dest_new } in
+    (* Print.pp_phi phi_new; *)
+    rename_phis t env (phi_new :: phis_new)
+;;
+
 (* rename basic block at the begining of _rename *)
 let rec rename_bb (body : T.stm list) (new_body : T.stm list) (env : env)
     : T.stm list * env
@@ -214,56 +295,58 @@ let rec rename_bb (body : T.stm list) (new_body : T.stm list) (env : env)
     rename_bb t (new_stm :: new_body) new_env
 ;;
 
+(* Remove the temporary from stack top. *)
+let cleanup_temp ori_name new_name env : env =
+  let stack_temp = Temp.Map.find_exn env.stack ori_name in
+  let stack_temp =
+    match stack_temp with
+    | [] -> []
+    | _ :: t -> t
+  in
+  { stack = Temp.Map.set env.stack ~key:ori_name ~data:stack_temp
+  ; root = Temp.Map.remove env.root new_name
+  }
+;;
+
 (* pop variables defined in this block at the end of _rename *)
-let rec cleanup_bb (body : T.stm list) env : env =
-  match body with
-  | [] -> env
-  | h :: t ->
-    (match h with
-    | Move move ->
-      let temp =
-        match Temp.Map.find !backtracker move.dest with
-        | None -> move.dest
-        | Some s -> s
-      in
-      let stack_temp = Temp.Map.find_exn env.stack temp in
-      let stack_temp =
-        match stack_temp with
-        | [] -> []
-        | _ :: t -> t
-      in
-      { env with stack = Temp.Map.set env.stack ~key:temp ~data:stack_temp }
-    | Return _ | Jump _ | CJump _ | Label _ | Nop | NExp _ -> cleanup_bb t env)
-;;
-
-let rec init_env_stms (env : env) (stms : T.stm list) =
-  match stms with
-  | [] -> env
-  | h :: t ->
-    (match h with
-    | Move move ->
-      let index, stack = env.index, env.stack in
-      let index = Temp.Map.set index ~key:move.dest ~data:move.dest in
-      let stack = Temp.Map.set stack ~key:move.dest ~data:[ move.dest ] in
-      let env = { index; stack } in
-      init_env_stms env t
-    | _ -> init_env_stms env t)
-;;
-
-let rec init_env env blks =
-  match blks with
-  | [] -> env
-  | blk :: t ->
-    let env = init_env_stms env blk.body in
-    init_env env t
+let cleanup_bb (blk : ssa_block) (env : env) : env =
+  let rec cleanup_body (body : T.stm list) env =
+    match body with
+    | [] ->
+      (* printf "cleanup\n";
+      Print.pp_env env; *)
+      env
+    | h :: t ->
+      (match h with
+      | Move move ->
+        let name = Temp.Map.find_exn env.root move.dest in
+        let env = cleanup_temp name move.dest env in
+        cleanup_body t env
+      | Return _ | Jump _ | CJump _ | Label _ | Nop | NExp _ -> cleanup_body t env)
+  in
+  let rec cleanup_phi (phis : phi list) (env : env) : env =
+    match phis with
+    | [] -> env
+    | h :: t ->
+      let env = cleanup_temp h.name h.dest env in
+      cleanup_phi t env
+  in
+  let env = cleanup_phi blk.phis env in
+  cleanup_body blk.body env
 ;;
 
 let _rename_phi_operand (pred_branch : int) phi env : phi =
-  let dest, src = phi.dest, phi.src in
-  let temp = dest in
-  let operand = List.hd_exn (Temp.Map.find_exn env.stack temp) in
-  let src = Int.Map.set src ~key:pred_branch ~data:(Some operand) in
-  { dest; src }
+  let temp, src = phi.name, phi.src in
+  if Temp.Map.mem env.stack temp
+  then (
+    let operand =
+      match List.hd (Temp.Map.find_exn env.stack temp) with
+      | None -> None
+      | Some s -> Some s
+    in
+    let src = Int.Map.set src ~key:pred_branch ~data:operand in
+    { phi with src })
+  else phi
 ;;
 
 (* rename phi function operand in successors of a parent *)
@@ -271,11 +354,13 @@ let rec _rename_succ parent children env blk_map =
   match children with
   | [] -> blk_map
   | h :: t ->
+    (* printf "=rename succ %d of par %d\n" h parent; *)
     let blk_child = Int.Map.find_exn blk_map h in
     let phis = blk_child.phis in
     let phis = List.map phis ~f:(fun phi -> _rename_phi_operand parent phi env) in
     let blk_child = { blk_child with phis } in
     let blk_map = Int.Map.set blk_map ~key:h ~data:blk_child in
+    (* Print.pp_phis phis; *)
     _rename_succ parent t env blk_map
 ;;
 
@@ -285,8 +370,11 @@ let rec _rename blk blk_map env dt =
   match blk.no with
   | -1 -> blk_map, env
   | _ ->
-    let body_new, env_new = rename_bb blk.body [] env in
-    let blk_new = { blk with body = body_new } in
+    (* printf "==rename block %d\n" blk.no; *)
+    let phis_new, env_new = rename_phis blk.phis env [] in
+    let body_new, env_new = rename_bb blk.body [] env_new in
+    let blk_new = { blk with body = body_new; phis = phis_new } in
+    let blk_map = Int.Map.set blk_map ~key:blk_new.no ~data:blk_new in
     let succs = Int.Set.to_list blk_new.succ in
     let blk_map = _rename_succ blk_new.no succs env_new blk_map in
     let children =
@@ -297,17 +385,19 @@ let rec _rename blk blk_map env dt =
     let blk_map, env_new =
       Int.Set.fold children ~init:(blk_map, env_new) ~f:(fun acc child ->
           let blk_map_acc, env_acc = acc in
-          let child_blk = Int.Map.find_exn blk_map child in
+          let child_blk = Int.Map.find_exn blk_map_acc child in
           _rename child_blk blk_map_acc env_acc dt)
     in
-    let env_end = cleanup_bb body_new env_new in
+    (* printf "start clenaup for block %d\n" blk.no; *)
+    let env_end = cleanup_bb blk_new env_new in
+    (* printf "--rename block %d finished\n" blk.no; *)
     blk_map, env_end
 ;;
 
 (* rename phi operand and dest in the dominance frontier *)
 let rename blk_map dt =
-  let env = { index = Temp.Map.empty; stack = Temp.Map.empty } in
-  let env = init_env env (Int.Map.data blk_map) in
+  let env = { stack = Temp.Map.empty; root = Temp.Map.empty } in
+  (* let env = init_env env (Int.Map.data blk_map) in *)
   let entry = Int.Map.find_exn blk_map (-2) in
   _rename entry blk_map env dt
 ;;
@@ -325,7 +415,7 @@ let rec _decompose_blk phis (tail_map : T.stm list Int.Map.t) =
             | Some s -> s
           in
           match operand with
-          | None -> failwith "not found corresponding ssa source"
+          | None -> acc
           | Some src ->
             let new_tail = T.Move { dest; src = T.Temp src } :: old_tail in
             Int.Map.set acc ~key:pred ~data:new_tail)
@@ -333,24 +423,33 @@ let rec _decompose_blk phis (tail_map : T.stm list Int.Map.t) =
     _decompose_blk t tail_map
 ;;
 
+(* Transform phi function of blk to its predecessors
+ * Add move instruction at the end of its predecessors 
+ * except jump and cjump. 
+ * Make sure those move are executed before jump/cjump *)
+let rec concat_tail_move (body : T.stm list) (moves : T.stm list) (res : T.stm list) =
+  match body with
+  | [] -> List.rev res @ moves
+  | h :: t ->
+    (match h with
+    | Jump _ | CJump _ -> List.rev res @ moves @ body
+    | _ -> concat_tail_move t moves (h :: res))
+;;
+
 (* Remove phi function by adding tail_map statements to block*)
 let to_dblock ssa_blk_map tail_map =
-  (* print_blk ssa_blk_map; *)
-  (* Int.Map.iteri tail_map ~f:(fun ~key:blk_no ~data:stms ->
-      let tail_stm = T.Print.pp_program stms in
-      printf "ssa block %d tail %s" blk_no tail_stm); *)
   let dblk_map = Int.Map.empty in
   let ret =
     Int.Map.fold ssa_blk_map ~init:dblk_map ~f:(fun ~key:blk_no ~data:ssa_blk acc ->
         let body =
           match Int.Map.find tail_map blk_no with
           | None -> ssa_blk.body
-          | Some s -> ssa_blk.body @ s
+          | Some s -> concat_tail_move ssa_blk.body s []
         in
         let dblk = ({ body; no = ssa_blk.no; succ = ssa_blk.succ } : D.block) in
         Int.Map.set acc ~key:blk_no ~data:dblk)
   in
-  (* Dominator.print_blk ret; *)
+  (* Dominator.Print.pp_blk ret; *)
   ret
 ;;
 
@@ -386,18 +485,18 @@ let run (program : T.stm list) : T.stm list =
   let df, dt, pred_map, blk_map = Dominator.run program in
   let ssa_blk_map = build_ssa_block blk_map in
   (* printf "build_ssa_block\n";
-  print_blk ssa_blk_map; *)
+  Print.pp_blk ssa_blk_map; *)
   let defsites = get_defsites ssa_blk_map in
   (* printf "get_defsites\n";
-  print_blk ssa_blk_map; *)
+  Print.pp_blk ssa_blk_map; *)
   let ssa_blk_map = insert ssa_blk_map defsites df pred_map in
-  (* printf "insert\n";
-  print_blk ssa_blk_map; *)
+  (* printf "insert\n"; *)
+  (* Print.pp_blk ssa_blk_map; *)
   let ssa_blk_map, _ = rename ssa_blk_map dt in
-  (* printf "rename\n";
-  print_blk ssa_blk_map; *)
+  (* printf "rename\n"; *)
+  (* Print.pp_blk ssa_blk_map; *)
   let blk_map = decompose ssa_blk_map pred_map in
-  (* Dominator.print_blk blk_map; *)
+  (* Dominator.Print.pp_blk blk_map; *)
   let blks = Int.Map.to_alist ~key_order:`Increasing blk_map in
   List.fold blks ~init:[] ~f:(fun acc blk_tuple ->
       let _, blk = blk_tuple in
