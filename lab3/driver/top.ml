@@ -153,24 +153,25 @@ let compile (cmd : cmd_line_args) : unit =
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Trans.translate ast in
+  let ir_ssa = Middle.Ssa.run ir in
   (* Okay, this is a hack, we will provide more comprehensive handling in lab3. 
    * TODO: fix it! *)
   say_if cmd.dump_ir (fun () -> Tree.Print.pp_stms ir);
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
-  let assem_ps = Middle.Gen.gen ir in
-  (* let assem_ps = Codegen.Optimize.optimize assem_ps in *)
-  (* let () = Codegen.Gen.Pseudo.print_insts assem_ps in *)
+  let assem_ps_ssa = Middle.Gen.gen ir_ssa in
+  (* let assem_ps_ssa = Codegen.Optimize.optimize assem_ps_ssa in *)
+  (* let () = Codegen.Gen.Pseudo.print_insts assem_ps_ssa in *)
   (* let stop = Unix.gettimeofday () in *)
-  (* let () = Printf.printf "Execution time assem_ps: %fs\n%!" (stop -. start) in *)
-  say_if cmd.dump_assem (fun () -> AS_psu.pp_program assem_ps "");
+  (* let () = Printf.printf "Execution time assem_ps_ssa: %fs\n%!" (stop -. start) in *)
+  say_if cmd.dump_assem (fun () -> AS_psu.pp_program assem_ps_ssa "");
   match cmd.emit with
   (* Output: abstract 3-address assem *)
   | Abstract_assem ->
     let file = cmd.filename ^ ".abs" in
     say_if cmd.verbose (fun () -> sprintf "Writing abstract assem to %s..." file);
-    File.dump_asm_ps file assem_ps
+    File.dump_asm_ps file assem_ps_ssa
   | X86_64 ->
     let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
@@ -178,11 +179,11 @@ let compile (cmd : cmd_line_args) : unit =
     (* let stop = Unix.gettimeofday () in *)
     (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
     (* let start = Unix.gettimeofday () in *)
-    let assem_x86_conv = Convention.X86.gen assem_ps [] in
+    let assem_x86_conv = Convention.X86.gen assem_ps_ssa [] in
     let reg_alloc_info = Regalloc.Driver.regalloc assem_x86_conv in
     (* let stop = Unix.gettimeofday () in *)
     (* let () = Printf.printf "Execution time reg_alloc_info: %fs\n%!" (stop -. start) in *)
-    let assem_x86 = Codegen.Gen.X86.gen assem_ps reg_alloc_info in
+    let assem_x86 = Codegen.Gen.X86.gen assem_ps_ssa reg_alloc_info in
     File.dump_asm_x86 file assem_x86
 ;;
 

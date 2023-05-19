@@ -148,28 +148,21 @@ let build_pred (blk_map : block Int.Map.t) : Int.Set.t Int.Map.t =
 let rec postorder visited blk_no blk_map (order : int list) (dfs_map : int Int.Map.t)
     : int list * Int.Set.t * int Int.Map.t
   =
-  printf "visit %d\n" blk_no;
+  let visited = Int.Set.add visited blk_no in
   let blk = Int.Map.find_exn blk_map blk_no in
-  let dfs_no = List.length order in
   let ret =
     (* if Int.Set.is_subset blk.succ ~of_:visited *)
-    if Int.Set.mem visited blk_no
-    then order, visited, Int.Map.set dfs_map ~key:blk_no ~data:dfs_no
-    else (
-      let order, visited, dfs_map =
-        Int.Set.fold blk.succ ~init:(order, visited, dfs_map) ~f:(fun acc succ ->
-            let acc_order, acc_visited, acc_dfs_map = acc in
-            postorder acc_visited succ blk_map acc_order acc_dfs_map)
-      in
-      let visited = Int.Set.add visited blk_no in
-      let order = order @ [ blk.no ] in
-      let dfs_map = Int.Map.set dfs_map ~key:blk.no ~data:(List.length order) in
-      order, visited, dfs_map)
+    let order, visited, dfs_map =
+      Int.Set.fold blk.succ ~init:(order, visited, dfs_map) ~f:(fun acc succ ->
+          let acc_order, acc_visited, acc_dfs_map = acc in
+          if Int.Set.mem acc_visited succ
+          then acc
+          else postorder acc_visited succ blk_map acc_order acc_dfs_map)
+    in
+    let order = order @ [ blk.no ] in
+    let dfs_map = Int.Map.set dfs_map ~key:blk.no ~data:(List.length order) in
+    order, visited, dfs_map
   in
-  (* let ret_order, _ = ret in *)
-  (* printf
-    "acc order: %s\n"
-    (List.map ret_order ~f:(fun x -> Int.to_string x) |> String.concat ~sep:" "); *)
   ret
 ;;
 
@@ -180,7 +173,7 @@ let rec intersect
     (idom_map : int Int.Map.t)
     (dfs_map : int Int.Map.t)
   =
-  printf "intersect %d %d, " b1 b2;
+  (* printf "intersect %d %d, " b1 b2; *)
   if b1 = -2 || b2 = -2
   then -2
   else if b1 = b2
@@ -213,7 +206,7 @@ let rec _idom_trav_par pred_list idom (idom_map : int Int.Map.t) dfs_map =
     | None -> _idom_trav_par t idom idom_map dfs_map
     | Some s ->
       let new_idom = intersect s idom idom_map dfs_map in
-      printf ", new idom %d\n" new_idom;
+      (* printf ", new idom %d\n" new_idom; *)
       _idom_trav_par t new_idom idom_map dfs_map)
 ;;
 
@@ -224,7 +217,7 @@ let rec _idom (idom_map : int Int.Map.t) changed pred_map order dfs_map =
     let changed = false in
     let changed, idom_map =
       List.fold order ~init:(changed, idom_map) ~f:(fun acc node ->
-          printf "finding idom of node %d\n" node;
+          (* printf "finding idom of node %d\n" node; *)
           let acc_changed, acc_idom_map = acc in
           let pred =
             match Int.Map.find pred_map node with
@@ -265,8 +258,8 @@ let idom blk_map pred_map =
     | [] -> []
     | _ :: t -> t
   in
-  List.iter order ~f:(fun x -> printf "%d " x);
-  printf "\n";
+  (* List.iter order ~f:(fun x -> printf "%d " x); *)
+  (* printf "\n"; *)
   _idom idom_map changed pred_map order dfs_map
 ;;
 
@@ -326,44 +319,56 @@ let build_DT idom =
       Int.Map.set acc ~key:parent ~data:children)
 ;;
 
-let print_idom idom =
-  Int.Map.iteri idom ~f:(fun ~key:k ~data:d -> printf "block %d idom is %d\n" k d)
-;;
+module Print = struct
+  let pp_idom idom =
+    Int.Map.iteri idom ~f:(fun ~key:k ~data:d -> printf "block %d idom is %d\n" k d)
+  ;;
 
-let print_df df =
-  Int.Map.iteri df ~f:(fun ~key:k ~data:d ->
-      let df_k =
-        Int.Set.to_list d
-        |> List.map ~f:(fun x -> Int.to_string x)
-        |> String.concat ~sep:", "
-      in
-      printf "block %d dominance frontier is %s\n" k df_k)
-;;
+  let pp_df df =
+    Int.Map.iteri df ~f:(fun ~key:k ~data:d ->
+        let df_k =
+          Int.Set.to_list d
+          |> List.map ~f:(fun x -> Int.to_string x)
+          |> String.concat ~sep:", "
+        in
+        printf "block %d dominance frontier is %s\n" k df_k)
+  ;;
 
-let print_int_set s =
-  let l = Int.Set.fold s ~init:[] ~f:(fun acc t -> Int.to_string t :: acc) in
-  String.concat l ~sep:", "
-;;
+  let pp_dt dt =
+    Int.Map.iteri dt ~f:(fun ~key:k ~data:d ->
+        let df_k =
+          Int.Set.to_list d
+          |> List.map ~f:(fun x -> Int.to_string x)
+          |> String.concat ~sep:", "
+        in
+        printf "block %d dominance tree is %s\n" k df_k)
+  ;;
 
-let print_blk blk_map =
-  let keys = Int.Map.keys blk_map in
-  let sorted_key = List.sort keys ~compare:Int.compare in
-  List.iter sorted_key ~f:(fun blk_no ->
-      let blk = Int.Map.find_exn blk_map blk_no in
-      printf "block %d\n%s\n" blk_no (T.Print.pp_program blk.body);
-      printf "block %d succ %s\n" blk_no (print_int_set blk.succ))
-;;
+  let pp_int_set s =
+    let l = Int.Set.fold s ~init:[] ~f:(fun acc t -> Int.to_string t :: acc) in
+    String.concat l ~sep:", "
+  ;;
+
+  let pp_blk blk_map =
+    let keys = Int.Map.keys blk_map in
+    let sorted_key = List.sort keys ~compare:Int.compare in
+    List.iter sorted_key ~f:(fun blk_no ->
+        let blk = Int.Map.find_exn blk_map blk_no in
+        printf "block %d\n%s\n" blk_no (T.Print.pp_program blk.body);
+        printf "block %d succ %s\n" blk_no (pp_int_set blk.succ))
+  ;;
+end
 
 (* Return dominance frontier, dominate tree, pred_map and blk_map *)
 let run (f_body : T.stm list) =
   let blk_map = build_block f_body in
   let pred_map = build_pred blk_map in
   let idom = idom blk_map pred_map in
-  print_blk blk_map;
-  print_idom idom;
+  (* pp_blk blk_map;
+  pp_idom idom; *)
   let df = build_DF blk_map pred_map idom in
-  (* print_df df; *)
+  (* pp_df df; *)
   let dt = build_DT idom in
-  (* print_blk blk_map; *)
+  (* pp_dt dt; *)
   df, dt, pred_map, blk_map
 ;;
