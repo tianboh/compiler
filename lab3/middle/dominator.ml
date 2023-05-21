@@ -61,7 +61,7 @@ let rec group_stm
     | Return ret -> group_stm t (T.Return ret :: acc_stms_rev) acc_blks_rev label_map
     | Jump jp -> group_stm t (T.Jump jp :: acc_stms_rev) acc_blks_rev label_map
     | CJump cjp -> group_stm t (T.CJump cjp :: acc_stms_rev) acc_blks_rev label_map
-    | NExp nexp -> group_stm t (T.NExp nexp :: acc_stms_rev) acc_blks_rev label_map
+    | Effect eft -> group_stm t (T.Effect eft :: acc_stms_rev) acc_blks_rev label_map
     | Nop -> group_stm t acc_stms_rev acc_blks_rev label_map)
 ;;
 
@@ -75,7 +75,7 @@ let rec _build_block blks label_map res : block Int.Map.t =
     let no = Int.Map.length res in
     let succ_init =
       match List.last_exn h with
-      | T.Label _ | T.Move _ | T.NExp _ | T.Nop ->
+      | T.Label _ | T.Move _ | T.Effect _ | T.Nop ->
         let succ_no = if List.is_empty t then -1 else no + 1 in
         [ succ_no ]
       | T.Return _ ->
@@ -93,7 +93,7 @@ let rec _build_block blks label_map res : block Int.Map.t =
     let succ_l =
       List.fold body_wo_tail ~init:succ_init ~f:(fun acc stm ->
           match stm with
-          | T.Label _ | T.Move _ | T.NExp _ | T.Nop -> acc
+          | T.Label _ | T.Move _ | T.Effect _ | T.Nop -> acc
           | T.Return _ -> -1 :: acc
           | T.Jump jp ->
             let succ_no = Label.Map.find_exn label_map jp in

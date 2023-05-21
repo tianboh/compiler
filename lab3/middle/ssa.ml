@@ -102,22 +102,29 @@ let build_ssa_block (blk_map : D.block Int.Map.t) : ssa_block Int.Map.t =
       { phis = []; body = blk.body; no = blk.no; succ = blk.succ })
 ;;
 
+let get_blk_defsite_helper defsites dest blk_no =
+  let sites =
+    match Temp.Map.find defsites dest with
+    | None -> Int.Set.empty
+    | Some s -> s
+  in
+  let sites = Int.Set.add sites blk_no in
+  let defsites = Temp.Map.set defsites ~key:dest ~data:sites in
+  defsites
+;;
+
 let rec get_blk_defsite blk_no (stms : T.stm list) defsites =
   match stms with
   | [] -> defsites
   | stm :: t ->
     (match stm with
     | T.Move move ->
-      let dest = move.dest in
-      let sites =
-        match Temp.Map.find defsites dest with
-        | None -> Int.Set.empty
-        | Some s -> s
-      in
-      let sites = Int.Set.add sites blk_no in
-      let defsites = Temp.Map.set defsites ~key:dest ~data:sites in
+      let defsites = get_blk_defsite_helper defsites move.dest blk_no in
       get_blk_defsite blk_no t defsites
-    | T.Return _ | T.Jump _ | T.CJump _ | T.Label _ | T.Nop | T.NExp _ ->
+    | T.Effect eft ->
+      let defsites = get_blk_defsite_helper defsites eft.dest blk_no in
+      get_blk_defsite blk_no t defsites
+    | T.Return _ | T.Jump _ | T.CJump _ | T.Label _ | T.Nop ->
       get_blk_defsite blk_no t defsites)
 ;;
 
@@ -206,22 +213,16 @@ let rec rename_exp (exp : T.exp) (env : env) : T.exp =
     let lhs_new = rename_exp binop.lhs env in
     let rhs_new = rename_exp binop.rhs env in
     Binop { binop with lhs = lhs_new; rhs = rhs_new }
-  (* Sexp generated when transing AST.Terop. *)
-  | Sexp sexp ->
-    let stm_new_rev =
-      List.fold sexp.stm ~init:[] ~f:(fun acc_rec stm ->
-          let stm_new = rename_use stm env in
-          stm_new :: acc_rec)
-    in
-    let stm_new = List.rev stm_new_rev in
-    let exp_new = rename_exp sexp.exp env in
-    Sexp { stm = stm_new; exp = exp_new }
 
 and rename_use (stm : T.stm) env : T.stm =
   match stm with
   | Move move ->
     let src_new = rename_exp move.src env in
     Move { move with src = src_new }
+  | Effect eft ->
+    let lhs_new = rename_exp eft.lhs env in
+    let rhs_new = rename_exp eft.rhs env in
+    Effect { eft with lhs = lhs_new; rhs = rhs_new }
   | Return ret ->
     let ret_new = rename_exp ret env in
     Return ret_new
@@ -232,32 +233,37 @@ and rename_use (stm : T.stm) env : T.stm =
     CJump { cjp with lhs = lhs_new; rhs = rhs_new }
   | Label l -> Label l
   | Nop -> Nop
-  | NExp nexp ->
-    let nexp_new = rename_exp nexp env in
-    NExp nexp_new
+
+and rename_def_helper (dest : Temp.t) (env : env) =
+  let dest_new = Temp.create () in
+  let env = update_root env dest dest_new in
+  let dest_new_root = Temp.Map.find_exn env.root dest_new in
+  let stack_temp =
+    match Temp.Map.find env.stack dest_new_root with
+    | None -> [ dest_new ]
+    | Some s -> dest_new :: s
+  in
+  let stack = Temp.Map.set env.stack ~key:dest_new_root ~data:stack_temp in
+  let env = { env with stack } in
+  dest_new, env
 
 and rename_def (stm : T.stm) (env : env) : T.stm * env =
   match stm with
   | Move move ->
-    let dest_new = Temp.create () in
-    let env = update_root env move.dest dest_new in
-    let dest_new_root = Temp.Map.find_exn env.root dest_new in
-    let stack_temp =
-      match Temp.Map.find env.stack dest_new_root with
-      | None -> [ dest_new ]
-      | Some s -> dest_new :: s
-    in
-    let stack = Temp.Map.set env.stack ~key:dest_new_root ~data:stack_temp in
-    let env = { env with stack } in
+    let dest_new, env = rename_def_helper move.dest env in
     (* printf "rename_move def from %s to %s\n" (Temp.name move.dest) (Temp.name dest_new); *)
     let move = T.Move { move with dest = dest_new } in
     move, env
+  | Effect eft ->
+    let dest_new, env = rename_def_helper eft.dest env in
+    (* printf "rename_eft def from %s to %s\n" (Temp.name eft.dest) (Temp.name dest_new); *)
+    let eft = T.Effect { eft with dest = dest_new } in
+    eft, env
   | Return ret -> Return ret, env
   | Jump jp -> Jump jp, env
   | CJump cjp -> CJump cjp, env
   | Label l -> Label l, env
   | Nop -> Nop, env
-  | NExp nexp -> NExp nexp, env
 
 (* rename stm includes replace temp in use and def *)
 and rename_stm stm env : T.stm * env =
@@ -322,7 +328,11 @@ let cleanup_bb (blk : ssa_block) (env : env) : env =
         let name = Temp.Map.find_exn env.root move.dest in
         let env = cleanup_temp name move.dest env in
         cleanup_body t env
-      | Return _ | Jump _ | CJump _ | Label _ | Nop | NExp _ -> cleanup_body t env)
+      | Effect eft ->
+        let name = Temp.Map.find_exn env.root eft.dest in
+        let env = cleanup_temp name eft.dest env in
+        cleanup_body t env
+      | Return _ | Jump _ | CJump _ | Label _ | Nop -> cleanup_body t env)
   in
   let rec cleanup_phi (phis : phi list) (env : env) : env =
     match phis with
@@ -490,11 +500,11 @@ let run (program : T.stm list) : T.stm list =
   (* printf "get_defsites\n";
   Print.pp_blk ssa_blk_map; *)
   let ssa_blk_map = insert ssa_blk_map defsites df pred_map in
-  (* printf "insert\n"; *)
-  (* Print.pp_blk ssa_blk_map; *)
+  (* printf "insert\n";
+  Print.pp_blk ssa_blk_map; *)
   let ssa_blk_map, _ = rename ssa_blk_map dt in
-  (* printf "rename\n"; *)
-  (* Print.pp_blk ssa_blk_map; *)
+  (* printf "rename\n";
+  Print.pp_blk ssa_blk_map; *)
   let blk_map = decompose ssa_blk_map pred_map in
   (* Dominator.Print.pp_blk blk_map; *)
   let blks = Int.Map.to_alist ~key_order:`Increasing blk_map in

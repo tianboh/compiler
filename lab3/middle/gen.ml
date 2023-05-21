@@ -47,10 +47,6 @@ let rec munch_exp_acc (dest : Inst.operand) (exp : T.exp) (rev_acc : Inst.instr 
   | T.Const i -> Inst.Mov { dest; src = Inst.Imm i } :: rev_acc
   | T.Temp t -> Inst.Mov { dest; src = Inst.Temp t } :: rev_acc
   | T.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
-  | T.Sexp sexp ->
-    let stm_rev = munch_stms_rev sexp.stm [] in
-    let ret = stm_rev @ rev_acc in
-    munch_exp_acc dest sexp.exp ret
 
 (* munch_binop_acc dest (binop, e1, e2) rev_acc
 *
@@ -101,9 +97,14 @@ and munch_stm_rev (stm : T.stm) =
     (Inst.CJump { lhs; op; rhs; target = cjmp.target_stm } :: rhs_inst_rev) @ lhs_inst_rev
   | T.Label l -> [ Inst.Label l ]
   | T.Nop -> []
-  | T.NExp nexp ->
-    let t = Inst.Temp (Temp.create ()) in
-    munch_exp_acc t nexp []
+  | T.Effect eft ->
+    let lhs = Inst.Temp (Temp.create ()) in
+    let op = munch_op eft.op in
+    let rhs = Inst.Temp (Temp.create ()) in
+    let lhs_inst_rev = munch_exp_acc lhs eft.lhs [] in
+    let rhs_inst_rev = munch_exp_acc rhs eft.rhs [] in
+    (Inst.Binop { lhs; op; rhs; dest = Inst.Temp eft.dest } :: rhs_inst_rev)
+    @ lhs_inst_rev
 
 and munch_stms_rev stms res =
   match stms with
