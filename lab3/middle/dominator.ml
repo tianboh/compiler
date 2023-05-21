@@ -85,9 +85,10 @@ let rec _build_block blks label_map res : block Int.Map.t =
         let succ_no = Label.Map.find_exn label_map jp in
         [ succ_no ]
       | T.CJump cjp ->
-        let succ_no = Label.Map.find_exn label_map cjp.target_stm in
+        let succ_true = Label.Map.find_exn label_map cjp.target_true in
+        let succ_false = Label.Map.find_exn label_map cjp.target_false in
         let succ_no' = if List.is_empty t then -1 else no + 1 in
-        [ succ_no; succ_no' ]
+        [ succ_true; succ_false; succ_no' ]
     in
     let body_wo_tail = List.sub h ~pos:0 ~len:(List.length h - 1) in
     let succ_l =
@@ -99,8 +100,9 @@ let rec _build_block blks label_map res : block Int.Map.t =
             let succ_no = Label.Map.find_exn label_map jp in
             succ_no :: acc
           | T.CJump cjp ->
-            let succ_no = Label.Map.find_exn label_map cjp.target_stm in
-            succ_no :: acc)
+            let succ_true = Label.Map.find_exn label_map cjp.target_true in
+            let succ_false = Label.Map.find_exn label_map cjp.target_false in
+            [ succ_true; succ_false ] @ acc)
     in
     let succ = Int.Set.of_list succ_l in
     let block = { body; no; succ } in

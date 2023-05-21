@@ -57,9 +57,7 @@ let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) : T.stm list * T.exp =
   | A.False -> [], T.Const Int32.zero
   | A.Binop binop -> trans_exp_bin (A.Binop binop) env
   (* 
-   * CJump cond label_true
-   * label_dummy
-   * Jump target_false
+   * CJump cond label_true, label_false
    * label_true:
    * a <- true_exp;
    * Jump label_ter_end
@@ -77,15 +75,11 @@ let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) : T.stm list * T.exp =
     let label_false = Label.label (Some "terop_false") in
     let true_stms = T.Label label_true :: true_stms in
     let false_stms = T.Label label_false :: false_stms in
-    let label_dummy = Label.label (Some "cjp_dummy") in
     let label_ter_end = Label.label (Some "terop_end") in
     let lhs, op, rhs = gen_cond cond_exp in
     let seq =
       cond_stms
-      @ [ T.CJump { lhs; op; rhs; target_stm = label_true }
-        ; T.Label label_dummy
-        ; T.Jump label_false
-        ]
+      @ [ T.CJump { lhs; op; rhs; target_true = label_true; target_false = label_false } ]
       @ true_stms
       @ [ T.Move { dest = temp; src = true_exp }; T.Jump label_ter_end ]
       @ false_stms
@@ -120,7 +114,7 @@ let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t) : T.s
     [ T.Move { dest; src = v_exp } ] @ List.rev v_stms @ acc
   | A.If if_ast ->
     (* 
-     *  CJump cond label_true
+     *  CJump cond label_true, label_false
      *  label_false
      *  false_stm
      *  Jump label_conv
@@ -139,7 +133,9 @@ let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t) : T.s
     (T.Label label_conv :: true_stm)
     @ [ T.Label label_true; T.Jump label_conv ]
     @ false_stm
-    @ [ T.Label label_false; T.CJump { lhs; op; rhs; target_stm = label_true } ]
+    @ [ T.Label label_false
+      ; T.CJump { lhs; op; rhs; target_true = label_true; target_false = label_false }
+      ]
     @ List.rev cond_stms
     @ acc
   | A.While while_ast ->
@@ -158,7 +154,10 @@ let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t) : T.s
     let label_loop_stop = Label.label (Some "loop_stop") in
     let label_loop_dummy = Label.label (Some "loop_dummy") in
     let lhs, op, rhs = gen_cond cond_exp in
-    [ T.Label label_loop_dummy; T.CJump { lhs; op; rhs; target_stm = label_loop_start } ]
+    [ T.Label label_loop_dummy
+    ; T.CJump
+        { lhs; op; rhs; target_true = label_loop_start; target_false = label_loop_dummy }
+    ]
     @ List.rev cond_stms
     @ [ T.Label label_loop_stop ]
     @ body

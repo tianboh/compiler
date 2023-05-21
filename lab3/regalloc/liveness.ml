@@ -92,10 +92,11 @@ let[@warning "-8"] _gen_df_info_mov (line_no : int) (AS.Mov mov) =
 let[@warning "-8"] _gen_df_info_cjump line_no (AS.CJump cjump) label_map =
   let uses = cjump.line.uses in
   let gen = Int.Set.of_list (AS.to_int_list uses) in
-  let cond_target_line_no = Label.Map.find_exn label_map cjump.target in
+  let target_true_no = Label.Map.find_exn label_map cjump.target_true in
+  let target_false_no = Label.Map.find_exn label_map cjump.target_false in
   ({ gen = Int.Set.to_list gen
    ; kill = []
-   ; succ = [ line_no + 1; cond_target_line_no ]
+   ; succ = [ target_true_no; target_false_no ]
    ; is_label = false
    ; line_number = line_no
    }

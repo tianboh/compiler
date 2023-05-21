@@ -82,7 +82,14 @@ let[@warning "-8"] gen_cjump (Src.CJump cjump) =
   let lhs, rhs = trans_operand cjump.lhs, trans_operand cjump.rhs in
   let op = trans_binop cjump.op in
   let line = { defines = []; uses = [ lhs; rhs ]; live_out = []; move = false } in
-  Dest.CJump { lhs; op; rhs; target = cjump.target; line }
+  Dest.CJump
+    { lhs
+    ; op
+    ; rhs
+    ; target_true = cjump.target_true
+    ; target_false = cjump.target_false
+    ; line
+    }
 ;;
 
 let[@warning "-8"] gen_ret (Src.Ret ret) =
