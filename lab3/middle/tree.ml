@@ -76,14 +76,13 @@ and stm =
   | Return of exp
   | Jump of Label.t
   | CJump of
-      { (* Jump if lhs op rhs is true. If CJump appears, it must be 
-         * followed by a label. This is a requirement by dataflow 
-         * analysis implementation. In other words, CJump can only
-         * be at the end of each block. *)
+      { (* Jump to target_true if lhs op rhs is true. 
+         * Otherwise to target_false *)
         lhs : exp
       ; op : binop
       ; rhs : exp
-      ; target_stm : Label.t
+      ; target_true : Label.t
+      ; target_false : Label.t
       }
   | Label of Label.t
   | Nop
@@ -138,11 +137,12 @@ module Print : PRINT = struct
     | Jump j -> "jump " ^ Label.name j ^ "\n"
     | CJump cj ->
       sprintf
-        "cjump(%s %s %s) Target:%s\n"
+        "cjump(%s %s %s) target_true:%s, target_false %s \n"
         (pp_exp cj.lhs)
         (pp_binop cj.op)
         (pp_exp cj.rhs)
-        (Label.name cj.target_stm)
+        (Label.name cj.target_true)
+        (Label.name cj.target_false)
     | Label l -> Label.content l ^ "\n"
     | Nop -> "nop" ^ "\n"
 

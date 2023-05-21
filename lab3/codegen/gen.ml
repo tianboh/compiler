@@ -176,21 +176,26 @@ module X86 = struct
       | AS.CJump cjp ->
         let lhs = oprd_ps_to_x86 cjp.lhs reg_alloc_info in
         let rhs = oprd_ps_to_x86 cjp.rhs reg_alloc_info in
-        let target = cjp.target in
+        let target_true = cjp.target_true in
+        let target_false = cjp.target_false in
         let cmp_inst = AS_x86.safe_cmp lhs rhs DWORD reg_swap in
         let cmp_inst_rev = List.rev cmp_inst in
         let cjp_inst =
           match cjp.op with
-          | Equal_eq -> AS_x86.JE target
-          | Greater -> AS_x86.JG target
-          | Greater_eq -> AS_x86.JGE target
-          | Less -> AS_x86.JL target
-          | Less_eq -> AS_x86.JLE target
-          | Not_eq -> AS_x86.JNE target
+          | Equal_eq -> AS_x86.JE target_true
+          | Greater -> AS_x86.JG target_true
+          | Greater_eq -> AS_x86.JGE target_true
+          | Less -> AS_x86.JL target_true
+          | Less_eq -> AS_x86.JLE target_true
+          | Not_eq -> AS_x86.JNE target_true
           | _ -> failwith "conditional jump op should can only be relop."
         in
-        (* _codegen_w_reg_rev (res @ cmp_inst @ cjp_inst) t reg_alloc_info reg_swap *)
-        _codegen_w_reg_rev ((cjp_inst :: cmp_inst_rev) @ res) t reg_alloc_info reg_swap
+        let jp = AS_x86.Jump target_false in
+        _codegen_w_reg_rev
+          (([ jp; cjp_inst ] @ cmp_inst_rev) @ res)
+          t
+          reg_alloc_info
+          reg_swap
       | _ -> _codegen_w_reg_rev res t reg_alloc_info reg_swap)
   ;;
 

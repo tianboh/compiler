@@ -94,7 +94,10 @@ and munch_stm_rev (stm : T.stm) =
     let rhs = Inst.Temp (Temp.create ()) in
     let lhs_inst_rev = munch_exp_acc lhs cjmp.lhs [] in
     let rhs_inst_rev = munch_exp_acc rhs cjmp.rhs [] in
-    (Inst.CJump { lhs; op; rhs; target = cjmp.target_stm } :: rhs_inst_rev) @ lhs_inst_rev
+    (Inst.CJump
+       { lhs; op; rhs; target_true = cjmp.target_true; target_false = cjmp.target_false }
+    :: rhs_inst_rev)
+    @ lhs_inst_rev
   | T.Label l -> [ Inst.Label l ]
   | T.Nop -> []
   | T.Effect eft ->

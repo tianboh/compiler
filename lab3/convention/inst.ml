@@ -74,7 +74,8 @@ type instr =
         lhs : operand
       ; op : bin_op
       ; rhs : operand
-      ; target : Label.t
+      ; target_true : Label.t
+      ; target_false : Label.t
       ; line : line
       }
   | Ret of
@@ -135,11 +136,12 @@ let pp_inst = function
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
   | CJump cjp ->
     sprintf
-      "cjump(%s %s %s) %s"
+      "cjump(%s %s %s) target_true: %s, target_false : %s"
       (pp_operand cjp.lhs)
       (pp_binop cjp.op)
       (pp_operand cjp.rhs)
-      (Label.name cjp.target)
+      (Label.name cjp.target_true)
+      (Label.name cjp.target_false)
   | Label label -> sprintf "%s" (Label.content label.label)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
