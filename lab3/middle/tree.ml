@@ -52,11 +52,7 @@ type binop =
   | Less_eq
   | Not_eq
 
-let is_relop = function
-  | Equal_eq | Greater | Greater_eq | Less | Less_eq | Not_eq -> true
-  | _ -> false
-;;
-
+(* Expression that does not incure side-effect *)
 type exp =
   | Const of Int32.t
   | Temp of Temp.t
@@ -65,18 +61,17 @@ type exp =
       ; op : binop
       ; rhs : exp
       }
-  (* Sexp is designed as a counterpart for AST terop.
-   * It will execute stm for side effect, like CJump, 
-   * and then return exp. *)
-  | Sexp of
-      { stm : stm list
-      ; exp : exp
-      }
 
 and stm =
   | Move of
       { dest : Temp.t
       ; src : exp
+      }
+  | Effect of
+      { dest : Temp.t
+      ; lhs : exp
+      ; op : binop
+      ; rhs : exp
       }
   | Return of exp
   | Jump of Label.t
@@ -92,9 +87,6 @@ and stm =
       }
   | Label of Label.t
   | Nop
-  | NExp of exp
-(* NExp only execute expression for potential side effect
- * But it will drop the result after execution. *)
 
 type program = stm list
 
@@ -132,10 +124,16 @@ module Print : PRINT = struct
     | Temp t -> Temp.name t
     | Binop binop ->
       sprintf "(%s %s %s)" (pp_exp binop.lhs) (pp_binop binop.op) (pp_exp binop.rhs)
-    | Sexp sexp -> sprintf "(%s %s)" (pp_stms sexp.stm) (pp_exp sexp.exp)
 
   and pp_stm = function
     | Move mv -> Temp.name mv.dest ^ "  <--  " ^ pp_exp mv.src ^ "\n"
+    | Effect eft ->
+      sprintf
+        "effect %s <- %s %s %s\n"
+        (Temp.name eft.dest)
+        (pp_exp eft.lhs)
+        (pp_binop eft.op)
+        (pp_exp eft.rhs)
     | Return e -> "return " ^ pp_exp e ^ "\n"
     | Jump j -> "jump " ^ Label.name j ^ "\n"
     | CJump cj ->
@@ -147,7 +145,6 @@ module Print : PRINT = struct
         (Label.name cj.target_stm)
     | Label l -> Label.content l ^ "\n"
     | Nop -> "nop" ^ "\n"
-    | NExp nexp -> pp_exp nexp ^ "\n"
 
   and pp_stms (stms : stm list) =
     List.map (fun stm -> pp_stm stm) stms |> String.concat "  "
