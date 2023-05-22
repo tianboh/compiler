@@ -1,6 +1,9 @@
 (* 
- * This file is a register module. 
- * It will create register by sequence after the first 16 x86 determined register.
+ * This file is a register module for x86. 
+ * There are only 16 general purpuse registers.
+ * function names and registers names are self-explained.
+ *
+ * Author: Tianbo Hao<tianboh@alumni.cmu.edu>
  *)
 open Core
 open Layout
@@ -23,18 +26,6 @@ type t =
   | R14
   | R15
 [@@deriving compare, sexp, hash]
-
-(* 
- * ESP(7) and EBP(8) are used to store stack pointer and base pointer respectively, 
- * we should not assign these two registers for general purpose use like register allocation. 
- * We also preserver r15(15) as a swap register, and do not assign it for register allocation.
- * We also preserve EAX(1) and EDX(4) because they are treated special in mul, mod, and mul op.
- * ECX(3) is preserved for left/right shift.
- *)
-let special_use = function
-  | RAX | RCX | RDX | RSP | RBP | R15 -> true
-  | _ -> false
-;;
 
 let num_reg = 16
 
@@ -138,8 +129,6 @@ let idx_reg = function
   | _ -> failwith "invalid index for reg"
 ;;
 
-let tmp_to_reg (tmp : Temp.t) = -Temp.value tmp
-
 let str_to_reg (str : string) =
   match String.lowercase str with
   | "%rax" | "%eax" | "%ax" | "%al" -> RAX
@@ -163,5 +152,5 @@ let str_to_reg (str : string) =
 
 let swap = R15
 let base_pointer = RBP
-let callee_saved = [ RBX; RDI; RSI; RSP; RBP ]
-let caller_saved = [ RAX; RCX; RDX ]
+let callee_saved = [ RBX; RBP; R12; R13; R14; R15 ]
+let caller_saved = [ R10; R11 ]

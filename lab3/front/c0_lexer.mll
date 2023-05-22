@@ -1,5 +1,5 @@
 {
-(* L2 Compiler
+(* L3 Compiler
  * Lexer
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
@@ -25,9 +25,10 @@
  * in order to make the grammar forward compatible with C0.
  * 
  * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
- *    Implemented L2 lexer based on L1. Features are listed below.
- *    - Provide if, else, while, for loop control logic.
- *    - Provide special character support. 
+ *    Implemented L3 lexer based on L2. Features are listed below.
+ *    - Provide function call and type alias.
+ *    - Provide assert statement.
+ *    - Provide void type. Only used as function return.
  *)
 
 open Core
@@ -147,10 +148,7 @@ rule initial = parse
   | "<<=" { T.Left_shift_eq }
   | ">>=" { T.Right_shift_eq }
 
-  | "assert" { error lexbuf
-           ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-           initial lexbuf }
-  | "main"   { T.Main }
+  | "assert" { T.Assert }
   | "return" { T.Return }
 
   | "bool"    { T.Bool }
@@ -158,15 +156,11 @@ rule initial = parse
                 ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
                 initial lexbuf }
   | "int"     { T.Int }
-  | "void"    { error lexbuf
-                ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-                initial lexbuf }
+  | "void"    { T.Void }
   | "struct"  { error lexbuf
                 ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
                 initial lexbuf }
-  | "typedef" { error lexbuf
-                ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-                initial lexbuf }
+  | "typedef" { T.Typedef }
 
   | "if"    { T.If }
   | "else"  { T.Else }

@@ -1,4 +1,4 @@
-(* L2 Compiler
+(* L3 Compiler
  * Parsing
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
@@ -63,10 +63,10 @@ let%expect_test "Test parsing of an empty program" =
   print_endline (Cst.Print.pp_program program);
   [%expect
     {|
-    {
-    int x = 3;
-    int y = (-(x) + 4);
-    return (x + ((y * x) / 3));
-    }
-  |}]
+     {
+     int x = 3;
+     int y = (-(x) + 4);
+     return (x + ((y * x) / 3));
+     }
+   |}]
 ;;

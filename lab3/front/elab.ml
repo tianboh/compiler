@@ -1,34 +1,41 @@
-(* Notice the difference between CST and AST
-   * CST is basically transferred from source code literaly.
-   * AST add more structure statement unit based on CST, and it looks like a tree.
-   *
-   * Statement level benefit:
-   * To be specific, AST classify statement from CST into below
-   * 1) Asign(x,e)
-   * 2) if(e,s,s)
-   * 3) while(e,s)
-   * 4) return(e)
-   * 5) nop
-   * 6) seq(s,s)
-   * 7) declare(x,t,s)
-   * The obvious advantage is that we can handle variable namespace more efficiently.
-   * We can see if the use of x is in a declare statement. Notice that the use of x
-   * may be nested in many seq statement in declare(x,t,s).
-   * In addition, we will simplify for from CST to while statement in AST.
-   * This will reduce the Intermediate Representation.
-   *
-   * Expression level benefit:
-   * 1) logical operation && || ^ can be denoted in ternary expression, so IR does not
-   *    logical operation anymore.
-   * 2) <binop>= b can be simplified to a = a binop b
-   * This can simplify our work in IR level
-   * More details can be checked in
-   * https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf Page 5 and 6
-   *
-   * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
-*)
+(* 
+ * Notice the difference between CST and AST
+ * CST is basically transferred from source code literaly.
+ * AST add more structure statement unit based on CST, and it looks like a tree.
+ *
+ * Statement level benefit:
+ * To be specific, AST classify statement from CST into below
+ * 1) Asign(x,e)
+ * 2) if(e,s,s)
+ * 3) while(e,s)
+ * 4) return(e)
+ * 5) nop
+ * 6) seq(s,s)
+ * 7) declare(x,t,s)
+ * The obvious advantage is that we can handle variable namespace more efficiently.
+ * We can see if the use of x is in a declare statement. Notice that the use of x
+ * may be nested in many seq statement in declare(x,t,s).
+ * In addition, we will simplify for from CST to while statement in AST.
+ * This will reduce the Intermediate Representation.
+ *
+ * Expression level benefit:
+ * 1) logical operation && || ^ can be denoted in ternary expression, 
+ *    logical operation anymore.
+ * 2) <binop>= b can be simplified to a = a binop b
+ * This can simplify our work in IR level
+ * More details can be checked in
+ * https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf Page 5-6
+ *
+ * Function level elaboration is trivial because we don't do anything.
+ *
+ * In addition, we elaborate typedef to primitive data type(int, bool, void). 
+ * So AST datatype do not need to bother custom types.
+ *
+ * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
+ *)
 
 module Mark = Util.Mark
+module Symbol = Util.Symbol
 open Core
 
 let tc_errors : Util.Error_msg.t = Util.Error_msg.create ()
@@ -37,6 +44,16 @@ let error ~msg src_span =
   Util.Error_msg.error tc_errors src_span ~msg;
   raise Util.Error_msg.Error
 ;;
+
+(* cst type including custom type(int, bool, void, custom type) 
+ * to cst primitive type(int, bool, void) *)
+let ct2pt = ref Symbol.Map.empty
+
+(* Store declared and defined function names. 
+ * Do not record parameter type and return type.
+ * It is only used to check whether func name and 
+ * typedef name conflict or not. *)
+let func_env = ref Symbol.Set.empty
 
 (* 
  * CST exp -> AST exp
@@ -54,6 +71,8 @@ let rec elab_exp = function
   | Cst.Binop binop -> elab_binop binop.op binop.lhs binop.rhs
   | Cst.Unop unop -> elab_unop unop.op unop.operand
   | Cst.Terop terop -> elab_terop terop.cond terop.true_exp terop.false_exp
+  | Cst.Fcall fcall ->
+    Ast.Fcall { func_name = fcall.func_name; args = List.map fcall.args ~f:elab_mexp }
 
 (* CST mexp -> AST mexp *)
 and elab_mexp (cst_mexp : Cst.mexp) =
@@ -109,32 +128,45 @@ and elab_terop (cond : Cst.mexp) (true_exp : Cst.mexp) (false_exp : Cst.mexp) : 
   Ast.Terop { cond = cond_ast; true_exp = true_exp_ast; false_exp = false_exp_ast }
 ;;
 
-let elab_type = function
+let elab_ptype = function
   | Cst.Int -> Ast.Int
   | Cst.Bool -> Ast.Bool
+  | Cst.Void -> Ast.Void
+  | Cst.Ctype _ -> failwith "elab_ptype should only handle primitive types"
 ;;
 
-let rec elaborate_internal (cst : Cst.program) (acc : Ast.program) : Ast.program =
+let elab_type ctype =
+  let ptype =
+    match ctype with
+    | Cst.Int -> Cst.Int
+    | Cst.Bool -> Cst.Bool
+    | Cst.Void -> Cst.Void
+    | Cst.Ctype c -> Symbol.Map.find_exn !ct2pt c
+  in
+  elab_ptype ptype
+;;
+
+let rec elab_blk (cst : Cst.block) (acc : Ast.mstm) : Ast.mstm =
   match cst with
   | [] -> acc
   | h :: t ->
     let ast_head, cst_tail = elab_stm h t in
     let acc = Ast.Seq { head = acc; tail = ast_head } in
-    elaborate_internal cst_tail (Mark.naked acc)
+    elab_blk cst_tail (Mark.naked acc)
 
 (* Though we are elaborating current statement, the tail is required
  * during process because in some cases, like declare, we need the following 
  * context for AST unit. Also, we need to return the tail after process to 
- * avoid redo elaboration in elaborate_internal function.
+ * avoid redo elaboration in elab_blk function.
  *
  * Return: Elaborated AST statement from CST head and the remaining CST tail.
  *)
-and elab_stm (head : Cst.mstm) (tail : Cst.mstms) : Ast.program * Cst.program =
+and elab_stm (head : Cst.mstm) (tail : Cst.mstms) : Ast.mstm * Cst.block =
   let src_span = Mark.src_span head in
   match Util.Mark.data head with
   | Cst.Simp simp -> elab_simp simp src_span tail
   | Cst.Control ctl -> elab_control ctl src_span, tail
-  | Cst.Block blk -> elaborate_internal blk (Mark.naked Ast.Nop), tail
+  | Cst.Block blk -> elab_blk blk (Mark.naked Ast.Nop), tail
 
 (* simp: CST simp statement
  * src_span: location of simp in source code, thie will be marked to AST.
@@ -142,7 +174,7 @@ and elab_stm (head : Cst.mstm) (tail : Cst.mstms) : Ast.program * Cst.program =
  * tail: remaining CST statements to process
  * Return AST head and remaining CST tails *)
 and elab_simp (simp : Cst.simp) (src_span : Mark.src_span option) (tail : Cst.mstms)
-    : Ast.program * Cst.program
+    : Ast.mstm * Cst.block
   =
   match simp with
   | Cst.Declare decl -> elab_declare decl src_span tail
@@ -154,19 +186,25 @@ and elab_simp (simp : Cst.simp) (src_span : Mark.src_span option) (tail : Cst.ms
 and elab_declare (decl : Cst.decl) (src_span : Mark.src_span option) (tail : Cst.mstms) =
   match decl with
   | New_var var ->
-    let ast_tail = elaborate_internal tail (Mark.naked Ast.Nop) in
-    let decl_ast =
-      Ast.Declare { t = elab_type var.t; name = var.name; tail = ast_tail }
-    in
-    Mark.mark' decl_ast src_span, []
+    let ast_tail = elab_blk tail (Mark.naked Ast.Nop) in
+    if Symbol.Map.mem !ct2pt var.name
+    then error None ~msg:"decl var name conflict with typedef name"
+    else (
+      let decl_ast =
+        Ast.Declare { t = elab_type var.t; name = var.name; tail = ast_tail }
+      in
+      Mark.mark' decl_ast src_span, [])
   | Init init ->
-    let ast_tail = elaborate_internal tail (Mark.naked Ast.Nop) in
-    let assign = Ast.Assign { name = init.name; value = elab_mexp init.value } in
-    let seq = Ast.Seq { head = Mark.mark' assign src_span; tail = ast_tail } in
-    let decl_ast =
-      Ast.Declare { t = elab_type init.t; name = init.name; tail = Mark.naked seq }
-    in
-    Mark.mark' decl_ast src_span, []
+    let ast_tail = elab_blk tail (Mark.naked Ast.Nop) in
+    if Symbol.Map.mem !ct2pt init.name
+    then error None ~msg:"init var name conflict with typedef name"
+    else (
+      let assign = Ast.Assign { name = init.name; value = elab_mexp init.value } in
+      let seq = Ast.Seq { head = Mark.mark' assign src_span; tail = ast_tail } in
+      let decl_ast =
+        Ast.Declare { t = elab_type init.t; name = init.name; tail = Mark.naked seq }
+      in
+      Mark.mark' decl_ast src_span, [])
 
 (* Return: AST statement. *)
 and elab_control ctl (src_span : Mark.src_span option) =
@@ -215,15 +253,97 @@ and elab_control ctl (src_span : Mark.src_span option) =
         let cst_program =
           [ init_cst; Mark.mark' (Cst.Control while_cst) src_span_body ]
         in
-        elaborate_internal cst_program (Mark.naked Ast.Nop)
+        elab_blk cst_program (Mark.naked Ast.Nop)
     in
     for_ast
   | Return ret ->
-    let src_span_ret = Mark.src_span ret in
-    let ret_ast = Mark.mark' (Ast.Return (elab_mexp ret)) src_span_ret in
-    ret_ast
+    (match ret with
+    | Some ret ->
+      let src_span_ret = Mark.src_span ret in
+      let e_ast = elab_mexp ret in
+      let ret_ast = Mark.mark' (Ast.Return (Some e_ast)) src_span_ret in
+      ret_ast
+    | None -> Mark.naked (Ast.Return None))
+  | Assert e ->
+    let src_span = Mark.src_span e in
+    let e_ast = elab_mexp e in
+    let assert_ast = Ast.Assert e_ast in
+    Mark.mark' assert_ast src_span
 ;;
 
-let elaborate (cst : Cst.program) : Ast.program =
-  elaborate_internal cst (Mark.naked Ast.Nop)
+let elab_param (param : Cst.param) : Ast.param = { t = elab_type param.t; i = param.i }
+
+let elab_fdecl ret_type func_name par_type =
+  func_env := Symbol.Set.add !func_env func_name;
+  if Symbol.Map.mem !ct2pt func_name
+  then error None ~msg:"decl func name conflict with typename"
+  else
+    Ast.Fdecl
+      { ret_type = elab_type ret_type; func_name; pars = List.map par_type ~f:elab_param }
 ;;
+
+let _elab_fdefn (pars : Cst.param list) (blk : Cst.block) =
+  let body = elab_blk blk (Mark.naked Ast.Nop) in
+  let rec helper (params : Cst.param list) =
+    match params with
+    | [] -> body
+    | h :: t ->
+      let tail = helper t in
+      Mark.naked (Ast.Declare { t = elab_type h.t; name = h.i; tail })
+  in
+  helper pars
+;;
+
+(* We explicitly add declare of parameters at the beginning of function definition body
+ * This aim to make following analysis and transformation easier *)
+let elab_fdefn (ret_type : Cst.dtype) (func_name : Symbol.t) par_type blk =
+  func_env := Symbol.Set.add !func_env func_name;
+  if Symbol.Map.mem !ct2pt func_name
+  then error None ~msg:"defn func name conflict with typename"
+  else
+    Ast.Fdefn
+      { ret_type = elab_type ret_type
+      ; func_name
+      ; pars = List.map par_type ~f:elab_param
+      ; blk = _elab_fdefn par_type blk
+      }
+;;
+
+(* Rules to follow
+ * 1) cannot collid with names of function or variable
+ * 2) The name of a defined type is visible after its definition. 
+ * Type names may be defined only once *)
+let elab_typedef t t_var =
+  let env' = !ct2pt in
+  let dest_type =
+    match t with
+    | Cst.Ctype s -> Symbol.Map.find_exn env' s
+    | Cst.Int -> Cst.Int
+    | Cst.Bool -> Cst.Bool
+    | Cst.Void -> Cst.Void
+  in
+  if Symbol.Set.mem !func_env t_var
+  then error None ~msg:"type name already exist"
+  else (
+    let env' =
+      match Symbol.Map.add env' ~key:t_var ~data:dest_type with
+      | `Duplicate -> error None ~msg:"type name already exist"
+      | `Ok s -> s
+    in
+    ct2pt := env';
+    Ast.Typedef { t = elab_type t; t_var })
+;;
+
+let rec elab (cst : Cst.program) (acc : Ast.program) : Ast.program =
+  match cst with
+  | [] -> List.rev acc
+  | h :: t ->
+    (match h with
+    | Cst.Fdecl fdecl ->
+      elab t (elab_fdecl fdecl.ret_type fdecl.func_name fdecl.par_type :: acc)
+    | Cst.Fdefn fdenf ->
+      elab t (elab_fdefn fdenf.ret_type fdenf.func_name fdenf.par_type fdenf.blk :: acc)
+    | Cst.Typedef typedef -> elab t (elab_typedef typedef.t typedef.t_var :: acc))
+;;
+
+let elaborate (cst : Cst.program) : Ast.program = elab cst []

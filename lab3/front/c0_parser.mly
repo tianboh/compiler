@@ -1,7 +1,8 @@
 %{
-(* L2 Compiler
- * L2 grammar
- * Author: Tianbo Hao, Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
+(* L3 Compiler
+ * L3 grammar
+ *
+ * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  *
  * Modified: Anand Subramanian <asubrama@andrew.cmu.edu> Fall 2010
@@ -16,6 +17,9 @@
  * Modified: Nick Roberts <nroberts@alumni.cmu.edu>
  *   - Update to use menhir instead of ocamlyacc.
  *   - Improve presentation of marked Csts.
+ *
+ * Modified: Tianbo Hao  May 2023 
+ *   - Provide L3 grammar.
  *
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  *)
@@ -60,8 +64,6 @@ let expand_postop lhs op
         rhs = Mark.naked (Cst.Const_int Int32.one);
       } in
       Cst.Assign {name = Mark.data id; value = mark binop start_pos start_pos}
-
-
 %}
 
 (* Variable name *)
@@ -69,18 +71,20 @@ let expand_postop lhs op
 (* Data type  *) 
 %token Int
 %token Bool
+%token Void
 (* Data type values *)
 %token <Int32.t> Dec_const
 %token <Int32.t> Hex_const
 %token True
 %token False
 (* Keywords *)
-%token Main
 %token If
 %token Else
 %token While
 %token For
 %token Return
+%token Typedef
+%token Assert
 (* Special characters *)
 %token L_brace R_brace
 %token L_paren R_paren
@@ -114,8 +118,8 @@ let expand_postop lhs op
 
 (*
  * Operation declared before has lower precedence. Check 
- * https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf
- * for detailed operation precedence in L2 grammar.
+ * https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab3.pdf
+ * for detailed operation precedence in L3 grammar.
  *)
 %right Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq And_eq Or_eq Hat_eq Left_shift_eq Right_shift_eq
 %right Question_mark Colon
@@ -133,41 +137,43 @@ let expand_postop lhs op
 
 %start program
 
-(* It's only necessary to provide the type of the start rule,
- * but it can improve the quality of parser type errors to annotate
- * the types of other rules.
- *
- * The way we organize below types is based on the grammer
- * Check https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf
- * Page 3 for more details.
- *
- *)
-%type <Cst.block> program
-%type <Cst.block> block
-%type <Cst.dtype> dtype
-%type <Cst.decl> decl
-// %type <Cst.stms> stms
-%type <Cst.stm> stm
-%type <Cst.mstms> mstms
-%type <Cst.simp> simp
-%type <Symbol.t> lvalue
-%type <Cst.control> control
-%type <Cst.exp> exp
-%type <Core.Int32.t> int_const
-%type <Cst.binop option> asnop
-%type <Cst.binop> binop
-%type <Cst.unop> unop
-%type <Cst.postop> postop
+%type <Cst.program> program
 
 %%
 
 program :
-  | Int;
-    Main;
-    L_paren R_paren;
-    block = block
-    Eof;
-      { block }
+  | Eof;
+      { [] }
+  | gdecl = gdecl; prog = program;
+      { gdecl :: prog }
+  ;
+
+gdecl :
+  | ret_type = dtype; fun_name = Ident; pars = param_list; Semicolon;
+      { Cst.Fdecl {ret_type = ret_type; func_name = fun_name; par_type = pars} }
+  | ret_type = dtype; fun_name = Ident; pars = param_list; blk = block;
+      { Cst.Fdefn {ret_type = ret_type; func_name = fun_name; par_type = pars; blk = blk} }
+  | Typedef; t = dtype; var = Ident; Semicolon
+      { Cst.Typedef {t = t; t_var = var} }
+  ;
+
+param : 
+  | t = dtype; var = Ident;
+      { {t = t; i = var} : Cst.param }
+  ;
+
+param_list_follow:
+  | 
+      { [] }
+  | Semicolon; par = param; pars = param_list_follow;
+      { par :: pars }
+  ;
+
+param_list : 
+  | L_paren; R_paren;
+      { [] }
+  | L_paren; par = param; pars = param_list_follow ; R_paren;
+      { par :: pars }
   ;
 
 block : 
@@ -175,6 +181,7 @@ block :
      body = mstms;
      R_brace;
       { body }
+  ;
 
 (* This higher-order rule produces a marked result of whatever the
  * rule passed as argument will produce.
@@ -192,20 +199,16 @@ dtype :
       { Cst.Int }
   | Bool;
       { Cst.Bool }
+  | Void;
+      { Cst.Void }
+  | ident = Ident;
+      { Cst.Ctype ident }
 
 decl :
   | t = dtype; ident = Ident;
       { Cst.New_var { t = t; name = ident } }
   | t = dtype; ident = Ident; Assign; e = m(exp);
       { Cst.Init { t = t; name = ident; value = e } }
-  | Int; Main;
-      { Cst.New_var {t = Int; name = Symbol.symbol "main"} }
-  | Int; Main; Assign; e = m(exp);
-      { Cst.Init {t = Int; name = Symbol.symbol "main"; value = e} }
-  | Bool; Main;
-      { Cst.New_var {t = Bool; name = Symbol.symbol "main"} }
-  | Bool; Main; Assign; e = m(exp);
-      { Cst.Init {t = Bool; name = Symbol.symbol "main"; value = e} }
   ;
 
 mstms :
@@ -239,37 +242,39 @@ simp :
 lvalue :
   | ident = Ident;
       { ident }
-  | Main;
-      { Symbol.symbol "main" }
   | L_paren; lhs = lvalue; R_paren;
       { lhs }
   ;
 
+simpopt : 
+  |
+      { None }
+  | simp_ = m(simp);
+      { Some simp_ }
+
+elseopt : 
+  | 
+      { None }
+  | else_ = m(stm);
+      { Some else_ }
+
 control : 
-  | If; L_paren; e = m(exp); R_paren; s = m(stm);
-      { Cst.If {cond = e; true_stm = s; false_stm = None} }
-  | If; L_paren; e = m(exp); R_paren; true_stm = m(stm); Else; false_stm = m(stm);
-      { Cst.If {cond = e; true_stm = true_stm; false_stm = Some false_stm} }
+  | If; L_paren; e = m(exp); R_paren; true_stm = m(stm); Else; false_stm = elseopt;
+      { Cst.If {cond = e; true_stm = true_stm; false_stm = false_stm} }
   | While; L_paren; e = m(exp); R_paren; s = m(stm);
       { Cst.While {cond = e; body = s} }
-  | For; L_paren; Semicolon; e = m(exp); Semicolon; R_paren; s = m(stm);
-      { Cst.For {init = None; cond = e; iter = None; body = s} }
-  | For; L_paren; init = m(simp); Semicolon; e = m(exp); Semicolon; R_paren; s = m(stm);
-      { Cst.For {init = Some init; cond = e; iter = None; body = s} }
-  | For; L_paren; Semicolon; e = m(exp); Semicolon; iter = m(simp); R_paren; s = m(stm);
-      { Cst.For {init = None; cond = e; iter = Some iter; body = s} }
-  | For; L_paren; init = m(simp); Semicolon; e = m(exp); Semicolon; iter = m(simp); R_paren; s = m(stm);
-      { Cst.For {init = Some init; cond = e; iter = Some iter; body = s} }
-  | Return; e = m(exp); Semicolon;
+  | For; L_paren; init = simpopt; Semicolon; e = m(exp); Semicolon; iter = simpopt; R_paren; s = m(stm);
+         { Cst.For {init = init; cond = e; iter = iter; body = s} }
+  | Return; e = expopt; Semicolon;
       { Cst.Return e }
+  | Assert; e = m(exp); Semicolon;
+      { Cst.Assert e }
 
 exp :
   | L_paren; e = exp; R_paren;
     { e }
   | c = int_const;
     { Cst.Const_int c }
-  | Main;
-    { Cst.Var (Symbol.symbol "main") }
   | True;
     { Cst.True }
   | False;
@@ -290,7 +295,27 @@ exp :
     { Cst.Unop {op = Cst.Dash_mark; operand = e; } }
   | cond = m(exp); Question_mark; true_exp = m(exp); Colon; false_exp = m(exp);
     { Cst.Terop {cond = cond; true_exp = true_exp; false_exp = false_exp} }
+  | fname = Ident; arg_list = arg_list;
+    { Cst.Fcall {func_name = fname; args = arg_list} }
   ;
+
+arg_list : 
+  | L_paren; R_paren;
+    { [] }
+  | L_paren; e = m(exp); arg_list_follow = arg_list_follow ; R_paren;
+    { e :: arg_list_follow }
+
+arg_list_follow : 
+  |
+      { [] }
+  | Semicolon; e = m(exp); arg_list_follow = arg_list_follow;
+      { e :: arg_list_follow }
+  
+expopt :
+  | 
+    { None }
+  | e = m(exp)
+    { Some e }
 
 int_const :
   | c = Dec_const;
