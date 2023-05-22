@@ -156,11 +156,11 @@ let compile (cmd : cmd_line_args) : unit =
   let ir_ssa = Middle.Ssa.run ir in
   (* Okay, this is a hack, we will provide more comprehensive handling in lab3. 
    * TODO: fix it! *)
-  say_if cmd.dump_ir (fun () -> Tree.Print.pp_stms ir);
+  say_if cmd.dump_ir (fun () -> Tree.Print.pp_stms ir_ssa);
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
-  let assem_ps_ssa = Middle.Gen.gen ir_ssa in
+  let assem_ps_ssa = Middle.Gen.gen ir in
   (* let assem_ps_ssa = Codegen.Optimize.optimize assem_ps_ssa in *)
   (* let () = Codegen.Gen.Pseudo.print_insts assem_ps_ssa in *)
   (* let stop = Unix.gettimeofday () in *)

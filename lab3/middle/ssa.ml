@@ -12,24 +12,25 @@ open Core
 module T = Tree
 module D = Dominator
 module Temp = Var.Temp
+module Label = Util.Label
 
 (* dest = phi(src1, ..., srcn). Since dest and src may change
  * during rename procedure, we keep track of the original dest
  * name for each phi.
- * src is a hashmap from predecessor k to its subscript.
+ * src is a hashmap from predecessor k to its label.
  * key: predecessor block number k, value: current subscript for k *)
 type phi =
   { name : Temp.t
   ; dest : Temp.t
-  ; src : Temp.t option Int.Map.t
+  ; src : Temp.t option Label.Map.t
   }
 
 (* SSA block extends phi list based on dominator block *)
 type ssa_block =
   { phis : phi list
   ; body : T.stm list
-  ; no : int
-  ; succ : Int.Set.t
+  ; label : Label.t
+  ; succ : Label.Set.t
   }
 
 (* environment for rename.
@@ -43,6 +44,9 @@ type env =
   ; root : Temp.t Temp.Map.t
   }
 
+let exit = Dominator.exit
+let entry = Dominator.entry
+
 module type PRINT = sig
   val pp_phi : phi -> unit
   val pp_phis : phi list -> unit
@@ -53,9 +57,10 @@ end
 module Print : PRINT = struct
   let pp_phi phi =
     let src_l =
-      Int.Map.fold phi.src ~init:[] ~f:(fun ~key:k ~data:d acc ->
+      Label.Map.fold phi.src ~init:[] ~f:(fun ~key:k ~data:d acc ->
           match d with
-          | None -> sprintf "operand from parent %d not assigned yet" k :: acc
+          | None ->
+            sprintf "operand from parent %s not assigned yet" (Label.name k) :: acc
           | Some s -> Temp.name s :: acc)
     in
     printf
@@ -97,18 +102,18 @@ let update_root env old_temp new_temp =
   { env with root = Temp.Map.set env.root ~key:new_temp ~data:original_root }
 ;;
 
-let build_ssa_block (blk_map : D.block Int.Map.t) : ssa_block Int.Map.t =
-  Int.Map.map blk_map ~f:(fun blk ->
-      { phis = []; body = blk.body; no = blk.no; succ = blk.succ })
+let build_ssa_block (blk_map : D.block Label.Map.t) : ssa_block Label.Map.t =
+  Label.Map.map blk_map ~f:(fun blk ->
+      { phis = []; body = blk.body; label = blk.label; succ = blk.succ })
 ;;
 
 let get_blk_defsite_helper defsites dest blk_no =
   let sites =
     match Temp.Map.find defsites dest with
-    | None -> Int.Set.empty
+    | None -> Label.Set.empty
     | Some s -> s
   in
-  let sites = Int.Set.add sites blk_no in
+  let sites = Label.Set.add sites blk_no in
   let defsites = Temp.Map.set defsites ~key:dest ~data:sites in
   defsites
 ;;
@@ -132,14 +137,14 @@ let rec _get_defsites blks defsites =
   match blks with
   | [] -> defsites
   | blk :: t ->
-    let defsites = get_blk_defsite blk.no blk.body defsites in
+    let defsites = get_blk_defsite blk.label blk.body defsites in
     _get_defsites t defsites
 ;;
 
-(* hashmap from Temp -> Int.Set
+(* hashmap from Temp -> Label.Set
  * key: temp, value: blk number set that defines this temp *)
 let get_defsites blk_map =
-  let blks = Int.Map.data blk_map in
+  let blks = Label.Map.data blk_map in
   let defsites = Temp.Map.empty in
   _get_defsites blks defsites
 ;;
@@ -148,39 +153,51 @@ let get_defsites blk_map =
  * return updated acc_blk_map after insertion.
  * Also return updated def_list if this node didn't
  * define temp before. *)
-let rec insert_df (temp : Temp.t) df_map df_list acc_blk_map acc_new_def_site pred_map blk
-    : ssa_block Int.Map.t * int list
+let rec insert_df
+    (temp : Temp.t)
+    df_map
+    df_list
+    acc_blk_map
+    (acc_new_def_site : Label.t list)
+    pred_map
+    blk
+    : ssa_block Label.Map.t * Label.t list
   =
   match df_list with
   | [] -> acc_blk_map, acc_new_def_site
   | h :: t ->
-    let blk_df = Int.Map.find_exn acc_blk_map h in
+    let blk_df = Label.Map.find_exn acc_blk_map h in
     let phis_dest = List.map blk_df.phis ~f:(fun phi -> phi.dest) in
     if List.mem phis_dest temp ~equal:phys_equal
     then insert_df temp df_map t acc_blk_map acc_new_def_site pred_map blk
     else (
       let dest = temp in
-      let preds = Int.Map.find_exn pred_map blk_df.no in
+      let preds = Label.Map.find_exn pred_map blk_df.label in
       let src =
-        Int.Set.fold preds ~init:Int.Map.empty ~f:(fun acc pred ->
-            Int.Map.set acc ~key:pred ~data:None)
+        Label.Set.fold preds ~init:Label.Map.empty ~f:(fun acc pred ->
+            Label.Map.set acc ~key:pred ~data:None)
       in
       let new_phi = { name = dest; src; dest } in
       let blk_df = { blk_df with phis = new_phi :: blk_df.phis } in
-      let acc_blk_map = Int.Map.set acc_blk_map ~key:blk_df.no ~data:blk_df in
-      let acc_new_def_site = blk_df.no :: acc_new_def_site in
+      let acc_blk_map = Label.Map.set acc_blk_map ~key:blk_df.label ~data:blk_df in
+      let acc_new_def_site = blk_df.label :: acc_new_def_site in
       insert_df temp df_map t acc_blk_map acc_new_def_site pred_map blk)
 ;;
 
 (* insert phi for temp whose defsites is def_list *)
-let rec insert_temp (temp : Temp.t) (def_list : int list) df_map acc_blk_map pred_map
-    : ssa_block Int.Map.t
+let rec insert_temp
+    (temp : Temp.t)
+    (def_list : Label.t list)
+    df_map
+    (acc_blk_map : ssa_block Label.Map.t)
+    (pred_map : Label.Set.t Label.Map.t)
+    : ssa_block Label.Map.t
   =
   match def_list with
   | [] -> acc_blk_map
   | h :: t ->
-    let blk = Int.Map.find_exn acc_blk_map h in
-    let df_list = Int.Set.to_list (Int.Map.find_exn df_map blk.no) in
+    let blk = Label.Map.find_exn acc_blk_map h in
+    let df_list = Label.Set.to_list (Label.Map.find_exn df_map blk.label) in
     let acc_blk_map, new_def_list_of_blk =
       insert_df temp df_map df_list acc_blk_map [] pred_map blk
     in
@@ -191,7 +208,7 @@ let rec insert_temp (temp : Temp.t) (def_list : int list) df_map acc_blk_map pre
 (* insert phi function to each dominance frontier *)
 let insert blk_map defsites df pred_map =
   Temp.Map.fold defsites ~init:blk_map ~f:(fun ~key:temp ~data:defs acc_blk_map ->
-      let defs_l = Int.Set.to_list defs in
+      let defs_l = Label.Set.to_list defs in
       insert_temp temp defs_l df acc_blk_map pred_map)
 ;;
 
@@ -345,7 +362,7 @@ let cleanup_bb (blk : ssa_block) (env : env) : env =
   cleanup_body blk.body env
 ;;
 
-let _rename_phi_operand (pred_branch : int) phi env : phi =
+let _rename_phi_operand (pred_branch : Label.t) phi env : phi =
   let temp, src = phi.name, phi.src in
   if Temp.Map.mem env.stack temp
   then (
@@ -354,48 +371,48 @@ let _rename_phi_operand (pred_branch : int) phi env : phi =
       | None -> None
       | Some s -> Some s
     in
-    let src = Int.Map.set src ~key:pred_branch ~data:operand in
+    let src = Label.Map.set src ~key:pred_branch ~data:operand in
     { phi with src })
   else phi
 ;;
 
 (* rename phi function operand in successors of a parent *)
-let rec _rename_succ parent children env blk_map =
+let rec _rename_succ (parent : Label.t) children env blk_map =
   match children with
   | [] -> blk_map
   | h :: t ->
     (* printf "=rename succ %d of par %d\n" h parent; *)
-    let blk_child = Int.Map.find_exn blk_map h in
+    let blk_child = Label.Map.find_exn blk_map h in
     let phis = blk_child.phis in
     let phis = List.map phis ~f:(fun phi -> _rename_phi_operand parent phi env) in
     let blk_child = { blk_child with phis } in
-    let blk_map = Int.Map.set blk_map ~key:h ~data:blk_child in
+    let blk_map = Label.Map.set blk_map ~key:h ~data:blk_child in
     (* Print.pp_phis phis; *)
     _rename_succ parent t env blk_map
 ;;
 
 (* rename block blk, and update phi function in its successors.
  * then rename its children in D-Tree recursively. *)
-let rec _rename blk blk_map env dt =
-  match blk.no with
-  | -1 -> blk_map, env
+let[@warning "-27-11"] rec _rename (blk : ssa_block) blk_map env dt =
+  match blk.label with
+  | exit -> blk_map, env
   | _ ->
     (* printf "==rename block %d\n" blk.no; *)
     let phis_new, env_new = rename_phis blk.phis env [] in
     let body_new, env_new = rename_bb blk.body [] env_new in
     let blk_new = { blk with body = body_new; phis = phis_new } in
-    let blk_map = Int.Map.set blk_map ~key:blk_new.no ~data:blk_new in
-    let succs = Int.Set.to_list blk_new.succ in
-    let blk_map = _rename_succ blk_new.no succs env_new blk_map in
+    let blk_map = Label.Map.set blk_map ~key:blk_new.label ~data:blk_new in
+    let succs = Label.Set.to_list blk_new.succ in
+    let blk_map = _rename_succ blk_new.label succs env_new blk_map in
     let children =
-      match Int.Map.find dt blk_new.no with
+      match Label.Map.find dt blk_new.label with
       | Some s -> s
-      | None -> Int.Set.empty
+      | None -> Label.Set.empty
     in
     let blk_map, env_new =
-      Int.Set.fold children ~init:(blk_map, env_new) ~f:(fun acc child ->
+      Label.Set.fold children ~init:(blk_map, env_new) ~f:(fun acc child ->
           let blk_map_acc, env_acc = acc in
-          let child_blk = Int.Map.find_exn blk_map_acc child in
+          let child_blk = Label.Map.find_exn blk_map_acc child in
           _rename child_blk blk_map_acc env_acc dt)
     in
     (* printf "start clenaup for block %d\n" blk.no; *)
@@ -408,19 +425,19 @@ let rec _rename blk blk_map env dt =
 let rename blk_map dt =
   let env = { stack = Temp.Map.empty; root = Temp.Map.empty } in
   (* let env = init_env env (Int.Map.data blk_map) in *)
-  let entry = Int.Map.find_exn blk_map (-2) in
+  let entry = Label.Map.find_exn blk_map entry in
   _rename entry blk_map env dt
 ;;
 
-let rec _decompose_blk phis (tail_map : T.stm list Int.Map.t) =
+let rec _decompose_blk phis (tail_map : T.stm list Label.Map.t) =
   match phis with
   | [] -> tail_map
   | phi :: t ->
     let dest = phi.dest in
     let tail_map =
-      Int.Map.fold phi.src ~init:tail_map ~f:(fun ~key:pred ~data:operand acc ->
+      Label.Map.fold phi.src ~init:tail_map ~f:(fun ~key:pred ~data:operand acc ->
           let old_tail =
-            match Int.Map.find acc pred with
+            match Label.Map.find acc pred with
             | None -> []
             | Some s -> s
           in
@@ -428,7 +445,7 @@ let rec _decompose_blk phis (tail_map : T.stm list Int.Map.t) =
           | None -> acc
           | Some src ->
             let new_tail = T.Move { dest; src = T.Temp src } :: old_tail in
-            Int.Map.set acc ~key:pred ~data:new_tail)
+            Label.Map.set acc ~key:pred ~data:new_tail)
     in
     _decompose_blk t tail_map
 ;;
@@ -448,16 +465,16 @@ let rec concat_tail_move (body : T.stm list) (moves : T.stm list) (res : T.stm l
 
 (* Remove phi function by adding tail_map statements to block*)
 let to_dblock ssa_blk_map tail_map =
-  let dblk_map = Int.Map.empty in
+  let dblk_map = Label.Map.empty in
   let ret =
-    Int.Map.fold ssa_blk_map ~init:dblk_map ~f:(fun ~key:blk_no ~data:ssa_blk acc ->
+    Label.Map.fold ssa_blk_map ~init:dblk_map ~f:(fun ~key:blk_label ~data:ssa_blk acc ->
         let body =
-          match Int.Map.find tail_map blk_no with
+          match Label.Map.find tail_map blk_label with
           | None -> ssa_blk.body
           | Some s -> concat_tail_move ssa_blk.body s []
         in
-        let dblk = ({ body; no = ssa_blk.no; succ = ssa_blk.succ } : D.block) in
-        Int.Map.set acc ~key:blk_no ~data:dblk)
+        let dblk = ({ body; label = ssa_blk.label; succ = ssa_blk.succ } : D.block) in
+        Label.Map.set acc ~key:blk_label ~data:dblk)
   in
   (* Dominator.Print.pp_blk ret; *)
   ret
@@ -480,8 +497,8 @@ let rec _decompose blks pred_map tail_map =
  * phi function in ssa_block. Add move statement 
  * at the end of each block's predecessor. *)
 let decompose ssa_blk_map pred_map =
-  let tail_map = Int.Map.empty in
-  let blks = Int.Map.data ssa_blk_map in
+  let tail_map = Label.Map.empty in
+  let blks = Label.Map.data ssa_blk_map in
   let tail_map = _decompose blks pred_map tail_map in
   let blk_map = to_dblock ssa_blk_map tail_map in
   blk_map
@@ -492,6 +509,7 @@ let decompose ssa_blk_map pred_map =
  * pred_map: predecesor map, block_number -> block_number set
  * blk_map: block number -> block *)
 let run (program : T.stm list) : T.stm list =
+  (* printf "ssa run\n"; *)
   let df, dt, pred_map, blk_map = Dominator.run program in
   let ssa_blk_map = build_ssa_block blk_map in
   (* printf "build_ssa_block\n";
@@ -507,7 +525,7 @@ let run (program : T.stm list) : T.stm list =
   Print.pp_blk ssa_blk_map; *)
   let blk_map = decompose ssa_blk_map pred_map in
   (* Dominator.Print.pp_blk blk_map; *)
-  let blks = Int.Map.to_alist ~key_order:`Increasing blk_map in
+  let blks = Label.Map.to_alist ~key_order:`Increasing blk_map in
   List.fold blks ~init:[] ~f:(fun acc blk_tuple ->
       let _, blk = blk_tuple in
       acc @ blk.body)
