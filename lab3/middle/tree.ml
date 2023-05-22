@@ -52,7 +52,6 @@ type binop =
   | Less_eq
   | Not_eq
 
-(* Expression that does not incure side-effect *)
 type exp =
   | Const of Int32.t
   | Temp of Temp.t
@@ -73,6 +72,11 @@ and stm =
       ; op : binop
       ; rhs : exp
       }
+  | Fcall of
+      { dest : Temp.t
+      ; func_name : Symbol.t
+      ; args : exp list
+      }
   | Return of exp
   | Jump of Label.t
   | CJump of
@@ -86,13 +90,21 @@ and stm =
       }
   | Label of Label.t
   | Nop
+  | Assert of exp
 
-type program = stm list
+type fdefn =
+  { func_name : Symbol.t
+  ; temps : Temp.t list
+  ; body : stm list
+  }
+
+type program = fdefn list
 
 module type PRINT = sig
   val pp_exp : exp -> string
   val pp_stm : stm -> string
   val pp_stms : stm list -> string
+  val pp_fdefn : fdefn -> string
   val pp_program : program -> string
 end
 
@@ -133,6 +145,11 @@ module Print : PRINT = struct
         (pp_exp eft.lhs)
         (pp_binop eft.op)
         (pp_exp eft.rhs)
+    | Fcall c ->
+      let dest = Temp.name c.dest in
+      let func_name = Symbol.name c.func_name in
+      let args = List.map (fun arg -> pp_exp arg) c.args |> String.concat ", " in
+      sprintf "%s <- %s(%s)" dest func_name args
     | Return e -> "return " ^ pp_exp e ^ "\n"
     | Jump j -> "jump " ^ Label.name j ^ "\n"
     | CJump cj ->
@@ -145,10 +162,21 @@ module Print : PRINT = struct
         (Label.name cj.target_false)
     | Label l -> Label.content l ^ "\n"
     | Nop -> "nop" ^ "\n"
+    | Assert asrt -> sprintf "assert(%s)\n" (pp_exp asrt)
 
   and pp_stms (stms : stm list) =
-    List.map (fun stm -> pp_stm stm) stms |> String.concat "  "
+    List.map (fun stm -> pp_stm stm) stms |> String.concat "\n"
   ;;
 
-  let pp_program program = pp_stms program
+  let pp_fdefn fdefn =
+    let func_name = Symbol.name fdefn.func_name in
+    let pars_str =
+      List.map (fun temp -> Temp.name temp) fdefn.temps |> String.concat ", "
+    in
+    sprintf "%s(%s)\n" func_name pars_str ^ pp_stms fdefn.body
+  ;;
+
+  let pp_program program =
+    List.map (fun fdefn -> pp_fdefn fdefn) program |> String.concat "\n"
+  ;;
 end

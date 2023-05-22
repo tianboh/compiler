@@ -75,11 +75,11 @@ module Print : PRINT = struct
   let pp_blk (blk_map : ssa_block Int.Map.t) =
     let keys = Int.Map.keys blk_map in
     let sorted_key = List.sort keys ~compare:Int.compare in
-    List.iter sorted_key ~f:(fun blk_no ->
-        let blk = Int.Map.find_exn blk_map blk_no in
-        printf "block %d\n" blk_no;
+    List.iter sorted_key ~f:(fun blk_label ->
+        let blk = Int.Map.find_exn blk_map blk_label in
+        printf "block %d\n" blk_label;
         pp_phis blk.phis;
-        printf "%s\n" (T.Print.pp_program blk.body))
+        printf "%s\n" (T.Print.pp_stms blk.body))
   ;;
 
   let pp_env env =
@@ -107,30 +107,33 @@ let build_ssa_block (blk_map : D.block Label.Map.t) : ssa_block Label.Map.t =
       { phis = []; body = blk.body; label = blk.label; succ = blk.succ })
 ;;
 
-let get_blk_defsite_helper defsites dest blk_no =
+let get_blk_defsite_helper defsites dest blk_label =
   let sites =
     match Temp.Map.find defsites dest with
     | None -> Label.Set.empty
     | Some s -> s
   in
-  let sites = Label.Set.add sites blk_no in
+  let sites = Label.Set.add sites blk_label in
   let defsites = Temp.Map.set defsites ~key:dest ~data:sites in
   defsites
 ;;
 
-let rec get_blk_defsite blk_no (stms : T.stm list) defsites =
+let rec get_blk_defsite blk_label (stms : T.stm list) defsites =
   match stms with
   | [] -> defsites
   | stm :: t ->
     (match stm with
     | T.Move move ->
-      let defsites = get_blk_defsite_helper defsites move.dest blk_no in
-      get_blk_defsite blk_no t defsites
+      let defsites = get_blk_defsite_helper defsites move.dest blk_label in
+      get_blk_defsite blk_label t defsites
     | T.Effect eft ->
-      let defsites = get_blk_defsite_helper defsites eft.dest blk_no in
-      get_blk_defsite blk_no t defsites
-    | T.Return _ | T.Jump _ | T.CJump _ | T.Label _ | T.Nop ->
-      get_blk_defsite blk_no t defsites)
+      let defsites = get_blk_defsite_helper defsites eft.dest blk_label in
+      get_blk_defsite blk_label t defsites
+    | T.Fcall fcall ->
+      let defsites = get_blk_defsite_helper defsites fcall.dest blk_label in
+      get_blk_defsite blk_label t defsites
+    | T.Return _ | T.Jump _ | T.CJump _ | T.Label _ | T.Nop | T.Assert _ ->
+      get_blk_defsite blk_label t defsites)
 ;;
 
 let rec _get_defsites blks defsites =
@@ -240,6 +243,12 @@ and rename_use (stm : T.stm) env : T.stm =
     let lhs_new = rename_exp eft.lhs env in
     let rhs_new = rename_exp eft.rhs env in
     Effect { eft with lhs = lhs_new; rhs = rhs_new }
+  | Fcall fcall ->
+    let args = List.map fcall.args ~f:(fun arg -> rename_exp arg env) in
+    Fcall { fcall with args }
+  | Assert asrt ->
+    let asrt = rename_exp asrt env in
+    Assert asrt
   | Return ret ->
     let ret_new = rename_exp ret env in
     Return ret_new
@@ -276,6 +285,12 @@ and rename_def (stm : T.stm) (env : env) : T.stm * env =
     (* printf "rename_eft def from %s to %s\n" (Temp.name eft.dest) (Temp.name dest_new); *)
     let eft = T.Effect { eft with dest = dest_new } in
     eft, env
+  | Fcall fcall ->
+    let dest_new, env = rename_def_helper fcall.dest env in
+    (* printf "rename_eft def from %s to %s\n" (Temp.name eft.dest) (Temp.name dest_new); *)
+    let eft = T.Fcall { fcall with dest = dest_new } in
+    eft, env
+  | Assert asrt -> Assert asrt, env
   | Return ret -> Return ret, env
   | Jump jp -> Jump jp, env
   | CJump cjp -> CJump cjp, env
@@ -349,7 +364,11 @@ let cleanup_bb (blk : ssa_block) (env : env) : env =
         let name = Temp.Map.find_exn env.root eft.dest in
         let env = cleanup_temp name eft.dest env in
         cleanup_body t env
-      | Return _ | Jump _ | CJump _ | Label _ | Nop -> cleanup_body t env)
+      | Fcall fcall ->
+        let name = Temp.Map.find_exn env.root fcall.dest in
+        let env = cleanup_temp name fcall.dest env in
+        cleanup_body t env
+      | Return _ | Jump _ | CJump _ | Label _ | Nop | Assert _ -> cleanup_body t env)
   in
   let rec cleanup_phi (phis : phi list) (env : env) : env =
     match phis with
