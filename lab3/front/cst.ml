@@ -1,38 +1,18 @@
-(* L2 Compiler
+(* L3 Compiler
  * Concrete Syntax Trees
  *
- * Concrete Syntax Tree(CST) is transformed from parser directly.
- * So almost every grammer rule corresponds to a CST type here
- * We have below CST type based on Grammer L2, which is shown in lab2 handout
- * program
- * type
- * decl
- * stmts
- * stmt
- * simp
- * lvalue
- * control
- * exp
- * asop
- * binop
- * unop
- * 
- * We omit below due to
- * block: this will lead to recursive reference between cst type and mly type
- * simpopt: we can handle empty in mly, so don't bother it CST
- * elseopt: same as above
- * intconst: handled in mly
- * postop: handled in mly as binary operation. Though there is a postop type, it is not used
- * It only serves for mly token.
+ * We provide new features for L3 grammar based on L2
+ * 1) function declaration and function defination.
+ * 2) type alias system. including new type for "ident", 
+ * which is used by type alias, and "void", which is a 
+ * choice for function return type.
  *
- * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
- *
- * Created: Alex Vaynberg
+ * Author: Alex Vaynberg
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
- *
  * Modified: Anand Subramanian <asubrama@andrew.cmu.edu> Fall 2010
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  * Modified: Alice Rao <alrao@andrew.cmu.edu>
+ * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
  *
  * Forward compatible fragment of C0
  *)
@@ -121,12 +101,18 @@ type exp =
       ; true_exp : mexp
       ; false_exp : mexp
       }
+  | Fcall of
+      { func_name : Symbol.t
+      ; args : mexp list
+      }
 
 and mexp = exp Mark.t
 
 type dtype =
   | Int
   | Bool
+  | Ctype of Symbol.t (* for custom type alias *)
+  | Void
 
 type decl =
   | New_var of
@@ -170,17 +156,38 @@ and control =
       ; iter : msimp option
       ; body : mstm
       }
-  | Return of mexp
+  | Return of mexp option
+  | Assert of mexp
 
 and mstm = stm Mark.t
-
-and stms = stm list
 
 and mstms = mstm list
 
 and block = mstms
 
-type program = block
+and param =
+  { t : dtype
+  ; i : Symbol.t
+  }
+
+and gdecl =
+  | Fdecl of
+      { ret_type : dtype
+      ; func_name : Symbol.t
+      ; par_type : param list
+      }
+  | Fdefn of
+      { ret_type : dtype
+      ; func_name : Symbol.t
+      ; par_type : param list
+      ; blk : block
+      }
+  | Typedef of
+      { t : dtype
+      ; t_var : Symbol.t
+      }
+
+type program = gdecl list
 
 module Print = struct
   let pp_binop = function
@@ -224,12 +231,19 @@ module Print = struct
         (pp_mexp ter_exp.cond)
         (pp_mexp ter_exp.true_exp)
         (pp_mexp ter_exp.false_exp)
+    | Fcall fcall ->
+      sprintf
+        "%s(%s)"
+        (Symbol.name fcall.func_name)
+        (List.map fcall.args ~f:(fun arg -> pp_mexp arg) |> String.concat ~sep:",")
 
   and pp_mexp e = pp_exp (Mark.data e)
 
   let pp_dtype = function
     | Int -> "int"
     | Bool -> "bool"
+    | Void -> "void"
+    | Ctype ident -> Symbol.name ident
   ;;
 
   let pp_decl = function
@@ -272,15 +286,38 @@ module Print = struct
         | Some init, Some iter -> pp_msimp init, pp_msimp iter
       in
       sprintf "for(%s %s; %s){%s}" init (pp_mexp for_stm.cond) iter (pp_mstm for_stm.body)
-    | Return e -> sprintf "return %s;" (pp_mexp e)
+    | Return e ->
+      (match e with
+      | Some e -> sprintf "return %s;" (pp_mexp e)
+      | None -> "return")
+    | Assert e -> sprintf "assert(%s)" (pp_mexp e)
 
   and pp_blk = function
     | [] -> ""
     | h :: t -> sprintf "%s" (pp_mstm h) ^ pp_blk t
 
+  and pp_param param = sprintf " %s %s" (pp_dtype param.t) (Symbol.name param.i)
+
+  and pp_gdecl = function
+    | Fdecl fdecl ->
+      sprintf
+        "%s %s(%s);"
+        (pp_dtype fdecl.ret_type)
+        (Symbol.name fdecl.func_name)
+        (List.map fdecl.par_type ~f:pp_param |> String.concat ~sep:",")
+    | Fdefn fdefn ->
+      sprintf
+        "%s %s(%s)%s"
+        (pp_dtype fdefn.ret_type)
+        (Symbol.name fdefn.func_name)
+        (List.map fdefn.par_type ~f:pp_param |> String.concat ~sep:",")
+        (pp_block fdefn.blk)
+    | Typedef typedef ->
+      sprintf "typedef %s %s" (pp_dtype typedef.t) (Symbol.name typedef.t_var)
+
   and pp_mstm stm = pp_stm (Mark.data stm)
   and pp_msimp msimp = pp_simp (Mark.data msimp)
   and pp_block stms = "{\n" ^ pp_blk stms ^ "}"
 
-  let pp_program block = pp_block block
+  let pp_program program = List.map program ~f:pp_gdecl |> String.concat ~sep:"\n\n"
 end
