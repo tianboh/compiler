@@ -4,6 +4,21 @@
  * defines/uses operand. Compared with Middle Inst, this
  * layer has extra register type for operand. 
  *
+ * For each function, we provide prologue and epilogue.
+ * prologue and epilogue will save and restore callee-saved
+ * registers, rsp and rbp. Function return will jump to 
+ * epilogue and then return to make sure frame is properly
+ * restored.
+ *
+ * For each function call, caller will use move temp, reg to
+ * follow x86 calling convention. Caller-saved registers are
+ * properly defined in the fcall statements. So that it is
+ * preferred to be used within the function.
+ *
+ * In a word, caller and callee saved registers are properly
+ * defined through defines/uses info. Then regalloc alg will
+ * makes sure they will be the same state after function call.
+ *
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
 open Core
@@ -95,21 +110,19 @@ let[@warning "-8"] gen_cjump (Src.CJump cjump) =
 
 let[@warning "-8"] gen_ret (Src.Ret ret) =
   let line = empty_line () in
-  let line =
-    { line with
-      defines = [ Dest.Reg rax ]
-    ; uses =
-        (match ret.var with
-        | None -> []
-        | Some var -> [ trans_operand var ])
-    }
-  in
-  let var =
+  let uses_ret = List.map Register.callee_saved ~f:(fun r -> Dest.Reg r) in
+  let line_ret = { line with uses = Dest.Reg rax :: uses_ret } in
+  let mov =
     match ret.var with
-    | None -> None
-    | Some var -> Some (trans_operand var)
+    | None -> []
+    | Some var ->
+      let src = trans_operand var in
+      let line_mov =
+        { line with defines = [ Dest.Reg rax ]; uses = [ src ]; move = true }
+      in
+      [ Dest.Mov { dest = Dest.Reg rax; src; line = line_mov } ]
   in
-  [ Dest.Ret { var; line } ]
+  Dest.Ret { line = line_ret } :: mov
 ;;
 
 let[@warning "-8"] gen_asrt (Src.Assert asrt) =
@@ -119,28 +132,29 @@ let[@warning "-8"] gen_asrt (Src.Assert asrt) =
   [ Dest.Assert { var; line } ]
 ;;
 
+let param_map idx : Dest.operand =
+  match idx with
+  | 0 -> Dest.Reg RDI
+  | 1 -> Dest.Reg RSI
+  | 2 -> Dest.Reg RDX
+  | 3 -> Dest.Reg RCX
+  | 4 -> Dest.Reg R8
+  | 5 -> Dest.Reg R9
+  | _ -> failwith "not support passing >6 params yet"
+;;
+
 (* Generate x86 instr with function call convention *)
 let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
-  let param_map idx (temp : Src.operand) : Dest.operand =
-    match idx with
-    | 0 -> Dest.Reg RDI
-    | 1 -> Dest.Reg RSI
-    | 2 -> Dest.Reg RDX
-    | 3 -> Dest.Reg RCX
-    | 4 -> Dest.Reg R8
-    | 5 -> Dest.Reg R9
-    | _ -> trans_operand temp
-  in
   let func_name = fcall.func_name in
   let dest = trans_operand (Src.Temp fcall.dest) in
   let args = List.map fcall.args ~f:(fun arg -> trans_operand arg) in
   let x86_regs = Reg.caller_saved @ Reg.parameters in
   let defines = dest :: List.map x86_regs ~f:(fun reg -> Dest.Reg reg) in
-  let uses = List.mapi fcall.args ~f:(fun idx arg -> param_map idx arg) in
+  let uses = List.mapi fcall.args ~f:(fun idx _ -> param_map idx) in
   let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
   let movs =
     List.mapi fcall.args ~f:(fun idx arg ->
-        let dest = param_map idx arg in
+        let dest = param_map idx in
         let src = trans_operand arg in
         let defines = [ dest ] in
         let uses = [ src ] in
@@ -148,7 +162,7 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
         let mov = Dest.Mov { dest; src; line } in
         mov)
   in
-  let fcall = Dest.Fcall { func_name; dest; args; line } in
+  let fcall = Dest.Fcall { func_name; args; line } in
   let ret_line =
     ({ defines = [ dest ]; uses = [ Dest.Reg rax ]; live_out = []; move = true }
       : Dest.line)
@@ -158,7 +172,7 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
 ;;
 
 (* Generate instruction with x86 conventions *)
-let rec gen_instr (program : Src.instr list) (res : Dest.instr list) : Dest.instr list =
+let rec gen_body (program : Src.instr list) (res : Dest.instr list) : Dest.instr list =
   match program with
   | [] -> List.rev res
   | h :: t ->
@@ -175,5 +189,58 @@ let rec gen_instr (program : Src.instr list) (res : Dest.instr list) : Dest.inst
       | Assert asrt -> gen_asrt (Assert asrt)
       | Fcall fcall -> gen_fcall (Fcall fcall)
     in
-    gen_instr t (inst @ res)
+    gen_body t (inst @ res)
+;;
+
+(* Generate move instruction for callee-saved register of define info
+ * Then *)
+let gen_prologue () : Dest.instr list =
+  List.fold Register.callee_saved ~init:[] ~f:(fun acc r ->
+      let t = Temp.create () in
+      let line =
+        { defines = [ Dest.Temp t ]; uses = [ Dest.Reg r ]; move = true; live_out = [] }
+      in
+      let mov = Dest.Mov { dest = Dest.Temp t; src = Dest.Reg r; line } in
+      mov :: acc)
+  |> List.rev
+;;
+
+(* Generate move instruction for callee-saved register of uses info *)
+let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
+  List.rev prologue
+  |> List.map ~f:(fun inst ->
+         let dest =
+           match inst with
+           | Dest.Mov mov -> mov.src
+           | _ -> failwith "mov missing"
+         in
+         let src =
+           match inst with
+           | Dest.Mov mov -> mov.dest
+           | _ -> failwith "mov missing"
+         in
+         let line = { defines = [ dest ]; uses = [ src ]; live_out = []; move = true } in
+         Dest.Mov { dest; src; line })
+;;
+
+(* Generate assigning parameter passing code. Parameters are passed through
+ * registers or memories during function call. *)
+let gen_pars (pars : Temp.t list) : Dest.instr list =
+  List.mapi pars ~f:(fun idx par ->
+      let src = param_map idx in
+      let dest = trans_operand (Src.Temp par) in
+      let line = { defines = [ dest ]; uses = [ src ]; live_out = []; move = true } in
+      Mov { dest; src; line })
+;;
+
+(* Let register allocation alg handle prologue and epilogue. *)
+let rec gen (program : Src.program) (res : Dest.program) : Dest.program =
+  match program with
+  | [] -> List.rev res
+  | h :: t ->
+    let pars = gen_pars h.pars in
+    let pro = gen_prologue () in
+    let body = gen_body h.body [] in
+    let epi = gen_epilogue pro in
+    gen t ({ func_name = h.func_name; body = pars @ pro @ body @ epi } :: res)
 ;;

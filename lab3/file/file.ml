@@ -4,6 +4,8 @@ module Asm_ps = Middle.Inst
 module Asm_x86 = Inst.X86
 module Register = Var.X86_reg
 module Memory = Var.Memory
+module Symbol = Util.Symbol
+module Temp = Var.Temp
 
 let c0_main =
   match Sys.getenv "UNAME" with
@@ -11,18 +13,34 @@ let c0_main =
   | _ -> "_c0_main"
 ;;
 
-let dump_asm_ps file_name ps_asm =
+let dump_ps file_name (program : Asm_ps.program) =
   Out_channel.with_file file_name ~f:(fun out ->
-      let output_instr instr =
-        match instr with
-        | Asm_ps.Label _ | Asm_ps.Directive _ ->
-          Out_channel.fprintf out "%s\n" (Asm_ps.pp_inst instr)
-        | _ -> Out_channel.fprintf out "\t%s\n" (Asm_ps.pp_inst instr)
-      in
-      output_instr (Asm_ps.Directive (".file\t\"" ^ file_name ^ "\""));
-      output_instr (Asm_ps.Directive ".function\tmain()");
-      List.iter ~f:output_instr ps_asm;
+      let output_instr instr = Out_channel.fprintf out "\t%s\n" (Asm_ps.pp_inst instr) in
+      output_instr (Asm_ps.Directive (".file\t\"" ^ file_name ^ "\"")));
+  List.iter program ~f:(fun fdefn ->
+      let insts = fdefn.body in
+      Out_channel.with_file
+        file_name
+        ~f:(fun out ->
+          let output_instr instr =
+            match instr with
+            | Asm_ps.Label _ | Asm_ps.Directive _ ->
+              Out_channel.fprintf out "%s\n" (Asm_ps.pp_inst instr)
+            | _ -> Out_channel.fprintf out "\t%s\n" (Asm_ps.pp_inst instr)
+          in
+          let func_name = Symbol.name fdefn.func_name in
+          let pars =
+            List.map fdefn.pars ~f:(fun par -> Temp.name par) |> String.concat ~sep:", "
+          in
+          output_instr (Asm_ps.Directive (sprintf ".function\t%s(%s)" func_name pars));
+          List.iter ~f:output_instr insts)
+        ~append:true);
+  Out_channel.with_file
+    file_name
+    ~f:(fun out ->
+      let output_instr instr = Out_channel.fprintf out "\t%s\n" (Asm_ps.pp_inst instr) in
       output_instr (Asm_ps.Directive ".ident\t\"15-411 L1 reference compiler\""))
+    ~append:true
 ;;
 
 let dump_asm_x86 file_name x86_asm =

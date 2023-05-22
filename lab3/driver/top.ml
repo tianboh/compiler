@@ -153,10 +153,11 @@ let compile (cmd : cmd_line_args) : unit =
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Trans.translate ast in
-  let ir_ssa = Middle.Ssa.run ir in
+  let ir_ssa = List.map ir ~f:(fun ir -> Middle.Ssa.run ir.body) in
   (* Okay, this is a hack, we will provide more comprehensive handling in lab3. 
    * TODO: fix it! *)
-  say_if cmd.dump_ir (fun () -> Tree.Print.pp_stms ir_ssa);
+  say_if cmd.dump_ir (fun () ->
+      List.map ir_ssa ~f:Tree.Print.pp_stms |> String.concat ~sep:"\n");
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
@@ -171,7 +172,7 @@ let compile (cmd : cmd_line_args) : unit =
   | Abstract_assem ->
     let file = cmd.filename ^ ".abs" in
     say_if cmd.verbose (fun () -> sprintf "Writing abstract assem to %s..." file);
-    File.dump_asm_ps file assem_ps_ssa
+    File.dump_ps file assem_ps_ssa
   | X86_64 ->
     let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
@@ -180,11 +181,14 @@ let compile (cmd : cmd_line_args) : unit =
     (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
     (* let start = Unix.gettimeofday () in *)
     let assem_x86_conv = Convention.X86.gen assem_ps_ssa [] in
-    let reg_alloc_info = Regalloc.Driver.regalloc assem_x86_conv in
+    let x86_prog =
+      List.map assem_x86_conv ~f:(fun prog ->
+          let reg_alloc_info = Regalloc.Driver.regalloc prog.body in
+          Codegen.Gen.X86.gen prog.body reg_alloc_info)
+    in
     (* let stop = Unix.gettimeofday () in *)
     (* let () = Printf.printf "Execution time reg_alloc_info: %fs\n%!" (stop -. start) in *)
-    let assem_x86 = Codegen.Gen.X86.gen assem_ps_ssa reg_alloc_info in
-    File.dump_asm_x86 file assem_x86
+    List.iter x86_prog ~f:(fun prog -> File.dump_asm_x86 file prog)
 ;;
 
 (* failwith "error" *)
