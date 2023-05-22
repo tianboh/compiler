@@ -78,7 +78,7 @@ module Print = struct
     let sorted_key = List.sort keys ~compare:Label.compare in
     List.iter sorted_key ~f:(fun blk_no ->
         let blk = Label.Map.find_exn blk_map blk_no in
-        printf "block %s\n%s%!\n" (Label.name blk_no) (T.Print.pp_program blk.body);
+        printf "block %s\n%s%!\n" (Label.name blk_no) (T.Print.pp_stms blk.body);
         printf "block %s succ %s%!\n" (Label.name blk_no) (pp_label_set blk.succ))
   ;;
 end
@@ -111,7 +111,9 @@ let rec group_stm
     | Jump jp -> group_stm t (T.Jump jp :: acc_stms_rev) acc_blks_rev acc_label
     | CJump cjp -> group_stm t (T.CJump cjp :: acc_stms_rev) acc_blks_rev acc_label
     | Effect eft -> group_stm t (T.Effect eft :: acc_stms_rev) acc_blks_rev acc_label
-    | Nop -> group_stm t acc_stms_rev acc_blks_rev acc_label)
+    | Nop -> group_stm t acc_stms_rev acc_blks_rev acc_label
+    | Fcall fcall -> group_stm t (T.Fcall fcall :: acc_stms_rev) acc_blks_rev acc_label
+    | Assert asrt -> group_stm t (T.Assert asrt :: acc_stms_rev) acc_blks_rev acc_label)
 ;;
 
 (* entry block(empty) is entry. exit block(empty) is exit
@@ -130,8 +132,8 @@ let rec _build_block blks res : block Label.Map.t =
     in
     let succ_init =
       match List.last_exn body with
-      | T.Label _ | T.Move _ | T.Effect _ | T.Nop -> [ succ_label ]
-      | T.Return _ -> [ exit; succ_label ]
+      | T.Label _ | T.Move _ | T.Effect _ | T.Fcall _ | T.Nop -> [ succ_label ]
+      | T.Return _ | T.Assert _ -> [ exit; succ_label ]
       | T.Jump jp -> [ jp ]
       | T.CJump cjp -> [ cjp.target_true; cjp.target_false; succ_label ]
     in
@@ -139,8 +141,8 @@ let rec _build_block blks res : block Label.Map.t =
     let succ_l =
       List.fold body_wo_tail ~init:succ_init ~f:(fun acc stm ->
           match stm with
-          | T.Label _ | T.Move _ | T.Effect _ | T.Nop -> acc
-          | T.Return _ -> exit :: acc
+          | T.Label _ | T.Move _ | T.Effect _ | T.Nop | T.Fcall _ -> acc
+          | T.Return _ | T.Assert _ -> exit :: acc
           | T.Jump jp -> jp :: acc
           | T.CJump cjp -> [ cjp.target_true; cjp.target_false ] @ acc)
     in
