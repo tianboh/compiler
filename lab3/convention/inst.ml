@@ -61,8 +61,8 @@ type instr =
       ; line : line
       }
   | Fcall of
-      { func_name : Symbol.t
-      ; dest : operand
+      { (* return to rax by convention *)
+        func_name : Symbol.t
       ; args : operand list
       ; line : line
       }
@@ -84,10 +84,7 @@ type instr =
       ; target_false : Label.t
       ; line : line
       }
-  | Ret of
-      { var : operand option
-      ; line : line
-      }
+  | Ret of { line : line }
   | Label of
       { label : Label.t
       ; line : line
@@ -99,7 +96,14 @@ type instr =
   | Directive of string
   | Comment of string
 
-type program = instr list
+(* parameters are passing through registers RDI; RSI; RDX; RCX; R8; R9
+ * for more parameters, using memory. *)
+type fdefn =
+  { func_name : Symbol.t
+  ; body : instr list
+  }
+
+type program = fdefn list
 
 let to_int_list (operands : operand list) : int list =
   List.fold operands ~init:[] ~f:(fun acc x ->
@@ -155,15 +159,11 @@ let pp_inst = function
   | Label label -> sprintf "%s" (Label.content label.label)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
-  | Ret ret ->
-    (match ret.var with
-    | None -> sprintf "return"
-    | Some var -> sprintf "return %s" (pp_operand var))
+  | Ret _ -> sprintf "return"
   | Assert asrt -> sprintf "assert %s" (pp_operand asrt.var)
   | Fcall fcall ->
     sprintf
-      "%s <- %s(%s)"
-      (pp_operand fcall.dest)
+      "fcall %s(%s)"
       (Symbol.name fcall.func_name)
       (List.map fcall.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
 ;;

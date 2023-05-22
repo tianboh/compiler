@@ -1,4 +1,4 @@
-(* L2 Compiler
+(* L3 Compiler
  * Assembly Code Generator for FAKE assembly
  * Author: Alex Vaynberg <alv@andrew.cmu.edu>
  * Based on code by: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
@@ -30,7 +30,7 @@
 
 open Core
 module T = Middle.Tree
-module AS = Middle.Inst
+module AS = Convention.Inst
 module AS_x86 = Inst.X86
 module Reg_info = Json_reader.Lab1_checkpoint
 module Temp = Var.Temp
@@ -64,6 +64,7 @@ module X86 = struct
       | Regalloc.Reg r -> AS_x86.Reg r
       | Regalloc.Mem m -> AS_x86.Mem m)
     | Imm i -> AS_x86.Imm i
+    | Reg r -> AS_x86.Reg r
   ;;
 
   let eax = AS_x86.Reg Register.RAX
@@ -164,13 +165,12 @@ module X86 = struct
         let insts = AS_x86.safe_mov dest src DWORD in
         let insts_rev = List.rev insts in
         _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
-      | AS.Ret ret ->
-        let var_ret = oprd_ps_to_x86 ret.var reg_alloc_info in
-        (* [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] *)
-        let insts = AS_x86.safe_ret var_ret QWORD in
+      | AS.Ret _ ->
+        let insts = AS_x86.safe_ret QWORD in
         let insts_rev = List.rev insts in
         _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
-      | AS.Label l -> _codegen_w_reg_rev (AS_x86.Label l :: res) t reg_alloc_info reg_swap
+      | AS.Label l ->
+        _codegen_w_reg_rev (AS_x86.Label l.label :: res) t reg_alloc_info reg_swap
       | AS.Jump jp ->
         _codegen_w_reg_rev (AS_x86.Jump jp.target :: res) t reg_alloc_info reg_swap
       | AS.CJump cjp ->

@@ -163,7 +163,7 @@ module Lazy = struct
     | AS.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r ]
   ;;
 
-  let rec collect_vertex (prog : AS.program) res =
+  let rec collect_vertex (prog : AS.instr list) res =
     match prog with
     | [] -> res
     | h :: t ->
@@ -181,8 +181,15 @@ module Lazy = struct
         let res = IG.Vertex.Set.union res (trans_operand cjp.lhs) in
         let res = IG.Vertex.Set.union res (trans_operand cjp.rhs) in
         collect_vertex t res
-      | AS.Ret ret ->
-        let res = IG.Vertex.Set.union res (trans_operand ret.var) in
+      | AS.Ret _ -> collect_vertex t res
+      | AS.Fcall fcall ->
+        let res =
+          List.fold fcall.args ~init:res ~f:(fun acc arg ->
+              IG.Vertex.Set.union acc (trans_operand arg))
+        in
+        collect_vertex t res
+      | AS.Assert asrt ->
+        let res = IG.Vertex.Set.union res (trans_operand asrt.var) in
         collect_vertex t res
       | AS.Jump _ | AS.Label _ | AS.Directive _ | AS.Comment _ -> collect_vertex t res)
   ;;
@@ -338,7 +345,7 @@ let rec gen_result (color : dest IG.Vertex.Map.t) prog =
     assign_l @ gen_result color t
 ;;
 
-let regalloc (assem_conv : AS.program) : (IG.Vertex.t * dest) option list =
+let regalloc (assem_conv : AS.instr list) : (IG.Vertex.t * dest) option list =
   if Temp.count () > threshold
   then (
     let vertex_set = Lazy.collect_vertex assem_conv IG.Vertex.Set.empty in

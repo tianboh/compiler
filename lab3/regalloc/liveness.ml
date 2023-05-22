@@ -1,4 +1,4 @@
-(* L2 liveness analysis
+(* L3 liveness analysis
  * Given a pseudo assembly code, liveness analysis
  * uses dataflow analysis to generate live-out set
  * for each instruction. This information will be 
@@ -51,30 +51,14 @@ let rec gen_succ (inst_list : AS.instr list) (line_no : int) map =
     | AS.Label l ->
       let map = Label.Map.set map ~key:l.label ~data:line_no in
       gen_succ t (line_no + 1) map
-    | AS.Jump _ | AS.CJump _ | AS.Ret _ | AS.Mov _ | AS.Binop _ ->
-      gen_succ t (line_no + 1) map
+    | AS.Jump _ | AS.CJump _ | AS.Ret _ | AS.Mov _ | AS.Binop _ | AS.Assert _ | AS.Fcall _
+      -> gen_succ t (line_no + 1) map
     | AS.Directive _ | AS.Comment _ -> gen_succ t line_no map)
 ;;
 
-let[@warning "-8"] _gen_df_info_binop (line_no : int) (AS.Binop binop) =
-  let uses = binop.line.uses in
-  let defs = binop.line.defines in
-  let gen = Int.Set.of_list (AS.to_int_list uses) in
-  let kill = Int.Set.of_list (AS.to_int_list defs) in
-  let kill = Int.Set.diff kill gen in
-  let succ = [ line_no + 1 ] in
-  let is_label = false in
-  ({ gen = Int.Set.to_list gen
-   ; kill = Int.Set.to_list kill
-   ; succ
-   ; is_label
-   ; line_number = line_no
-   }
-    : Dfana_info.line)
-;;
-
-let[@warning "-8"] _gen_df_info_mov (line_no : int) (AS.Mov mov) =
-  let defs, uses = mov.line.defines, mov.line.uses in
+let[@warning "-8"] _gen_df_info_helper (line_no : int) (line : AS.line) =
+  let uses = line.uses in
+  let defs = line.defines in
   let gen = Int.Set.of_list (AS.to_int_list uses) in
   let kill = Int.Set.of_list (AS.to_int_list defs) in
   let kill = Int.Set.diff kill gen in
@@ -109,9 +93,10 @@ let rec _gen_df_info_rev (inst_list : AS.instr list) line_no label_map res =
   | h :: t ->
     let line =
       match h with
-      (* | AS.Binop binop -> Some (_gen_df_info_binop line_no binop.dest binop.lhs binop.rhs) *)
-      | AS.Binop binop -> Some (_gen_df_info_binop line_no (AS.Binop binop))
-      | AS.Mov mov -> Some (_gen_df_info_mov line_no (AS.Mov mov))
+      | Binop binop -> Some (_gen_df_info_helper line_no binop.line)
+      | Mov mov -> Some (_gen_df_info_helper line_no mov.line)
+      | Assert asrt -> Some (_gen_df_info_helper line_no asrt.line)
+      | Fcall fcall -> Some (_gen_df_info_helper line_no fcall.line)
       | Jump jp ->
         let target_line_no = Label.Map.find_exn label_map jp.target in
         Some
@@ -168,7 +153,8 @@ let rec gen_temp (inst_list : AS.instr list) line_no map =
     | AS.Mov mov ->
       let map = Int.Map.set map ~key:line_no ~data:mov.dest in
       gen_temp t (line_no + 1) map
-    | AS.Jump _ | AS.CJump _ | AS.Ret _ | AS.Label _ -> gen_temp t (line_no + 1) map
+    | AS.Jump _ | AS.CJump _ | AS.Ret _ | AS.Label _ | AS.Assert _ | AS.Fcall _ ->
+      gen_temp t (line_no + 1) map
     | AS.Directive _ | AS.Comment _ -> gen_temp t line_no map)
 ;;
 

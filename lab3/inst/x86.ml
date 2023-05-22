@@ -12,6 +12,7 @@ open Core
 module Register = Var.X86_reg
 module Memory = Var.Memory
 module Label = Util.Label
+module Symbol = Util.Symbol
 open Var.Layout
 
 type operand =
@@ -144,6 +145,13 @@ type instr =
   | Directive of string
   | Comment of string
 
+type fdefn =
+  { func_name : Symbol.t
+  ; body : instr list
+  }
+
+type program = fdefn list
+
 let shift_maximum_bit = Int32.of_int_exn 31 (* inclusive *)
 
 (* Now we provide safe instruction to avoid source and destination are both memory. *)
@@ -234,10 +242,9 @@ let safe_sar (dest : operand) (src : operand) (layout : layout) (fpe_label : Lab
   | _ -> shift_check src fpe_label @ [ SAR { dest; src; layout = BYTE } ]
 ;;
 
-let safe_ret (dest : operand) (layout : layout) =
+let safe_ret (layout : layout) =
   (* insts = [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] *)
-  [ Mov { dest = Reg Register.RAX; src = dest; layout = DWORD }
-  ; Mov { dest = Reg Register.RSP; src = Reg Register.RBP; layout }
+  [ Mov { dest = Reg Register.RSP; src = Reg Register.RBP; layout }
   ; Pop { reg = Reg Register.RBP; layout = QWORD }
   ; Ret
   ]
