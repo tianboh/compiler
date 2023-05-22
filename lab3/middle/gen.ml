@@ -84,9 +84,12 @@ and munch_stm_rev (stm : T.stm) =
   match stm with
   | T.Move mv -> munch_exp_acc (Inst.Temp mv.dest) mv.src []
   | T.Return e ->
-    let t = Temp.create () in
-    let inst = munch_exp_acc (Inst.Temp t) e [] in
-    Inst.Ret { var = Inst.Temp t } :: inst
+    (match e with
+    | None -> [ Inst.Ret { var = None } ]
+    | Some e ->
+      let t = Temp.create () in
+      let inst = munch_exp_acc (Inst.Temp t) e [] in
+      Inst.Ret { var = Some (Inst.Temp t) } :: inst)
   | Jump jmp -> [ Inst.Jump { target = jmp } ]
   | T.CJump cjmp ->
     let lhs = Inst.Temp (Temp.create ()) in
@@ -108,6 +111,21 @@ and munch_stm_rev (stm : T.stm) =
     let rhs_inst_rev = munch_exp_acc rhs eft.rhs [] in
     (Inst.Binop { lhs; op; rhs; dest = Inst.Temp eft.dest } :: rhs_inst_rev)
     @ lhs_inst_rev
+  | T.Assert asrt ->
+    let t = Temp.create () in
+    let inst = munch_exp_acc (Inst.Temp t) asrt [] in
+    Inst.Assert (Inst.Temp t) :: inst
+  | T.Fcall fcall ->
+    let res =
+      List.map fcall.args ~f:(fun arg ->
+          let t = Inst.Temp (Temp.create ()) in
+          let e = munch_exp_acc t arg [] in
+          t, e)
+    in
+    let args, args_stms = List.unzip res in
+    let args_stms_rev = List.rev args_stms |> List.concat in
+    let call = Inst.Call { func_name = fcall.func_name; args; dest = fcall.dest } in
+    call :: args_stms_rev
 
 and munch_stms_rev stms res =
   match stms with
@@ -117,7 +135,14 @@ and munch_stms_rev stms res =
     munch_stms_rev t res @ stm
 ;;
 
-let gen (stms : T.program) =
-  let res_rev = munch_stms_rev stms [] in
-  List.rev res_rev
+let gen_fdefn (fdefn : T.fdefn) : Inst.fdefn =
+  let body = munch_stms_rev fdefn.body [] |> List.rev in
+  let pars = fdefn.temps in
+  { func_name = fdefn.func_name; body; pars }
+;;
+
+(* To codegen a series of statements, just concatenate the results of
+* codegen-ing each statement. *)
+let gen (fdefns : T.program) : Inst.program =
+  List.map fdefns ~f:(fun fdefn -> gen_fdefn fdefn)
 ;;
