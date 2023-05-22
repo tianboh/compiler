@@ -59,7 +59,7 @@ type instr =
       ; lhs : operand
       ; rhs : operand
       }
-  | Call of
+  | Fcall of
       { func_name : Symbol.t
       ; dest : Temp.t
       ; args : operand list
@@ -142,7 +142,7 @@ let pp_inst = function
     (match ret.var with
     | None -> sprintf "return"
     | Some var -> sprintf "return %s" (pp_operand var))
-  | Call call ->
+  | Fcall call ->
     sprintf
       "%s <- %s(%s)"
       (Symbol.name call.func_name)

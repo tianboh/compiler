@@ -60,6 +60,12 @@ type instr =
       ; rhs : operand
       ; line : line
       }
+  | Fcall of
+      { func_name : Symbol.t
+      ; dest : operand
+      ; args : operand list
+      ; line : line
+      }
   | Mov of
       { dest : operand
       ; src : operand
@@ -79,11 +85,15 @@ type instr =
       ; line : line
       }
   | Ret of
-      { var : operand
+      { var : operand option
       ; line : line
       }
   | Label of
       { label : Label.t
+      ; line : line
+      }
+  | Assert of
+      { var : operand
       ; line : line
       }
   | Directive of string
@@ -145,7 +155,17 @@ let pp_inst = function
   | Label label -> sprintf "%s" (Label.content label.label)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
-  | Ret ret -> sprintf "return %s" (pp_operand ret.var)
+  | Ret ret ->
+    (match ret.var with
+    | None -> sprintf "return"
+    | Some var -> sprintf "return %s" (pp_operand var))
+  | Assert asrt -> sprintf "assert %s" (pp_operand asrt.var)
+  | Fcall fcall ->
+    sprintf
+      "%s <- %s(%s)"
+      (pp_operand fcall.dest)
+      (Symbol.name fcall.func_name)
+      (List.map fcall.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
 ;;
 
 let rec pp_program (program : instr list) res =
