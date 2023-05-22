@@ -1,4 +1,4 @@
-(* L2 pseudo code optimizer
+(* (* L2 pseudo code optimizer
  *
  * Optimization contains 
  * 1) Const propagation
@@ -159,4 +159,4 @@ let optimize (ori_insts : AS.instr list) : AS.instr list =
   let ret = const_propagation ori_insts in
   (* let ret = copy_propagation ret in *)
   ret
-;;
+;; *)

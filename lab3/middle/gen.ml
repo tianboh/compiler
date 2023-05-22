@@ -124,7 +124,7 @@ and munch_stm_rev (stm : T.stm) =
     in
     let args, args_stms = List.unzip res in
     let args_stms_rev = List.rev args_stms |> List.concat in
-    let call = Inst.Call { func_name = fcall.func_name; args; dest = fcall.dest } in
+    let call = Inst.Fcall { func_name = fcall.func_name; args; dest = fcall.dest } in
     call :: args_stms_rev
 
 and munch_stms_rev stms res =
