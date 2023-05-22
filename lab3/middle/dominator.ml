@@ -150,6 +150,56 @@ let rec _build_block blks res : block Label.Map.t =
     _build_block t res
 ;;
 
+(* For edge e from block a -> block b.
+ * If block a has >= 2 successors and block b has >= 2 predecessors,
+ * then edge e is a critical edge. We will add a block c to eliminate 
+ * this critical edge.
+ * New graph would be : block a -> block c -> block b. 
+ * Now neither a nor b has critical edges.name
+ * Other blocks topological remains unchanged. *)
+let remove_criticl_edge blk_map pred_map =
+  let labels = Label.Map.keys blk_map in
+  let edges =
+    List.fold labels ~init:[] ~f:(fun acc label_start ->
+        let blk = Label.Map.find_exn blk_map label_start in
+        let succ_l = Label.Set.to_list blk.succ in
+        let tuples =
+          List.fold succ_l ~init:[] ~f:(fun acc label_end ->
+              (label_start, label_end) :: acc)
+        in
+        tuples @ acc)
+  in
+  List.fold edges ~init:(blk_map, pred_map) ~f:(fun acc x ->
+      let acc_blk_map, acc_pred_map = acc in
+      let src_l, dest_l = x in
+      let src_blk = Label.Map.find_exn acc_blk_map src_l in
+      if Label.Set.length src_blk.succ > 1
+         && Label.Set.length (Label.Map.find_exn acc_pred_map dest_l) > 1
+      then (
+        (* find critical edge *)
+        let label' = Label.label (Some "critical") in
+        let blk' =
+          { body = [ T.Label label'; T.Jump dest_l ]
+          ; label = label'
+          ; succ = Label.Set.of_list [ dest_l ]
+          }
+        in
+        let acc_blk_map = Label.Map.set acc_blk_map ~key:label' ~data:blk' in
+        let src_blk_succ = Label.Set.remove src_blk.succ dest_l in
+        let src_blk_succ = Label.Set.add src_blk_succ label' in
+        let src_blk = { src_blk with succ = src_blk_succ } in
+        let acc_blk_map = Label.Map.set acc_blk_map ~key:src_blk.label ~data:src_blk in
+        let dest_blk_pred = Label.Map.find_exn acc_pred_map dest_l in
+        let dest_blk_pred = Label.Set.remove dest_blk_pred src_l in
+        let dest_blk_pred = Label.Set.add dest_blk_pred label' in
+        let acc_pred_map = Label.Map.set acc_pred_map ~key:dest_l ~data:dest_blk_pred in
+        let acc_pred_map =
+          Label.Map.set acc_pred_map ~key:label' ~data:(Label.Set.of_list [ src_l ])
+        in
+        acc_blk_map, acc_pred_map)
+      else acc)
+;;
+
 let build_block (f_body : T.stm list) =
   let blks = group_stm f_body [] [] entry in
   let blk_map = _build_block blks Label.Map.empty in
@@ -406,6 +456,7 @@ let run (f_body : T.stm list) =
   let f_body = (T.Label entry :: f_body) @ [ T.Label exit ] in
   let blk_map = build_block f_body in
   let pred_map = build_pred blk_map in
+  let blk_map, pred_map = remove_criticl_edge blk_map pred_map in
   (* Print.pp_blk blk_map;
   printf "pred_map done%!\n"; *)
   let idom = idom blk_map pred_map in
