@@ -250,8 +250,11 @@ and rename_use (stm : T.stm) env : T.stm =
     let asrt = rename_exp asrt env in
     Assert asrt
   | Return ret ->
-    let ret_new = rename_exp ret env in
-    Return ret_new
+    (match ret with
+    | None -> Return None
+    | Some ret ->
+      let ret_new = rename_exp ret env in
+      Return (Some ret_new))
   | Jump jp -> Jump jp
   | CJump cjp ->
     let lhs_new = rename_exp cjp.lhs env in

@@ -77,7 +77,7 @@ and stm =
       ; func_name : Symbol.t
       ; args : exp list
       }
-  | Return of exp
+  | Return of exp option
   | Jump of Label.t
   | CJump of
       { (* Jump to target_true if lhs op rhs is true. 
@@ -150,7 +150,10 @@ module Print : PRINT = struct
       let func_name = Symbol.name c.func_name in
       let args = List.map (fun arg -> pp_exp arg) c.args |> String.concat ", " in
       sprintf "%s <- %s(%s)" dest func_name args
-    | Return e -> "return " ^ pp_exp e ^ "\n"
+    | Return e ->
+      (match e with
+      | None -> "return\n"
+      | Some e -> "return " ^ pp_exp e ^ "\n")
     | Jump j -> "jump " ^ Label.name j ^ "\n"
     | CJump cj ->
       sprintf
