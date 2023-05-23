@@ -287,30 +287,39 @@ let tc_fdecl ret_type func_name (pars : param list) env =
     }
 ;;
 
+let pp_env env =
+  printf "print env func\n%!";
+  S.iteri env.funcs ~f:(fun ~key:k ~data:d ->
+      let pars = List.map d.pars ~f:A.Print.pp_param |> String.concat ~sep:", " in
+      printf "%s %s(%s)\n%!" (A.Print.pp_dtype d.ret_type) (Util.Symbol.name k) pars)
+;;
+
 (* Rules to follow
  * 1) Parameters should not conflict with local variables. We have already elaborated
  * fdefn, so tc_stm is going to check whether parameter and local variable collide.
  * 2) Each function can only be defined once.
  *)
 let tc_fdefn ret_type func_name pars blk env =
-  ignore (tc_stm blk env func_name : env);
-  match S.find env.funcs func_name with
-  | None ->
-    { env with
-      funcs = S.add_exn env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type }
-    }
-  | Some s ->
-    (match s.state with
-    | Decl ->
-      let old_func = S.find_exn env.funcs func_name in
-      let old_dtype = List.map old_func.pars ~f:(fun par -> par.t) in
-      let new_dtype = List.map pars ~f:(fun par -> par.t) in
-      tc_signature (old_func.ret_type :: old_dtype) (ret_type :: new_dtype) func_name;
+  let env =
+    match S.find env.funcs func_name with
+    | None ->
       { env with
-        funcs = S.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type }
+        funcs = S.add_exn env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type }
       }
-    | Defn ->
-      error ~msg:(sprintf "function %s already defined." (Symbol.name func_name)) None)
+    | Some s ->
+      (match s.state with
+      | Decl ->
+        let old_func = S.find_exn env.funcs func_name in
+        let old_dtype = List.map old_func.pars ~f:(fun par -> par.t) in
+        let new_dtype = List.map pars ~f:(fun par -> par.t) in
+        tc_signature (old_func.ret_type :: old_dtype) (ret_type :: new_dtype) func_name;
+        { env with
+          funcs = S.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type }
+        }
+      | Defn ->
+        error ~msg:(sprintf "function %s already defined." (Symbol.name func_name)) None)
+  in
+  tc_stm blk env func_name
 ;;
 
 let rec _typecheck prog env =
