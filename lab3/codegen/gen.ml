@@ -196,6 +196,15 @@ module X86 = struct
           t
           reg_alloc_info
           reg_swap
+      | AS.Push push ->
+        let var = oprd_ps_to_x86 push.var reg_alloc_info in
+        let inst_rev = AS_x86.Push { var; layout = QWORD } in
+        _codegen_w_reg_rev (inst_rev :: res) t reg_alloc_info reg_swap
+      | AS.Pop pop ->
+        let var = oprd_ps_to_x86 pop.var reg_alloc_info in
+        let inst_rev = AS_x86.Pop { var; layout = QWORD } in
+        _codegen_w_reg_rev (inst_rev :: res) t reg_alloc_info reg_swap
+      | AS.Fcall _ | AS.Assert _ -> failwith "x86 inst not impl yet"
       | _ -> _codegen_w_reg_rev res t reg_alloc_info reg_swap)
   ;;
 

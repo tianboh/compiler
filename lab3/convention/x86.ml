@@ -132,7 +132,7 @@ let[@warning "-8"] gen_asrt (Src.Assert asrt) =
   [ Dest.Assert { var; line } ]
 ;;
 
-let param_map idx : Dest.operand =
+let param_map idx temp : Dest.operand =
   match idx with
   | 0 -> Dest.Reg RDI
   | 1 -> Dest.Reg RSI
@@ -140,7 +140,7 @@ let param_map idx : Dest.operand =
   | 3 -> Dest.Reg RCX
   | 4 -> Dest.Reg R8
   | 5 -> Dest.Reg R9
-  | _ -> failwith "not support passing >6 params yet"
+  | _ -> trans_operand temp
 ;;
 
 (* Generate x86 instr with function call convention *)
@@ -150,17 +150,25 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
   let args = List.map fcall.args ~f:(fun arg -> trans_operand arg) in
   let x86_regs = Reg.caller_saved @ Reg.parameters in
   let defines = dest :: List.map x86_regs ~f:(fun reg -> Dest.Reg reg) in
-  let uses = List.mapi fcall.args ~f:(fun idx _ -> param_map idx) in
+  let uses = List.mapi fcall.args ~f:(fun idx arg -> param_map idx arg) in
   let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
-  let movs =
+  let params =
     List.mapi fcall.args ~f:(fun idx arg ->
-        let dest = param_map idx in
         let src = trans_operand arg in
-        let defines = [ dest ] in
-        let uses = [ src ] in
-        let line = ({ defines; uses; live_out = []; move = true } : Dest.line) in
-        let mov = Dest.Mov { dest; src; line } in
-        mov)
+        if idx < 6
+        then (
+          let dest = param_map idx arg in
+          let defines = [ dest ] in
+          let uses = [ src ] in
+          let line = ({ defines; uses; live_out = []; move = true } : Dest.line) in
+          let mov = Dest.Mov { dest; src; line } in
+          mov)
+        else (
+          let defines = [] in
+          let uses = [ src ] in
+          let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
+          let push = Dest.Push { var = src; line } in
+          push))
   in
   let fcall = Dest.Fcall { func_name; args; line } in
   let ret_line =
@@ -168,7 +176,7 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
       : Dest.line)
   in
   let ret = Dest.Mov { dest; src = Dest.Reg rax; line = ret_line } in
-  ret :: fcall :: List.rev movs
+  ret :: fcall :: params
 ;;
 
 (* Generate instruction with x86 conventions *)
@@ -227,10 +235,15 @@ let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
  * registers or memories during function call. *)
 let gen_pars (pars : Temp.t list) : Dest.instr list =
   List.mapi pars ~f:(fun idx par ->
-      let src = param_map idx in
-      let dest = trans_operand (Src.Temp par) in
-      let line = { defines = [ dest ]; uses = [ src ]; live_out = []; move = true } in
-      Mov { dest; src; line })
+      let src = param_map idx (Src.Temp par) in
+      if idx < 6
+      then (
+        let dest = trans_operand (Src.Temp par) in
+        let line = { defines = [ dest ]; uses = [ src ]; live_out = []; move = true } in
+        Mov { dest; src; line })
+      else (
+        let line = { defines = [ src ]; uses = []; live_out = []; move = false } in
+        Pop { var = src; line }))
 ;;
 
 (* Let register allocation alg handle prologue and epilogue. *)
@@ -238,9 +251,11 @@ let rec gen (program : Src.program) (res : Dest.program) : Dest.program =
   match program with
   | [] -> List.rev res
   | h :: t ->
+    let label = Label.label (Some (Symbol.name h.func_name)) in
+    let head = [ Dest.Label { label; line = empty_line () } ] in
     let pars = gen_pars h.pars in
     let pro = gen_prologue () in
     let body = gen_body h.body [] in
     let epi = gen_epilogue pro in
-    gen t ({ func_name = h.func_name; body = pars @ pro @ body @ epi } :: res)
+    gen t ({ func_name = h.func_name; body = head @ pars @ pro @ body @ epi } :: res)
 ;;

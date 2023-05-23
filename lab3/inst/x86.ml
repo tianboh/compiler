@@ -59,11 +59,11 @@ type instr =
   | Cvt of { layout : layout } (*could be cdq, cqo, etc based on size it wants to extend. EDX:EAX := sign-extend of EAX *)
   | Ret
   | Pop of
-      { reg : operand
+      { var : operand
       ; layout : layout
       }
   | Push of
-      { reg : operand
+      { var : operand
       ; layout : layout
       }
   | Cmp of
@@ -245,7 +245,7 @@ let safe_sar (dest : operand) (src : operand) (layout : layout) (fpe_label : Lab
 let safe_ret (layout : layout) =
   (* insts = [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] *)
   [ Mov { dest = Reg Register.RSP; src = Reg Register.RBP; layout }
-  ; Pop { reg = Reg Register.RBP; layout = QWORD }
+  ; Pop { var = Reg Register.RBP; layout = QWORD }
   ; Ret
   ]
 ;;
@@ -324,9 +324,9 @@ let format = function
       (format_operand mv.dest mv.layout)
   | Ret -> "ret"
   | Push push ->
-    sprintf "push%s %s" (format_inst push.layout) (format_operand push.reg push.layout)
+    sprintf "push%s %s" (format_inst push.layout) (format_operand push.var push.layout)
   | Pop pop ->
-    sprintf "pop%s %s" (format_inst pop.layout) (format_operand pop.reg pop.layout)
+    sprintf "pop%s %s" (format_inst pop.layout) (format_operand pop.var pop.layout)
   | Cmp cmp ->
     sprintf
       "cmp%s %s, %s"
