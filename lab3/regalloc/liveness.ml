@@ -51,9 +51,9 @@ let rec gen_succ (inst_list : AS.instr list) (line_no : int) map =
     | AS.Label l ->
       let map = Label.Map.set map ~key:l.label ~data:line_no in
       gen_succ t (line_no + 1) map
-    | AS.Jump _ | AS.CJump _ | AS.Ret _ | AS.Mov _ | AS.Binop _ | AS.Assert _ | AS.Fcall _
-      -> gen_succ t (line_no + 1) map
-    | AS.Directive _ | AS.Comment _ -> gen_succ t line_no map)
+    | Jump _ | CJump _ | Ret _ | Mov _ | Binop _ | Assert _ | Fcall _ | Push _ | Pop _ ->
+      gen_succ t (line_no + 1) map
+    | Directive _ | Comment _ -> gen_succ t line_no map)
 ;;
 
 let[@warning "-8"] _gen_df_info_helper (line_no : int) (line : AS.line) =
@@ -95,6 +95,8 @@ let rec _gen_df_info_rev (inst_list : AS.instr list) line_no label_map res =
       match h with
       | Binop binop -> Some (_gen_df_info_helper line_no binop.line)
       | Mov mov -> Some (_gen_df_info_helper line_no mov.line)
+      | Push push -> Some (_gen_df_info_helper line_no push.line)
+      | Pop pop -> Some (_gen_df_info_helper line_no pop.line)
       | Assert asrt -> Some (_gen_df_info_helper line_no asrt.line)
       | Fcall fcall -> Some (_gen_df_info_helper line_no fcall.line)
       | Jump jp ->
@@ -147,15 +149,15 @@ let rec gen_temp (inst_list : AS.instr list) line_no map =
   | [] -> map
   | h :: t ->
     (match h with
-    | AS.Binop binop ->
+    | Binop binop ->
       let map = Int.Map.set map ~key:line_no ~data:binop.dest in
       gen_temp t (line_no + 1) map
-    | AS.Mov mov ->
+    | Mov mov ->
       let map = Int.Map.set map ~key:line_no ~data:mov.dest in
       gen_temp t (line_no + 1) map
-    | AS.Jump _ | AS.CJump _ | AS.Ret _ | AS.Label _ | AS.Assert _ | AS.Fcall _ ->
+    | Jump _ | CJump _ | Ret _ | Label _ | Assert _ | Fcall _ | Push _ | Pop _ ->
       gen_temp t (line_no + 1) map
-    | AS.Directive _ | AS.Comment _ -> gen_temp t line_no map)
+    | Directive _ | Comment _ -> gen_temp t line_no map)
 ;;
 
 (* Transform liveness information from int to temp. 

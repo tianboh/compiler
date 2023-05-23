@@ -168,30 +168,36 @@ module Lazy = struct
     | [] -> res
     | h :: t ->
       (match h with
-      | AS.Binop binop ->
+      | Binop binop ->
         let res = IG.Vertex.Set.union res (trans_operand binop.dest) in
         let res = IG.Vertex.Set.union res (trans_operand binop.lhs) in
         let res = IG.Vertex.Set.union res (trans_operand binop.rhs) in
         collect_vertex t res
-      | AS.Mov mov ->
+      | Mov mov ->
         let res = IG.Vertex.Set.union res (trans_operand mov.dest) in
         let res = IG.Vertex.Set.union res (trans_operand mov.src) in
         collect_vertex t res
-      | AS.CJump cjp ->
+      | CJump cjp ->
         let res = IG.Vertex.Set.union res (trans_operand cjp.lhs) in
         let res = IG.Vertex.Set.union res (trans_operand cjp.rhs) in
         collect_vertex t res
-      | AS.Ret _ -> collect_vertex t res
-      | AS.Fcall fcall ->
+      | Ret _ -> collect_vertex t res
+      | Fcall fcall ->
         let res =
           List.fold fcall.args ~init:res ~f:(fun acc arg ->
               IG.Vertex.Set.union acc (trans_operand arg))
         in
         collect_vertex t res
-      | AS.Assert asrt ->
+      | Assert asrt ->
         let res = IG.Vertex.Set.union res (trans_operand asrt.var) in
         collect_vertex t res
-      | AS.Jump _ | AS.Label _ | AS.Directive _ | AS.Comment _ -> collect_vertex t res)
+      | Push push ->
+        let res = IG.Vertex.Set.union res (trans_operand push.var) in
+        collect_vertex t res
+      | Pop pop ->
+        let res = IG.Vertex.Set.union res (trans_operand pop.var) in
+        collect_vertex t res
+      | Jump _ | Label _ | Directive _ | Comment _ -> collect_vertex t res)
   ;;
 
   let gen_result_dummy vertex_set =

@@ -93,6 +93,14 @@ type instr =
       { var : operand
       ; line : line
       }
+  | Push of
+      { var : operand
+      ; line : line
+      }
+  | Pop of
+      { var : operand
+      ; line : line
+      }
   | Directive of string
   | Comment of string
 
@@ -166,6 +174,8 @@ let pp_inst = function
       "fcall %s(%s)"
       (Symbol.name fcall.func_name)
       (List.map fcall.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
+  | Push push -> sprintf "push %s" (pp_operand push.var)
+  | Pop pop -> sprintf "pop %s " (pp_operand pop.var)
 ;;
 
 let rec pp_program (program : instr list) res =
