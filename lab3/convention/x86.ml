@@ -231,7 +231,8 @@ let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
   let line = empty_line () in
   let uses_ret = List.map Register.callee_saved ~f:(fun r -> Dest.Reg r) in
   let line_ret = { line with uses = Dest.Reg rax :: uses_ret } in
-  restore @ [ Dest.Ret { line = line_ret } ]
+  let ret = Dest.Ret { line = line_ret } in
+  restore @ [ ret ]
 ;;
 
 (* Generate assigning parameter passing code. Parameters are passed through

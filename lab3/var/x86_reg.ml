@@ -152,6 +152,6 @@ let str_to_reg (str : string) =
 
 let swap = R15
 let base_pointer = RBP
-let callee_saved = [ RBX; RBP; R12; R13; R14; R15 ]
+let callee_saved = [ RBX; R12; R13; R14; R15 ]
 let caller_saved = [ R10; R11 ]
 let parameters = [ RDI; RSI; RDX; RCX; R8; R9 ]
