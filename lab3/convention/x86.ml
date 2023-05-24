@@ -108,10 +108,8 @@ let[@warning "-8"] gen_cjump (Src.CJump cjump) =
   ]
 ;;
 
-let[@warning "-8"] gen_ret (Src.Ret ret) =
+let[@warning "-8"] gen_ret (Src.Ret ret) (exit_label : Label.t) =
   let line = empty_line () in
-  let uses_ret = List.map Register.callee_saved ~f:(fun r -> Dest.Reg r) in
-  let line_ret = { line with uses = Dest.Reg rax :: uses_ret } in
   let mov =
     match ret.var with
     | None -> []
@@ -122,7 +120,7 @@ let[@warning "-8"] gen_ret (Src.Ret ret) =
       in
       [ Dest.Mov { dest = Dest.Reg rax; src; line = line_mov } ]
   in
-  Dest.Ret { line = line_ret } :: mov
+  Dest.Jump { target = exit_label; line } :: mov
 ;;
 
 let[@warning "-8"] gen_asrt (Src.Assert asrt) =
@@ -180,7 +178,9 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
 ;;
 
 (* Generate instruction with x86 conventions *)
-let rec gen_body (program : Src.instr list) (res : Dest.instr list) : Dest.instr list =
+let rec gen_body (program : Src.instr list) (res : Dest.instr list) (exit_label : Label.t)
+    : Dest.instr list
+  =
   match program with
   | [] -> List.rev res
   | h :: t ->
@@ -190,19 +190,18 @@ let rec gen_body (program : Src.instr list) (res : Dest.instr list) : Dest.instr
       | Mov move -> gen_move (Mov move)
       | Jump jump -> gen_jump (Jump jump)
       | CJump cjump -> gen_cjump (CJump cjump)
-      | Ret ret -> gen_ret (Ret ret)
+      | Ret ret -> gen_ret (Ret ret) exit_label
       | Label l -> [ Dest.Label { label = l; line = empty_line () } ]
       | Directive dir -> [ Dest.Directive dir ]
       | Comment cmt -> [ Dest.Comment cmt ]
       | Assert asrt -> gen_asrt (Assert asrt)
       | Fcall fcall -> gen_fcall (Fcall fcall)
     in
-    gen_body t (inst @ res)
+    gen_body t (inst @ res) exit_label
 ;;
 
-(* Generate move instruction for callee-saved register of define info
- * Then *)
-let gen_prologue () : Dest.instr list =
+(* Generate move instruction for callee-saved register of define info *)
+let save_callee () : Dest.instr list =
   List.fold Register.callee_saved ~init:[] ~f:(fun acc r ->
       let t = Temp.create () in
       let line =
@@ -213,22 +212,26 @@ let gen_prologue () : Dest.instr list =
   |> List.rev
 ;;
 
-(* Generate move instruction for callee-saved register of uses info *)
+(* Generate move instruction for callee-saved register of uses info 
+ * Then, return the function *)
 let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
-  List.rev prologue
-  |> List.map ~f:(fun inst ->
-         let dest =
-           match inst with
-           | Dest.Mov mov -> mov.src
-           | _ -> failwith "mov missing"
-         in
-         let src =
-           match inst with
-           | Dest.Mov mov -> mov.dest
-           | _ -> failwith "mov missing"
-         in
-         let line = { defines = [ dest ]; uses = [ src ]; live_out = []; move = true } in
-         Dest.Mov { dest; src; line })
+  let restore =
+    List.rev prologue
+    |> List.map ~f:(fun inst ->
+           let dest, src =
+             match inst with
+             | Dest.Mov mov -> mov.src, mov.dest
+             | _ -> failwith "mov missing"
+           in
+           let line =
+             { defines = [ dest ]; uses = [ src ]; live_out = []; move = true }
+           in
+           Dest.Mov { dest; src; line })
+  in
+  let line = empty_line () in
+  let uses_ret = List.map Register.callee_saved ~f:(fun r -> Dest.Reg r) in
+  let line_ret = { line with uses = Dest.Reg rax :: uses_ret } in
+  restore @ [ Dest.Ret { line = line_ret } ]
 ;;
 
 (* Generate assigning parameter passing code. Parameters are passed through
@@ -246,16 +249,26 @@ let gen_pars (pars : Temp.t list) : Dest.instr list =
         Pop { var = src; line }))
 ;;
 
+let gen_section (prefix : string) (fname : Symbol.t) (content : Dest.instr list)
+    : Dest.section * Label.t
+  =
+  let label = Label.label (Some (prefix ^ Symbol.name fname)) in
+  let name = Dest.Label { label; line = empty_line () } in
+  { name; content }, label
+;;
+
 (* Let register allocation alg handle prologue and epilogue. *)
 let rec gen (program : Src.program) (res : Dest.program) : Dest.program =
   match program with
   | [] -> List.rev res
   | h :: t ->
-    let label = Label.label (Some (Symbol.name h.func_name)) in
-    let head = [ Dest.Label { label; line = empty_line () } ] in
     let pars = gen_pars h.pars in
-    let pro = gen_prologue () in
-    let body = gen_body h.body [] in
-    let epi = gen_epilogue pro in
-    gen t ({ func_name = h.func_name; body = head @ pars @ pro @ body @ epi } :: res)
+    let save = save_callee () in
+    let epilogue_content = gen_epilogue save in
+    let prologue, _ = gen_section "pro_" h.func_name (save @ pars) in
+    let epilogue, exit_label = gen_section "epi_" h.func_name epilogue_content in
+    let body_content = gen_body h.body [] exit_label in
+    let body, _ = gen_section "body_" h.func_name body_content in
+    let fdefn = { func_name = h.func_name; epilogue; prologue; body } in
+    gen t (fdefn :: res)
 ;;

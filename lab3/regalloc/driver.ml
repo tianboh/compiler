@@ -351,13 +351,21 @@ let rec gen_result (color : dest IG.Vertex.Map.t) prog =
     assign_l @ gen_result color t
 ;;
 
-let regalloc (assem_conv : AS.instr list) : (IG.Vertex.t * dest) option list =
+let gen_program (fdefn : AS.fdefn) : AS.instr list =
+  let prologue = fdefn.prologue.name :: fdefn.prologue.content in
+  let body = fdefn.body.name :: fdefn.body.content in
+  let epilogue = fdefn.epilogue.name :: fdefn.epilogue.content in
+  prologue @ body @ epilogue
+;;
+
+let regalloc (assem_conv : AS.fdefn) : (IG.Vertex.t * dest) option list =
+  let program = gen_program assem_conv in
   if Temp.count () > threshold
   then (
-    let vertex_set = Lazy.collect_vertex assem_conv IG.Vertex.Set.empty in
+    let vertex_set = Lazy.collect_vertex program IG.Vertex.Set.empty in
     Lazy.gen_result_dummy vertex_set)
   else (
-    let reginfo_instrs = Program.gen_regalloc_info assem_conv in
+    let reginfo_instrs = Program.gen_regalloc_info program in
     let adj = Helper.build_graph reginfo_instrs IG.Vertex.Map.empty in
     let prog =
       List.fold_left reginfo_instrs ~init:[] ~f:(fun acc line ->
