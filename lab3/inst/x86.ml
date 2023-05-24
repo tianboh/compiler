@@ -265,12 +265,6 @@ let format_prologue (var_cnt : int) =
   String.concat ~sep:"\n\t" insts
 ;;
 
-(* epilogue for a callee function. Restore callee-saved registers and deallocate local variables. *)
-let format_epilogue () =
-  let insts = [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] in
-  String.concat ~sep:"\n\t" insts
-;;
-
 let format_operand (oprd : operand) (layout : layout) =
   match oprd with
   | Imm n -> "$" ^ Int32.to_string n

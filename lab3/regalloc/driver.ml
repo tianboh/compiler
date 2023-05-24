@@ -208,8 +208,8 @@ module Lazy = struct
           match vtx with
           | IG.Vertex.T.Reg r -> Reg r
           | IG.Vertex.T.Temp t ->
-            let idx = base + Temp.value t in
-            Mem (Memory.create idx Register.RSP idx 8)
+            let idx = Temp.value t in
+            Mem (Memory.create idx Register.RSP (idx - base + 1) 8)
         in
         Some (vtx, dest))
   ;;
@@ -307,7 +307,7 @@ let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest
   let r = find_min_available nbr_int_s black_set in
   if r < Register.num_reg
   then Reg (Register.idx_reg r)
-  else Mem (Memory.create r Register.RBP r 8)
+  else Mem (Memory.create r Register.RBP (r - Register.num_reg + 1) 8)
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)

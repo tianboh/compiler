@@ -139,8 +139,8 @@ let gen_x86_inst_bin
 ;;
 
 let rec _codegen_w_reg_rev
-    res
-    inst_list
+    (res : AS_x86.instr list)
+    (inst_list : AS.instr list)
     (reg_alloc_info : Regalloc.dest IG.Vertex.Map.t)
     (reg_swap : Register.t)
   =

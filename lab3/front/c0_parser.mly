@@ -255,11 +255,11 @@ simpopt :
 elseopt : 
   | 
       { None }
-  | else_ = m(stm);
+  | Else; else_ = m(stm);
       { Some else_ }
 
 control : 
-  | If; L_paren; e = m(exp); R_paren; true_stm = m(stm); Else; false_stm = elseopt;
+  | If; L_paren; e = m(exp); R_paren; true_stm = m(stm); false_stm = elseopt;
       { Cst.If {cond = e; true_stm = true_stm; false_stm = false_stm} }
   | While; L_paren; e = m(exp); R_paren; s = m(stm);
       { Cst.While {cond = e; body = s} }
