@@ -28,6 +28,7 @@ module Controlflow = Semantic.Controlflow
 module Dfana = Flow.Dfana
 module Tree = Middle.Tree
 module Trans = Middle.Trans
+module Memory = Var.Memory
 
 (* Command line arguments *)
 
@@ -181,15 +182,15 @@ let compile (cmd : cmd_line_args) : unit =
     (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
     (* let start = Unix.gettimeofday () in *)
     let assem_x86_conv = Convention.X86.gen assem_ps_ssa [] in
-    let x86_prog =
-      List.map assem_x86_conv ~f:(fun prog ->
-          let reg_alloc_info = Regalloc.Driver.regalloc prog.body in
-          Codegen.Gen.X86.gen prog.body reg_alloc_info)
-    in
-    (* let stop = Unix.gettimeofday () in *)
-    (* let () = Printf.printf "Execution time reg_alloc_info: %fs\n%!" (stop -. start) in *)
-    List.iter x86_prog ~f:(fun prog -> File.dump_asm_x86 file prog)
+    List.iter assem_x86_conv ~f:(fun prog ->
+        let reg_alloc_info = Regalloc.Driver.regalloc prog in
+        let prog = Codegen.X86.gen prog reg_alloc_info in
+        File.dump_asm_x86 file prog;
+        Memory.reset)
 ;;
+
+(* let stop = Unix.gettimeofday () in *)
+(* let () = Printf.printf "Execution time reg_alloc_info: %fs\n%!" (stop -. start) in *)
 
 (* failwith "error" *)
 

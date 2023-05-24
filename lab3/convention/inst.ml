@@ -104,11 +104,18 @@ type instr =
   | Directive of string
   | Comment of string
 
+type section =
+  { name : instr (* This can only be of type label in instr *)
+  ; content : instr list
+  }
+
 (* parameters are passing through registers RDI; RSI; RDX; RCX; R8; R9
  * for more parameters, using memory. *)
 type fdefn =
   { func_name : Symbol.t
-  ; body : instr list
+  ; prologue : section
+  ; body : section
+  ; epilogue : section
   }
 
 type program = fdefn list
