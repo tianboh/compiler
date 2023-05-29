@@ -238,7 +238,11 @@ let rec trans_stm_rev
 
 let trans_fdefn func_name (pars : A.param list) blk (func_env : TC.func S.t) : T.fdefn =
   let par_list = List.map pars ~f:(fun par -> par.i) in
-  let var_env = S.empty in
+  let var_env =
+    List.fold par_list ~init:S.empty ~f:(fun acc par ->
+        let temp = Temp.create () in
+        S.add_exn acc ~key:par ~data:temp)
+  in
   let blk_rev, var_env = trans_stm_rev blk [] var_env func_env in
   let blk = List.rev blk_rev in
   let temps = List.map par_list ~f:(fun par -> S.find_exn var_env par) in

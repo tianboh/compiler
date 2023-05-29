@@ -276,6 +276,15 @@ let tc_redeclare env func_name (pars : param list) ret_type =
   tc_signature (old_func.ret_type :: old_dtype) (ret_type :: new_dtype) func_name
 ;;
 
+let tc_pars_conflict (pars : param list) =
+  ignore
+    (List.fold pars ~init:Set.empty ~f:(fun acc par ->
+         if Set.mem acc par.i
+         then error ~msg:"func parameter name conflict" None
+         else Set.add acc par.i)
+      : Set.t)
+;;
+
 (* Rules to follow
  * 1) parameter variable name should not collide. 
  * 2) Function may be declared multiple times, in which case 
@@ -285,12 +294,7 @@ let tc_redeclare env func_name (pars : param list) ret_type =
  * in source files again.
  *)
 let tc_fdecl ret_type func_name (pars : param list) env scope =
-  ignore
-    (List.fold_left pars ~init:Set.empty ~f:(fun acc par ->
-         if Set.mem acc par.i
-         then error ~msg:"fdecl parameter name collide" None
-         else Set.add acc par.i)
-      : Set.t);
+  tc_pars_conflict pars;
   if S.mem env.funcs func_name
   then (
     tc_redeclare env func_name pars ret_type;
@@ -316,23 +320,24 @@ let pp_env env =
  * 3) Each function can only be define in source file, not header file.
  *)
 let tc_fdefn ret_type func_name pars blk env scope =
+  tc_pars_conflict pars;
   if phys_equal scope External
   then error ~msg:"Cannot define function in header file" None;
+  let vars =
+    List.fold pars ~init:env.vars ~f:(fun acc par ->
+        S.add_exn acc ~key:par.i ~data:{ state = Defn; dtype = par.t })
+  in
+  let funcs =
+    S.add_exn env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
+  in
   let env =
     match S.find env.funcs func_name with
-    | None ->
-      { env with
-        funcs =
-          S.add_exn env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
-      }
+    | None -> { funcs; vars }
     | Some s ->
       (match s.state with
       | Decl ->
         tc_redeclare env func_name pars ret_type;
-        let funcs =
-          S.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
-        in
-        { env with funcs }
+        { funcs; vars }
       | Defn ->
         error ~msg:(sprintf "function %s already defined." (Symbol.name func_name)) None)
   in
@@ -343,6 +348,7 @@ let rec _typecheck prog env scope =
   match prog with
   | [] -> env
   | h :: t ->
+    let env = { env with vars = S.empty } in
     (match h with
     | A.Fdecl fdecl ->
       let env = tc_fdecl fdecl.ret_type fdecl.func_name fdecl.pars env scope in
