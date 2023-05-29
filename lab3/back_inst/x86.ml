@@ -1,9 +1,6 @@
-(* L2 x86 assembly 
+(* L3 x86 assembly 
  * 
- * Provide new instruction compared with L1
- * 1) Operation related: 
- * 2) Control flow related:
- * 3) Flag related: 
+ * Provide function call based on l2
  *
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
@@ -14,6 +11,10 @@ module Memory = Var.Memory
 module Label = Util.Label
 module Symbol = Util.Symbol
 open Var.Layout
+
+type scope =
+  | Internal
+  | External
 
 type operand =
   | Imm of Int32.t
@@ -140,6 +141,10 @@ type instr =
         src : operand
       ; dest : operand
       ; layout : layout
+      }
+  | Fcall of
+      { func_name : Symbol.t
+      ; scope : scope
       }
   | GDB of string
   | Directive of string
@@ -280,6 +285,11 @@ let format_inst (layout : layout) =
   | QWORD -> ""
 ;;
 
+let format_scope = function
+  | Internal -> "_c0_"
+  | External -> ""
+;;
+
 (* functions that format assembly output *)
 let format = function
   (* We use AT&T x86 convention to generate x86 assembly code. *)
@@ -373,6 +383,8 @@ let format = function
       (format_inst sal.layout)
       (format_operand sal.src BYTE)
       (format_operand sal.dest sal.layout)
+  | Fcall fcall ->
+    sprintf "call %s%s" (format_scope fcall.scope) (Symbol.name fcall.func_name)
   | GDB gdb -> sprintf "%s" gdb
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment

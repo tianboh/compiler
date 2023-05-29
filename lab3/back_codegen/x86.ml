@@ -64,6 +64,11 @@ let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Regalloc.dest IG.Ver
   | Reg r -> AS_x86.Reg r
 ;;
 
+let trans_scope = function
+  | AS.Internal -> AS_x86.Internal
+  | AS.External -> AS_x86.External
+;;
+
 let eax = AS_x86.Reg Register.RAX
 let edx = AS_x86.Reg Register.RDX
 let fpe_label = Label.label (Some "fpe")
@@ -201,7 +206,12 @@ let rec _codegen_w_reg_rev
       let var = oprd_ps_to_x86 pop.var reg_alloc_info in
       let inst_rev = AS_x86.Pop { var; layout = QWORD } in
       _codegen_w_reg_rev (inst_rev :: res) t reg_alloc_info reg_swap
-    | AS.Fcall _ | AS.Assert _ -> failwith "x86 inst not impl yet"
+    | AS.Fcall fcall ->
+      let scope = trans_scope fcall.scope in
+      let func_name = fcall.func_name in
+      let inst = AS_x86.Fcall { func_name; scope } in
+      _codegen_w_reg_rev (inst :: res) t reg_alloc_info reg_swap
+    | AS.Assert _ -> failwith "x86 inst not impl yet"
     | _ -> _codegen_w_reg_rev res t reg_alloc_info reg_swap)
 ;;
 
