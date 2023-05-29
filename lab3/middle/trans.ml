@@ -15,6 +15,12 @@ module T = Tree
 module Label = Util.Label
 module Mark = Util.Mark
 module Temp = Var.Temp
+module TC = Semantic.Typechecker
+
+let trans_scope = function
+  | TC.Internal -> T.Internal
+  | TC.External -> T.External
+;;
 
 (* `Pure is expression that not lead to side-effect
  * `Impure is expression that may lead to side-effect, 
@@ -48,14 +54,16 @@ let gen_cond (exp : T.exp) : T.exp * T.binop * T.exp =
 
 (* Return statement lists that include effect(can be empty), 
  * and the pure exp without side-effect *)
-let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) : T.stm list * T.exp =
+let rec trans_exp (exp_ast : A.exp) (var_env : Temp.t S.t) (func_env : TC.func S.t)
+    : T.stm list * T.exp
+  =
   match exp_ast with
   (* after type-checking, id must be declared; do not guard lookup *)
-  | A.Var id -> [], T.Temp (S.find_exn env id)
+  | A.Var id -> [], T.Temp (S.find_exn var_env id)
   | A.Const_int c -> [], T.Const c
   | A.True -> [], T.Const Int32.one
   | A.False -> [], T.Const Int32.zero
-  | A.Binop binop -> trans_exp_bin (A.Binop binop) env
+  | A.Binop binop -> trans_exp_bin (A.Binop binop) var_env func_env
   (* 
    * CJump cond label_true, label_false
    * label_true:
@@ -67,9 +75,9 @@ let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) : T.stm list * T.exp =
    * restcode
    *)
   | A.Terop terop ->
-    let cond_stms, cond_exp = trans_mexp terop.cond env in
-    let true_stms, true_exp = trans_mexp terop.true_exp env in
-    let false_stms, false_exp = trans_mexp terop.false_exp env in
+    let cond_stms, cond_exp = trans_mexp terop.cond var_env func_env in
+    let true_stms, true_exp = trans_mexp terop.true_exp var_env func_env in
+    let false_stms, false_exp = trans_mexp terop.false_exp var_env func_env in
     let temp = Temp.create () in
     let label_true = Label.label (Some "terop_true") in
     let label_false = Label.label (Some "terop_false") in
@@ -90,7 +98,7 @@ let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) : T.stm list * T.exp =
     (* First calculate arguments with potential side effect, then call fcall. *)
     let res =
       List.fold_left fcall.args ~init:[] ~f:(fun acc arg ->
-          let arg_stms, arg_exp = trans_mexp arg env in
+          let arg_stms, arg_exp = trans_mexp arg var_env func_env in
           (arg_stms, arg_exp) :: acc)
       |> List.rev
     in
@@ -106,15 +114,17 @@ let rec trans_exp (exp_ast : A.exp) (env : Temp.t S.t) : T.stm list * T.exp =
           exp)
     in
     let dest = Temp.create () in
-    let call = T.Fcall { dest; args = args_exps; func_name = fcall.func_name } in
+    let func = S.find_exn func_env fcall.func_name in
+    let scope = trans_scope func.scope in
+    let call = T.Fcall { dest; args = args_exps; func_name = fcall.func_name; scope } in
     let call_stms = args_stms @ [ call ] in
     call_stms, T.Temp dest
 
-and trans_mexp mexp env = trans_exp (Mark.data mexp) env
+and trans_mexp mexp var_env func_env = trans_exp (Mark.data mexp) var_env func_env
 
-and[@warning "-8"] trans_exp_bin (A.Binop binop) env : T.stm list * T.exp =
-  let lhs_stm, lhs_exp = trans_mexp binop.lhs env in
-  let rhs_stm, rhs_exp = trans_mexp binop.rhs env in
+and[@warning "-8"] trans_exp_bin (A.Binop binop) var_env func_env : T.stm list * T.exp =
+  let lhs_stm, lhs_exp = trans_mexp binop.lhs var_env func_env in
+  let rhs_stm, rhs_exp = trans_mexp binop.rhs var_env func_env in
   match trans_binop binop.op with
   | `Pure op -> lhs_stm @ rhs_stm, T.Binop { op; lhs = lhs_exp; rhs = rhs_exp }
   | `Impure op ->
@@ -124,19 +134,23 @@ and[@warning "-8"] trans_exp_bin (A.Binop binop) env : T.stm list * T.exp =
   | `Compare op -> lhs_stm @ rhs_stm, T.Binop { op; lhs = lhs_exp; rhs = rhs_exp }
 ;;
 
-(* env keep trakcs from variable name to temporary. Two things keep in mind
+(* var_env keep trakcs from variable name to temporary. Two things keep in mind
  * 1) variable name can be the same in different scope (scope has no intersection).
- * So env will update in different context. 
- * 2) env is only a map from variable name to temporary, it doesn't care the 
+ * So var_env will update in different context. 
+ * 2) var_env is only a map from variable name to temporary, it doesn't care the 
  * content of temporary. So we only add this linkage in declaration. *)
-let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t)
+let rec trans_stm_rev
+    (ast : A.mstm)
+    (acc : T.stm list)
+    (var_env : Temp.t S.t)
+    (func_env : TC.func S.t)
     : T.stm list * Temp.t S.t
   =
   match Mark.data ast with
   | A.Assign asn_ast ->
-    let dest = S.find_exn env asn_ast.name in
-    let v_stms, v_exp = trans_mexp asn_ast.value env in
-    [ T.Move { dest; src = v_exp } ] @ List.rev v_stms @ acc, env
+    let dest = S.find_exn var_env asn_ast.name in
+    let v_stms, v_exp = trans_mexp asn_ast.value var_env func_env in
+    [ T.Move { dest; src = v_exp } ] @ List.rev v_stms @ acc, var_env
   | A.If if_ast ->
     (* 
      *  CJump cond label_true, label_false
@@ -148,12 +162,12 @@ let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t)
      *  label_conv
      *  rest code blah blah
      *)
-    let cond_stms, cond_exp = trans_mexp if_ast.cond env in
+    let cond_stms, cond_exp = trans_mexp if_ast.cond var_env func_env in
     let label_false = Label.label (Some "if_false") in
     let label_true = Label.label (Some "if_true") in
     let label_conv = Label.label (Some "if_conv") in
-    let false_stm, _ = trans_stm_rev if_ast.false_stm [] env in
-    let true_stm, _ = trans_stm_rev if_ast.true_stm [] env in
+    let false_stm, _ = trans_stm_rev if_ast.false_stm [] var_env func_env in
+    let true_stm, _ = trans_stm_rev if_ast.true_stm [] var_env func_env in
     let lhs, op, rhs = gen_cond cond_exp in
     ( (T.Label label_conv :: true_stm)
       @ [ T.Label label_true; T.Jump label_conv ]
@@ -163,7 +177,7 @@ let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t)
         ]
       @ List.rev cond_stms
       @ acc
-    , env )
+    , var_env )
   | A.While while_ast ->
     (* 
      * Jump label_loop_stop
@@ -174,8 +188,8 @@ let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t)
      * CJump cond label_loop_start
      * label_loop_dummy
      * rest blah blah *)
-    let cond_stms, cond_exp = trans_mexp while_ast.cond env in
-    let body, _ = trans_stm_rev while_ast.body [] env in
+    let cond_stms, cond_exp = trans_mexp while_ast.cond var_env func_env in
+    let body, _ = trans_stm_rev while_ast.body [] var_env func_env in
     let label_loop_start = Label.label (Some "loop_start") in
     let label_loop_stop = Label.label (Some "loop_stop") in
     let label_loop_dummy = Label.label (Some "loop_dummy") in
@@ -195,58 +209,55 @@ let rec trans_stm_rev (ast : A.mstm) (acc : T.stm list) (env : Temp.t S.t)
       @ [ T.Label label_loop_start ]
       @ [ T.Jump label_loop_stop ]
       @ acc
-    , env )
+    , var_env )
   | A.Return ret_ast ->
     (match ret_ast with
-    | None -> T.Return None :: acc, env
+    | None -> T.Return None :: acc, var_env
     | Some ret_ast ->
-      let ret_stms, ret_exp = trans_mexp ret_ast env in
+      let ret_stms, ret_exp = trans_mexp ret_ast var_env func_env in
       let ret = T.Return (Some ret_exp) in
-      (ret :: List.rev ret_stms) @ acc, env)
-  | A.Nop -> acc, env
+      (ret :: List.rev ret_stms) @ acc, var_env)
+  | A.Nop -> acc, var_env
   | A.Seq seq_ast ->
-    let head, _ = trans_stm_rev seq_ast.head [] env in
-    let tail, _ = trans_stm_rev seq_ast.tail [] env in
-    tail @ head @ acc, env
+    let head, _ = trans_stm_rev seq_ast.head [] var_env func_env in
+    let tail, _ = trans_stm_rev seq_ast.tail [] var_env func_env in
+    tail @ head @ acc, var_env
   | A.Declare decl_ast ->
     let temp = Temp.create () in
-    let env' = S.add_exn env ~key:decl_ast.name ~data:temp in
-    let tail, _ = trans_stm_rev decl_ast.tail [] env' in
-    tail @ acc, env'
+    let var_env' = S.add_exn var_env ~key:decl_ast.name ~data:temp in
+    let tail, _ = trans_stm_rev decl_ast.tail [] var_env' func_env in
+    tail @ acc, var_env'
   | A.Sexp sexp_ast ->
-    let sexp_stms, _ = trans_mexp sexp_ast env in
-    List.rev sexp_stms @ acc, env
+    let sexp_stms, _ = trans_mexp sexp_ast var_env func_env in
+    List.rev sexp_stms @ acc, var_env
   | A.Assert asrt ->
-    let asrt_stms, asrt_exp = trans_mexp asrt env in
+    let asrt_stms, asrt_exp = trans_mexp asrt var_env func_env in
     let ret = T.Assert asrt_exp in
-    (ret :: List.rev asrt_stms) @ acc, env
+    (ret :: List.rev asrt_stms) @ acc, var_env
 ;;
 
-let trans_body (program : A.mstm) : T.stm list =
-  let env = S.empty in
-  let blk_rev, _ = trans_stm_rev program [] env in
-  let blk = List.rev blk_rev in
-  Tree.Label (Util.Label.label (Some "main")) :: blk
-;;
-
-let trans_fdefn func_name (pars : A.param list) blk : T.fdefn =
+let trans_fdefn func_name (pars : A.param list) blk (func_env : TC.func S.t) : T.fdefn =
   let par_list = List.map pars ~f:(fun par -> par.i) in
-  let env = S.empty in
-  let blk_rev, env = trans_stm_rev blk [] env in
+  let var_env = S.empty in
+  let blk_rev, var_env = trans_stm_rev blk [] var_env func_env in
   let blk = List.rev blk_rev in
-  let temps = List.map par_list ~f:(fun par -> S.find_exn env par) in
+  let temps = List.map par_list ~f:(fun par -> S.find_exn var_env par) in
   { func_name; temps; body = blk }
 ;;
 
-let rec trans_prog (program : A.program) (acc : T.program) : T.program =
+let rec trans_prog (program : A.program) (acc : T.program) (func_env : TC.func S.t)
+    : T.program
+  =
   match program with
   | [] -> List.rev acc
   | h :: t ->
     (match h with
     | A.Fdefn fdefn ->
-      let fdefn_tree = trans_fdefn fdefn.func_name fdefn.pars fdefn.blk in
-      trans_prog t (fdefn_tree :: acc)
-    | A.Typedef _ | A.Fdecl _ -> trans_prog t acc)
+      let fdefn_tree = trans_fdefn fdefn.func_name fdefn.pars fdefn.blk func_env in
+      trans_prog t (fdefn_tree :: acc) func_env
+    | A.Typedef _ | A.Fdecl _ -> trans_prog t acc func_env)
 ;;
 
-let translate (program : A.program) : T.program = trans_prog program []
+let translate (program : A.program) (func_env : TC.func S.t) : T.program =
+  trans_prog program [] func_env
+;;

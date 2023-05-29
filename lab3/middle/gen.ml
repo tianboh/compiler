@@ -24,6 +24,11 @@ let munch_op = function
   | T.Not_eq -> Inst.Not_eq
 ;;
 
+let munch_scope = function
+  | T.Internal -> Inst.Internal
+  | T.External -> Inst.External
+;;
+
 (* munch_exp_acc dest exp rev_acc
  *
  * Suppose we have the statement:
@@ -124,7 +129,10 @@ and munch_stm_rev (stm : T.stm) =
     in
     let args, args_stms = List.unzip res in
     let args_stms_rev = List.rev args_stms |> List.concat in
-    let call = Inst.Fcall { func_name = fcall.func_name; args; dest = fcall.dest } in
+    let scope = munch_scope fcall.scope in
+    let call =
+      Inst.Fcall { func_name = fcall.func_name; args; dest = fcall.dest; scope }
+    in
     call :: args_stms_rev
 
 and munch_stms_rev stms res =

@@ -1,4 +1,4 @@
-(* L2 Compiler
+(* L3 Compiler
  * Top Level Environment
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Alex Vaynberg <alv@andrew.cmu.edu>
@@ -139,24 +139,25 @@ let say_if (v : bool) (f : unit -> string) = if v then prerr_endline (f ())
 let compile (cmd : cmd_line_args) : unit =
   say_if cmd.verbose (fun () -> "Parsing... " ^ cmd.filename);
   if cmd.dump_parsing then ignore (Parsing.set_trace true : bool);
-  (* Parse *)
   let cst = Parse.parse cmd.filename in
   say_if cmd.dump_cst (fun () -> Cst.Print.pp_program cst);
-  (* Elaborate *)
   let ast = Elab.elaborate cst in
   say_if cmd.dump_ast (fun () -> Ast.Print.pp_program ast);
-  (* Semantic analysis *)
-  say_if cmd.verbose (fun () -> "Checking...");
-  Typechecker.typecheck ast;
+  say_if cmd.verbose (fun () -> "Semantic analysis...");
+  let tc_env =
+    ({ vars = Util.Symbol.Map.empty (* variable decl/def tracker *)
+     ; funcs = Util.Symbol.Map.empty (* function signature *)
+     }
+      : Typechecker.env)
+  in
+  let tc_env = Typechecker.typecheck ast (Some tc_env) in
   Controlflow.cf_ret ast;
   Controlflow.cf_init ast;
   if cmd.semcheck_only then exit 0;
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
-  let ir = Trans.translate ast in
+  let ir = Trans.translate ast tc_env.funcs in
   let ir_ssa = List.map ir ~f:(fun ir -> Middle.Ssa.run ir.body) in
-  (* Okay, this is a hack, we will provide more comprehensive handling in lab3. 
-   * TODO: fix it! *)
   say_if cmd.dump_ir (fun () ->
       List.map ir_ssa ~f:Tree.Print.pp_stms |> String.concat ~sep:"\n");
   (* Codegen *)

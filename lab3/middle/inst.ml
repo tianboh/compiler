@@ -24,6 +24,11 @@ module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
 
+(* used for function call to locate its defination. *)
+type scope =
+  | Internal
+  | External
+
 (* Notice that pure pseudo assembly does not assign register to each temp, so 
  * operand does not contain register type. Register is assigned in x86 assemb. 
  *  
@@ -63,6 +68,7 @@ type instr =
       { func_name : Symbol.t
       ; dest : Temp.t
       ; args : operand list
+      ; scope : scope
       }
   | Mov of
       { dest : operand
@@ -92,6 +98,11 @@ type fdefn =
 type program = fdefn list
 
 (* functions that format assembly output *)
+
+let pp_scope = function
+  | Internal -> "_c0_"
+  | External -> ""
+;;
 
 let pp_binop = function
   | Plus -> "+"
@@ -144,7 +155,8 @@ let pp_inst = function
     | Some var -> sprintf "return %s" (pp_operand var))
   | Fcall call ->
     sprintf
-      "%s <- %s(%s)"
+      "%s%s <- %s(%s)"
+      (pp_scope call.scope)
       (Symbol.name call.func_name)
       (Temp.name call.dest)
       (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")

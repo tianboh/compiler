@@ -22,6 +22,10 @@ module Label = Util.Label
 module Symbol = Util.Symbol
 module AS = Middle.Inst
 
+type scope =
+  | Internal
+  | External
+
 type operand =
   | Imm of Int32.t
   | Temp of Temp.t
@@ -65,6 +69,7 @@ type instr =
         func_name : Symbol.t
       ; args : operand list
       ; line : line
+      ; scope : scope
       }
   | Mov of
       { dest : operand
@@ -153,6 +158,11 @@ let pp_operand = function
   | Reg r -> Register.reg_to_str r
 ;;
 
+let pp_scope = function
+  | Internal -> "_c0_"
+  | External -> ""
+;;
+
 let pp_inst = function
   | Binop binop ->
     sprintf
@@ -178,7 +188,8 @@ let pp_inst = function
   | Assert asrt -> sprintf "assert %s" (pp_operand asrt.var)
   | Fcall fcall ->
     sprintf
-      "fcall %s(%s)"
+      "fcall %s%s(%s)"
+      (pp_scope fcall.scope)
       (Symbol.name fcall.func_name)
       (List.map fcall.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
   | Push push -> sprintf "push %s" (pp_operand push.var)
