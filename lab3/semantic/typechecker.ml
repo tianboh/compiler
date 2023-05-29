@@ -59,6 +59,10 @@ type state =
 type dtype = A.dtype
 type param = A.param
 
+type scope =
+  | Internal
+  | External
+
 type var =
   { state : state
   ; dtype : dtype
@@ -68,6 +72,7 @@ type func =
   { state : state
   ; pars : param list
   ; ret_type : dtype
+  ; scope : scope
   }
 
 type env =
@@ -261,13 +266,25 @@ and tc_declare decl_type decl_name tail loc env func_name =
     { env with vars = S.remove env''.vars decl_name }
 ;;
 
+(* If a function is already declared before, 
+ * check if the old signature and new signature the same
+ *)
+let tc_redeclare env func_name (pars : param list) ret_type =
+  let old_func = S.find_exn env.funcs func_name in
+  let old_dtype = List.map old_func.pars ~f:(fun par -> par.t) in
+  let new_dtype = List.map pars ~f:(fun par -> par.t) in
+  tc_signature (old_func.ret_type :: old_dtype) (ret_type :: new_dtype) func_name
+;;
+
 (* Rules to follow
  * 1) parameter variable name should not collide. 
  * 2) Function may be declared multiple times, in which case 
  * the declarations must be compatible. Types should be the
  * same, but parameter name are not required to be the same.
+ * 3) functions declared in header file cannot be defined
+ * in source files again.
  *)
-let tc_fdecl ret_type func_name (pars : param list) env =
+let tc_fdecl ret_type func_name (pars : param list) env scope =
   ignore
     (List.fold_left pars ~init:Set.empty ~f:(fun acc par ->
          if Set.mem acc par.i
@@ -276,14 +293,12 @@ let tc_fdecl ret_type func_name (pars : param list) env =
       : Set.t);
   if S.mem env.funcs func_name
   then (
-    let old_func = S.find_exn env.funcs func_name in
-    let old_dtype = List.map old_func.pars ~f:(fun par -> par.t) in
-    let new_dtype = List.map pars ~f:(fun par -> par.t) in
-    tc_signature (old_func.ret_type :: old_dtype) (ret_type :: new_dtype) func_name;
+    tc_redeclare env func_name pars ret_type;
     env)
   else
     { env with
-      funcs = S.add_exn env.funcs ~key:func_name ~data:{ state = Decl; pars; ret_type }
+      funcs =
+        S.add_exn env.funcs ~key:func_name ~data:{ state = Decl; pars; ret_type; scope }
     }
 ;;
 
@@ -298,49 +313,58 @@ let pp_env env =
  * 1) Parameters should not conflict with local variables. We have already elaborated
  * fdefn, so tc_stm is going to check whether parameter and local variable collide.
  * 2) Each function can only be defined once.
+ * 3) Each function can only be define in source file, not header file.
  *)
-let tc_fdefn ret_type func_name pars blk env =
+let tc_fdefn ret_type func_name pars blk env scope =
+  if phys_equal scope External
+  then error ~msg:"Cannot define function in header file" None;
   let env =
     match S.find env.funcs func_name with
     | None ->
       { env with
-        funcs = S.add_exn env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type }
+        funcs =
+          S.add_exn env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
       }
     | Some s ->
       (match s.state with
       | Decl ->
-        let old_func = S.find_exn env.funcs func_name in
-        let old_dtype = List.map old_func.pars ~f:(fun par -> par.t) in
-        let new_dtype = List.map pars ~f:(fun par -> par.t) in
-        tc_signature (old_func.ret_type :: old_dtype) (ret_type :: new_dtype) func_name;
-        { env with
-          funcs = S.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type }
-        }
+        tc_redeclare env func_name pars ret_type;
+        let funcs =
+          S.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
+        in
+        { env with funcs }
       | Defn ->
         error ~msg:(sprintf "function %s already defined." (Symbol.name func_name)) None)
   in
   tc_stm blk env func_name
 ;;
 
-let rec _typecheck prog env =
+let rec _typecheck prog env scope =
   match prog with
-  | [] -> ()
+  | [] -> env
   | h :: t ->
     (match h with
     | A.Fdecl fdecl ->
-      let env = tc_fdecl fdecl.ret_type fdecl.func_name fdecl.pars env in
-      _typecheck t env
+      let env = tc_fdecl fdecl.ret_type fdecl.func_name fdecl.pars env scope in
+      _typecheck t env scope
     | A.Fdefn fdefn ->
-      let env = tc_fdefn fdefn.ret_type fdefn.func_name fdefn.pars fdefn.blk env in
-      _typecheck t env
-    | A.Typedef _ -> _typecheck t env)
+      let env = tc_fdefn fdefn.ret_type fdefn.func_name fdefn.pars fdefn.blk env scope in
+      _typecheck t env scope
+    | A.Typedef _ -> _typecheck t env scope)
 ;;
 
-let typecheck prog =
-  let env =
-    { vars = S.empty (* variable decl/def tracker *)
-    ; funcs = S.empty (* function signature *)
-    }
+(* env
+ * | None: typecheck header file
+ * | Some env: typecheck source file based on environment from header file. *)
+let typecheck (prog : A.gdecl list) (env : env option) =
+  let env, scope =
+    match env with
+    | None ->
+      ( { vars = S.empty (* variable decl/def tracker *)
+        ; funcs = S.empty (* function signature *)
+        }
+      , External )
+    | Some s -> s, Internal
   in
-  _typecheck prog env
+  _typecheck prog env scope
 ;;

@@ -34,6 +34,11 @@ module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
 
+(* where the function is defined *)
+type scope =
+  | Internal
+  | External
+
 type binop =
   | Plus
   | Minus
@@ -76,6 +81,7 @@ and stm =
       { dest : Temp.t
       ; func_name : Symbol.t
       ; args : exp list
+      ; scope : scope
       }
   | Return of exp option
   | Jump of Label.t
@@ -110,6 +116,11 @@ end
 
 module Print : PRINT = struct
   let sprintf = Printf.sprintf
+
+  let pp_scope = function
+    | Internal -> "_c0_"
+    | External -> ""
+  ;;
 
   let pp_binop = function
     | Plus -> "+"
@@ -146,10 +157,11 @@ module Print : PRINT = struct
         (pp_binop eft.op)
         (pp_exp eft.rhs)
     | Fcall c ->
+      let scope = pp_scope c.scope in
       let dest = Temp.name c.dest in
       let func_name = Symbol.name c.func_name in
       let args = List.map (fun arg -> pp_exp arg) c.args |> String.concat ", " in
-      sprintf "%s <- %s(%s)" dest func_name args
+      sprintf "%s%s <- %s(%s)" scope dest func_name args
     | Return e ->
       (match e with
       | None -> "return\n"

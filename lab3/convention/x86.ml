@@ -141,6 +141,11 @@ let param_map idx temp : Dest.operand =
   | _ -> trans_operand temp
 ;;
 
+let gen_scope = function
+  | Src.Internal -> Dest.Internal
+  | Src.External -> Dest.External
+;;
+
 (* Generate x86 instr with function call convention *)
 let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
   let func_name = fcall.func_name in
@@ -168,7 +173,8 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
           let push = Dest.Push { var = src; line } in
           push))
   in
-  let fcall = Dest.Fcall { func_name; args; line } in
+  let scope = gen_scope fcall.scope in
+  let fcall = Dest.Fcall { func_name; args; line; scope } in
   let ret_line =
     ({ defines = [ dest ]; uses = [ Dest.Reg rax ]; live_out = []; move = true }
       : Dest.line)

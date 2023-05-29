@@ -1,6 +1,6 @@
 (library
  (name middle)
- (libraries core front json_reader args var util)
+ (libraries core front semantic json_reader args var util)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))
