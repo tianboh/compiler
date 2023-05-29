@@ -90,6 +90,7 @@ let expand_postop lhs op
 %token L_paren R_paren
 %token Eof
 %token Semicolon
+%token Comma
 (* Binary operators *) 
 %token Plus Minus Star Slash Percent Less Less_eq Greater Greater_eq Equal_eq Not_eq
         And_and Or_or And Or Left_shift Right_shift Hat (* bitwise exclusive or *)
@@ -165,7 +166,7 @@ param :
 param_list_follow:
   | 
       { [] }
-  | Semicolon; par = param; pars = param_list_follow;
+  | Comma; par = param; pars = param_list_follow;
       { par :: pars }
   ;
 
@@ -308,7 +309,7 @@ arg_list :
 arg_list_follow : 
   |
       { [] }
-  | Semicolon; e = m(exp); arg_list_follow = arg_list_follow;
+  | Comma; e = m(exp); arg_list_follow = arg_list_follow;
       { e :: arg_list_follow }
   
 expopt :

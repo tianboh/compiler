@@ -101,6 +101,7 @@ rule initial = parse
   | ')' { T.R_paren }
 
   | ';' { T.Semicolon }
+  | ',' { T.Comma }
   | '!'  { T.Excalmation_mark }
   | '~'  { T.Dash_mark }
   | "--" { T.Minus_minus }

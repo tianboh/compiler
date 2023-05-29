@@ -31,7 +31,6 @@ module Trans = Middle.Trans
 module Memory = Var.Memory
 
 (* Command line arguments *)
-
 type cmd_line_args =
   { verbose : bool
   ; dump_parsing : bool
@@ -44,11 +43,13 @@ type cmd_line_args =
   ; emit : Emit.t
   ; opt_level : Opt_level.t
   ; df_type : Df_analysis.t
+  ; header_file : string option
   ; filename : string
   }
 
 (* A term (using the vocabulary of the Cmdliner library) that can be used to
  * parse command-line arguments. *)
+(* cheetsheet: https://github.com/mjambon/cmdliner-cheatsheet *)
 let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   let open Cmdliner in
   (* See https://github.com/janestreet/ppx_let *)
@@ -117,6 +118,11 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and filename =
     let doc = "The source file $(docv) to compile." in
     Arg.(required (pos 0 (some non_dir_file) None (info [] ~doc ~docv:"FILE")))
+  and header_file =
+    let info =
+      Arg.info [ "l"; "link" ] ~docv:"NUM" ~doc:"The header file $(docv) to compile."
+    in
+    Arg.value (Arg.opt (Arg.some Arg.string) None info)
   in
   { verbose
   ; dump_parsing
@@ -130,6 +136,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   ; opt_level
   ; df_type
   ; filename
+  ; header_file
   }
 ;;
 
@@ -137,6 +144,14 @@ let say_if (v : bool) (f : unit -> string) = if v then prerr_endline (f ())
 
 (* The main driver for the compiler: runs each phase. *)
 let compile (cmd : cmd_line_args) : unit =
+  let tc_env =
+    match cmd.header_file with
+    | Some header ->
+      let cst = Parse.parse header in
+      let ast = Elab.elaborate cst in
+      Some (Typechecker.typecheck ast None)
+    | None -> None
+  in
   say_if cmd.verbose (fun () -> "Parsing... " ^ cmd.filename);
   if cmd.dump_parsing then ignore (Parsing.set_trace true : bool);
   let cst = Parse.parse cmd.filename in
@@ -144,13 +159,7 @@ let compile (cmd : cmd_line_args) : unit =
   let ast = Elab.elaborate cst in
   say_if cmd.dump_ast (fun () -> Ast.Print.pp_program ast);
   say_if cmd.verbose (fun () -> "Semantic analysis...");
-  let tc_env =
-    ({ vars = Util.Symbol.Map.empty (* variable decl/def tracker *)
-     ; funcs = Util.Symbol.Map.empty (* function signature *)
-     }
-      : Typechecker.env)
-  in
-  let tc_env = Typechecker.typecheck ast (Some tc_env) in
+  let tc_env = Typechecker.typecheck ast tc_env in
   Controlflow.cf_ret ast;
   Controlflow.cf_init ast;
   if cmd.semcheck_only then exit 0;
