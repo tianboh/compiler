@@ -114,13 +114,9 @@ type section =
   ; content : instr list
   }
 
-(* parameters are passing through registers RDI; RSI; RDX; RCX; R8; R9
- * for more parameters, using memory. *)
 type fdefn =
-  { func_name : Symbol.t
-  ; prologue : section
-  ; body : section
-  ; epilogue : section
+  { func_name : string
+  ; body : instr list
   }
 
 type program = fdefn list

@@ -192,17 +192,16 @@ let compile (cmd : cmd_line_args) : unit =
     (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
     (* let start = Unix.gettimeofday () in *)
     let assem_x86_conv = Convention.X86.gen assem_ps_ssa [] in
-    List.iter assem_x86_conv ~f:(fun prog ->
-        let reg_alloc_info = Regalloc.Driver.regalloc prog in
-        let prog = Codegen.X86.gen prog reg_alloc_info in
-        File.dump_asm_x86 file prog;
-        Memory.reset)
+    let progs =
+      List.map assem_x86_conv ~f:(fun fdefn ->
+          let reg_alloc_info = Regalloc.Driver.regalloc fdefn in
+          let instrs = Codegen.X86.gen fdefn reg_alloc_info in
+          fdefn.func_name, instrs)
+    in
+    let fnames, instrs = List.unzip progs in
+    let instrs = List.concat instrs @ Codegen.X86.fpe_handler in
+    File.dump_asm_x86 file fnames instrs
 ;;
-
-(* let stop = Unix.gettimeofday () in *)
-(* let () = Printf.printf "Execution time reg_alloc_info: %fs\n%!" (stop -. start) in *)
-
-(* failwith "error" *)
 
 let run (cmd : cmd_line_args) : unit =
   let f = cmd.filename in

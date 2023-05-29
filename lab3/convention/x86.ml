@@ -264,6 +264,13 @@ let gen_section (prefix : string) (fname : Symbol.t) (content : Dest.instr list)
   { name; content }, label
 ;;
 
+let gen_program prologue body epilogue : instr list =
+  let prologue = prologue.name :: prologue.content in
+  let body = body.name :: body.content in
+  let epilogue = epilogue.name :: epilogue.content in
+  prologue @ body @ epilogue
+;;
+
 (* Let register allocation alg handle prologue and epilogue. *)
 let rec gen (program : Src.program) (res : Dest.program) : Dest.program =
   match program with
@@ -276,6 +283,7 @@ let rec gen (program : Src.program) (res : Dest.program) : Dest.program =
     let epilogue, exit_label = gen_section "epi_" h.func_name epilogue_content in
     let body_content = gen_body h.body [] exit_label in
     let body, _ = gen_section "body_" h.func_name body_content in
-    let fdefn = { func_name = h.func_name; epilogue; prologue; body } in
+    let prog = gen_program prologue body epilogue in
+    let fdefn = { func_name = "_c0_" ^ Symbol.name h.func_name; body = prog } in
     gen t (fdefn :: res)
 ;;

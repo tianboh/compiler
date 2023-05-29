@@ -43,45 +43,22 @@ let dump_ps file_name (program : Asm_ps.program) =
     ~append:true
 ;;
 
-let dump_asm_x86 file_name x86_asm =
+let dump_asm_x86 file_name fnames instrs =
   (* header *)
-  let () =
-    Out_channel.with_file file_name ~f:(fun out ->
-        let output_instr instr =
-          Out_channel.fprintf out "\t%s\n" (Asm_x86.format instr)
-        in
-        output_instr (Asm_x86.Directive (".file\t\"" ^ file_name ^ "\""));
-        output_instr (Asm_x86.Directive ".text");
-        output_instr (Asm_x86.Directive (".globl " ^ c0_main)))
-  in
-  (* Main header*)
-  let () =
-    Out_channel.with_file
-      file_name
-      ~f:(fun out ->
-        let output_instr instr = Out_channel.fprintf out "%s\n" (Asm_x86.format instr) in
-        output_instr (Asm_x86.Directive (c0_main ^ ":")))
-      ~append:true
-  in
-  (* Main prologue *)
-  let () =
-    Out_channel.with_file
-      file_name
-      ~f:(fun out ->
-        let output_instr content = Out_channel.fprintf out "%s\n" content in
-        output_instr (Asm_x86.format_prologue Memory.get_allocated_count))
-      ~append:true
-  in
-  (* Main body *)
+  Out_channel.with_file file_name ~f:(fun out ->
+      let output_instr instr = Out_channel.fprintf out "\t%s\n" (Asm_x86.format instr) in
+      output_instr (Asm_x86.Directive (".file\t\"" ^ file_name ^ "\""));
+      output_instr (Asm_x86.Directive ".text");
+      output_instr (Asm_x86.Directive (".globl " ^ String.concat fnames ~sep:", ")));
   Out_channel.with_file
     file_name
     ~f:(fun out ->
       let output_instr instr =
         match instr with
-        | Asm_x86.Label _ | Asm_x86.GDB _ ->
+        | Asm_x86.Label _ | Asm_x86.GDB _ | Asm_x86.Fname _ ->
           Out_channel.fprintf out "%s\n" (Asm_x86.format instr)
         | _ -> Out_channel.fprintf out "\t%s\n" (Asm_x86.format instr)
       in
-      List.iter ~f:output_instr x86_asm)
+      List.iter ~f:output_instr instrs)
     ~append:true
 ;;
