@@ -52,8 +52,8 @@ let oprd_ps_to_x86 (operand : AS.operand) (reg_alloc_info : Regalloc.dest IG.Ver
       | None ->
         (* Some variable that is only declared but not defined during the whole program. 
          * For example: int a; and no assignment afterwards.
-         * In this case, we will use %eax to represent it. Notice that it is only a representation
-         * for this uninitialized temporary, and %eax will not be assigned in the following instruction.
+         * In this case, we will use %rax to represent it. Notice that it is only a representation
+         * for this uninitialized temporary, and %rax will not be assigned in the following instruction.
          * Therefore, no worry for the return value. *)
         Regalloc.Reg Register.RAX
     in
@@ -69,14 +69,16 @@ let trans_scope = function
   | AS.External -> AS_x86.External
 ;;
 
-let eax = AS_x86.Reg Register.RAX
-let edx = AS_x86.Reg Register.RDX
+let rax = AS_x86.Reg Register.RAX
+let rdx = AS_x86.Reg Register.RDX
+let rbp = AS_x86.Reg Register.RBP
+let rsp = AS_x86.Reg Register.RSP
 let fpe_label = Label.label (Some "fpe")
 
-(* We don't need to store eax because eax is not assigned to any temp.
- * Though eax, edx may be used by div/idiv instruction, once those 
- * instructions are finished, eax, edx will no longer be used. 
- * In a word, eax does not store temporary except ret. *)
+(* We don't need to store rax because rax is not assigned to any temp.
+ * Though rax, rdx may be used by div/idiv instruction, once those 
+ * instructions are finished, rax, rdx will no longer be used. 
+ * In a word, rax does not store temporary except ret. *)
 let gen_x86_relop_bin
     (op : AS.bin_op)
     (dest : AS_x86.operand)
@@ -86,19 +88,19 @@ let gen_x86_relop_bin
   =
   let set_inst =
     match op with
-    | Less -> [ AS_x86.SETL { dest = eax; layout = BYTE } ]
-    | Less_eq -> [ AS_x86.SETLE { dest = eax; layout = BYTE } ]
-    | Greater -> [ AS_x86.SETG { dest = eax; layout = BYTE } ]
-    | Greater_eq -> [ AS_x86.SETGE { dest = eax; layout = BYTE } ]
-    | Equal_eq -> [ AS_x86.SETE { dest = eax; layout = BYTE } ]
-    | Not_eq -> [ AS_x86.SETNE { dest = eax; layout = BYTE } ]
+    | Less -> [ AS_x86.SETL { dest = rax; layout = BYTE } ]
+    | Less_eq -> [ AS_x86.SETLE { dest = rax; layout = BYTE } ]
+    | Greater -> [ AS_x86.SETG { dest = rax; layout = BYTE } ]
+    | Greater_eq -> [ AS_x86.SETGE { dest = rax; layout = BYTE } ]
+    | Equal_eq -> [ AS_x86.SETE { dest = rax; layout = BYTE } ]
+    | Not_eq -> [ AS_x86.SETNE { dest = rax; layout = BYTE } ]
     | _ -> failwith "relop cannot handle other op"
   in
   let cmp_inst = AS_x86.safe_cmp lhs rhs DWORD swap in
-  [ AS_x86.XOR { dest = eax; src = eax; layout = DWORD } ]
+  [ AS_x86.XOR { dest = rax; src = rax; layout = DWORD } ]
   @ cmp_inst
   @ set_inst
-  @ [ AS_x86.Mov { dest; src = eax; layout = DWORD } ]
+  @ [ AS_x86.Mov { dest; src = rax; layout = DWORD } ]
 ;;
 
 let gen_x86_inst_bin
@@ -112,25 +114,25 @@ let gen_x86_inst_bin
   | Plus -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_add dest rhs DWORD
   | Minus -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_sub dest rhs DWORD
   | Times ->
-    [ AS_x86.Mov { dest = eax; src = lhs; layout = DWORD }
-    ; AS_x86.Mul { src = rhs; dest = eax; layout = DWORD }
-    ; AS_x86.Mov { dest; src = eax; layout = DWORD }
+    [ AS_x86.Mov { dest = rax; src = lhs; layout = DWORD }
+    ; AS_x86.Mul { src = rhs; dest = rax; layout = DWORD }
+    ; AS_x86.Mov { dest; src = rax; layout = DWORD }
     ]
   | Divided_by ->
-    (* Notice that lhs and rhs may be allocated on edx. 
-     * So we use reg_swap to avoid override in the edx <- 0. *)
-    [ AS_x86.Mov { dest = eax; src = lhs; layout = DWORD }
+    (* Notice that lhs and rhs may be allocated on rdx. 
+     * So we use reg_swap to avoid override in the rdx <- 0. *)
+    [ AS_x86.Mov { dest = rax; src = lhs; layout = DWORD }
     ; AS_x86.Mov { dest = AS_x86.Reg swap; src = rhs; layout = DWORD }
     ; AS_x86.Cvt { layout = DWORD }
     ; AS_x86.Div { src = AS_x86.Reg swap; layout = DWORD }
-    ; AS_x86.Mov { dest; src = eax; layout = DWORD }
+    ; AS_x86.Mov { dest; src = rax; layout = DWORD }
     ]
   | Modulo ->
-    [ AS_x86.Mov { dest = eax; src = lhs; layout = DWORD }
+    [ AS_x86.Mov { dest = rax; src = lhs; layout = DWORD }
     ; AS_x86.Mov { dest = AS_x86.Reg swap; src = rhs; layout = DWORD }
     ; AS_x86.Cvt { layout = DWORD }
     ; AS_x86.Div { src = AS_x86.Reg swap; layout = DWORD }
-    ; AS_x86.Mov { dest; src = edx; layout = DWORD }
+    ; AS_x86.Mov { dest; src = rdx; layout = DWORD }
     ]
   | And -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_and dest rhs DWORD
   | Or -> AS_x86.safe_mov dest lhs DWORD @ AS_x86.safe_or dest rhs DWORD
@@ -227,7 +229,6 @@ let fpe_handler =
 let gen (fdefn : AS.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) option list)
     : AS_x86.instr list
   =
-  let program = Regalloc.gen_program fdefn in
   let reg_alloc =
     List.fold reg_alloc_info ~init:IG.Vertex.Map.empty ~f:(fun acc x ->
         match x with
@@ -237,7 +238,17 @@ let gen (fdefn : AS.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) optio
           | temp, reg -> IG.Vertex.Map.set acc ~key:temp ~data:reg))
   in
   let reg_swap = Register.R15 in
-  let res_rev = _codegen_w_reg_rev [] program reg_alloc reg_swap in
+  let res_rev = _codegen_w_reg_rev [] fdefn.body reg_alloc reg_swap in
   let res = List.rev res_rev in
-  res @ fpe_handler
+  (* store rbp and rsp at the beginning of each function *)
+  [ AS_x86.Fname fdefn.func_name
+  ; AS_x86.Push { var = rbp; layout = QWORD }
+  ; AS_x86.Mov { dest = rbp; src = rsp; layout = QWORD }
+  ; AS_x86.Sub
+      { src = AS_x86.Imm (Int32.of_int_exn Memory.get_allocated_count)
+      ; dest = rbp
+      ; layout = QWORD
+      }
+  ]
+  @ res
 ;;

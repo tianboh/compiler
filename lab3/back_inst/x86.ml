@@ -146,6 +146,7 @@ type instr =
       { func_name : Symbol.t
       ; scope : scope
       }
+  | Fname of string
   | GDB of string
   | Directive of string
   | Comment of string
@@ -264,8 +265,8 @@ let safe_cmp (lhs : operand) (rhs : operand) (layout : layout) (swap : Register.
 ;;
 
 (* prologue for a callee function. Handle callee-saved registers and allocate space for local variables *)
-let format_prologue (var_cnt : int) =
-  let var_size = var_cnt * 8 in
+let format_prologue =
+  let var_size = Memory.get_allocated_count * 8 in
   let insts = [ "\tpush %rbp"; "mov %rsp, %rbp"; sprintf "sub $%d, %%rsp" var_size ] in
   String.concat ~sep:"\n\t" insts
 ;;
@@ -385,6 +386,7 @@ let format = function
       (format_operand sal.dest sal.layout)
   | Fcall fcall ->
     sprintf "call %s%s" (format_scope fcall.scope) (Symbol.name fcall.func_name)
+  | Fname fname -> sprintf "%s:" fname
   | GDB gdb -> sprintf "%s" gdb
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment

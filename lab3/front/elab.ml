@@ -282,19 +282,6 @@ let elab_fdecl ret_type func_name par_type =
       { ret_type = elab_type ret_type; func_name; pars = List.map par_type ~f:elab_param }
 ;;
 
-let[@warning "-27"] _elab_fdefn (pars : Cst.param list) (blk : Cst.block) =
-  let body = elab_blk blk (Mark.naked Ast.Nop) in
-  (* let rec helper (params : Cst.param list) =
-    match params with
-    | [] -> body
-    | h :: t ->
-      let tail = helper t in
-      Mark.naked (Ast.Declare { t = elab_type h.t; name = h.i; tail })
-  in
-  helper pars *)
-  body
-;;
-
 (* We explicitly add declare of parameters at the beginning of function definition body
  * This aim to make following analysis and transformation easier *)
 let elab_fdefn (ret_type : Cst.dtype) (func_name : Symbol.t) par_type blk =
@@ -306,7 +293,7 @@ let elab_fdefn (ret_type : Cst.dtype) (func_name : Symbol.t) par_type blk =
       { ret_type = elab_type ret_type
       ; func_name
       ; pars = List.map par_type ~f:elab_param
-      ; blk = _elab_fdefn par_type blk
+      ; blk = elab_blk blk (Mark.naked Ast.Nop)
       }
 ;;
 
