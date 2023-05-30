@@ -308,7 +308,7 @@ let elab_typedef t t_var =
     | Cst.Ctype s -> Symbol.Map.find_exn env' s
     | Cst.Int -> Cst.Int
     | Cst.Bool -> Cst.Bool
-    | Cst.Void -> Cst.Void
+    | Cst.Void -> error ~msg:"dest type cannot be void" None
   in
   if Symbol.Set.mem !func_env t_var
   then error None ~msg:"type name already exist"

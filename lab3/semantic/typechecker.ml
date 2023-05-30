@@ -19,13 +19,13 @@
  * 3) Check variable re-declaration error, and assign without declare error.
  *
  * Expression level check
- * 1) Check whether the operand and operator consistent with each other.
+ * 1) operand and operator consistency
  * 
  * Function level check
- * 1) Whether each function is defined before called
- * 2) Whether the calling exp argument type and defined signature match
- * 3) Whether func parameter conflict with local variables
- * 4) Whether some functions are defined several time
+ * 1) Each function is defined before called
+ * 2) Calling exp argument type and defined signature match
+ * 3) Parameter conflict with local variables
+ * 4) No functions are defined several time
  *
  * We can summarize above checks to two cases
  * 1) Type check in statement and expression
@@ -80,6 +80,8 @@ type env =
   ; funcs : func S.t (* function signature *)
   }
 
+(* functions not defined during TC. Check once TC is done. *)
+let func_list = ref []
 let tc_errors : Util.Error_msg.t = Util.Error_msg.create ()
 
 let error ~msg src_span =
@@ -106,9 +108,8 @@ let tc_signature (params1 : dtype list) (params2 : dtype list) func_name =
   in
   List.iter param ~f:(fun t ->
       let d1, d2 = t in
-      if type_cmp d1 d2
-      then ()
-      else error ~msg:(sprintf "%s redeclared param type mismatch" func_name_s) None)
+      if not (type_cmp d1 d2)
+      then error ~msg:(sprintf "%s redeclared param type mismatch" func_name_s) None)
 ;;
 
 (* tc_exp will check if an expression is valid
@@ -136,7 +137,9 @@ let rec tc_exp (exp : A.mexp) (env : env) : dtype =
     | A.Equal_eq | A.Not_eq ->
       let t1 = tc_exp binop.lhs env in
       let t2 = tc_exp binop.rhs env in
-      if type_cmp t1 t2 then Bool else error ~msg:"Polyeq operands type mismatch" loc
+      if type_cmp t1 t2 && not (type_cmp t1 Void)
+      then Bool
+      else error ~msg:"Polyeq operands type mismatch" loc
     (* Rest are int operation *)
     | _ ->
       let t1 = tc_exp binop.lhs env in
@@ -148,23 +151,21 @@ let rec tc_exp (exp : A.mexp) (env : env) : dtype =
     let t_cond = tc_exp terop.cond env in
     let t1 = tc_exp terop.true_exp env in
     let t2 = tc_exp terop.false_exp env in
+    if type_cmp t1 Void || type_cmp t2 Void then error ~msg:"exp type cannot be void" None;
     (match t_cond with
     | Int | Void -> error ~msg:"Terop condition should be bool" loc
     | Bool ->
       if type_cmp t1 t2 then t1 else error ~msg:"Terop true & false exp type mismatch" loc)
   | A.Fcall fcall ->
-    let func =
-      match S.find env.funcs fcall.func_name with
-      | None -> error ~msg:"calling a function that not defined" loc
-      | Some s -> s
-    in
-    if S.mem env.vars fcall.func_name
-    then error ~msg:"func name and var name conflict." None
-    else (
-      let expected = List.map func.pars ~f:(fun par -> par.t) in
-      let input = List.map fcall.args ~f:(fun arg -> tc_exp arg env) in
-      tc_signature input expected fcall.func_name;
-      func.ret_type)
+    if S.mem env.vars fcall.func_name || not (S.mem env.funcs fcall.func_name)
+    then error ~msg:"func and var name conflict/func not defined" None;
+    let func = S.find_exn env.funcs fcall.func_name in
+    if phys_equal func.scope Internal && phys_equal func.state Decl
+    then func_list := fcall.func_name :: !func_list;
+    let expected = List.map func.pars ~f:(fun par -> par.t) in
+    let input = List.map fcall.args ~f:(fun arg -> tc_exp arg env) in
+    tc_signature input expected fcall.func_name;
+    func.ret_type
 ;;
 
 (* 
@@ -208,15 +209,10 @@ and tc_assign name loc exp env : env =
   | None -> error ~msg:(sprintf "Not declared: `%s`" (Symbol.name name)) loc
   | Some var ->
     let exp_type = tc_exp exp env in
-    (* Check if expression type and variable type match *)
-    if type_cmp exp_type var.dtype
-    then (
-      (* Type match, Update variable state to initialized. *)
-      let env_vars = S.set env.vars ~key:name ~data:{ var with state = Defn } in
-      { env with vars = env_vars })
-    else
-      (* expression and variable type mismatch, error *)
-      error ~msg:(sprintf "var type and exp type mismatch") loc
+    if (not (type_cmp exp_type var.dtype)) || type_cmp exp_type Void
+    then error ~msg:(sprintf "var type and exp type mismatch/exp type void") loc;
+    let env_vars = S.set env.vars ~key:name ~data:{ var with state = Defn } in
+    { env with vars = env_vars }
 
 and tc_return mexp env func_name =
   let func = S.find_exn env.funcs func_name in
@@ -226,13 +222,14 @@ and tc_return mexp env func_name =
   | Some mexp ->
     let loc = Mark.src_span mexp in
     let exp_type = tc_exp mexp env in
-    if type_cmp oracle_type exp_type
-    then env
-    else error ~msg:(sprintf "%s return type mismatch" func_name_s) loc
+    if type_cmp exp_type Void then error ~msg:"cannot return void exp" None;
+    if not (type_cmp oracle_type exp_type)
+    then error ~msg:(sprintf "%s return type mismatch" func_name_s) loc;
+    env
   | None ->
-    if type_cmp oracle_type A.Void
-    then env
-    else error ~msg:(sprintf "%s ret type expected void, mismatch" func_name_s) None
+    if not (type_cmp oracle_type A.Void)
+    then error ~msg:(sprintf "%s ret type expected void, mismatch" func_name_s) None;
+    env
 
 and tc_if cond true_stm false_stm loc env func_name =
   let cond_type = tc_exp cond env in
@@ -279,13 +276,15 @@ let tc_redeclare env func_name (pars : param list) ret_type =
   tc_signature (old_func.ret_type :: old_dtype) (ret_type :: new_dtype) func_name
 ;;
 
-let tc_pars_conflict (pars : param list) =
+let tc_pars (pars : param list) =
   ignore
     (List.fold pars ~init:Set.empty ~f:(fun acc par ->
          if Set.mem acc par.i
          then error ~msg:"func parameter name conflict" None
          else Set.add acc par.i)
-      : Set.t)
+      : Set.t);
+  List.iter pars ~f:(fun par ->
+      if phys_equal par.t Void then error ~msg:"no void type for var" None)
 ;;
 
 (* Rules to follow
@@ -297,7 +296,7 @@ let tc_pars_conflict (pars : param list) =
  * in source files again.
  *)
 let tc_fdecl ret_type func_name (pars : param list) env scope =
-  tc_pars_conflict pars;
+  tc_pars pars;
   if S.mem env.funcs func_name
   then (
     tc_redeclare env func_name pars ret_type;
@@ -323,7 +322,7 @@ let pp_env env =
  * 3) Each function can only be define in source file, not header file.
  *)
 let tc_fdefn ret_type func_name pars blk env scope =
-  tc_pars_conflict pars;
+  tc_pars pars;
   if phys_equal scope External
   then error ~msg:"Cannot define function in header file" None;
   let vars =
@@ -351,9 +350,20 @@ let tc_fdefn ret_type func_name pars blk env scope =
   tc_stm blk env func_name
 ;;
 
+(* Check if functions used in program are defined eventually. *)
+let _tc_post (env : env) =
+  let funcs = !func_list in
+  List.iter funcs ~f:(fun func ->
+      let f = S.find_exn env.funcs func in
+      if phys_equal f.state Decl && phys_equal f.scope Internal
+      then error ~msg:"func not defined" None)
+;;
+
 let rec _typecheck prog env scope =
   match prog with
-  | [] -> env
+  | [] ->
+    _tc_post env;
+    env
   | h :: t ->
     let env = { env with vars = S.empty } in
     (match h with
