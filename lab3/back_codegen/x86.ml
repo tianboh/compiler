@@ -240,15 +240,14 @@ let gen (fdefn : AS.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) optio
   let reg_swap = Register.R15 in
   let res_rev = _codegen_w_reg_rev [] fdefn.body reg_alloc reg_swap in
   let res = List.rev res_rev in
+  (* printf "gen prologue\n%!"; *)
+  let mem_cnt = Int32.of_int_exn (8 * Memory.get_allocated_count ()) in
+  (* printf "mem_cnt %d\n%!" (Int.of_int32_exn mem_cnt); *)
   (* store rbp and rsp at the beginning of each function *)
   [ AS_x86.Fname fdefn.func_name
   ; AS_x86.Push { var = rbp; layout = QWORD }
   ; AS_x86.Mov { dest = rbp; src = rsp; layout = QWORD }
-  ; AS_x86.Sub
-      { src = AS_x86.Imm (Int32.of_int_exn Memory.get_allocated_count)
-      ; dest = rbp
-      ; layout = QWORD
-      }
+  ; AS_x86.Sub { src = AS_x86.Imm mem_cnt; dest = rsp; layout = QWORD }
   ]
   @ res
 ;;

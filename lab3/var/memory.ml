@@ -22,11 +22,17 @@ end
 include T
 
 let counter = ref 0
-let get_allocated_count = !counter
-let reset = counter := 0
+
+let get_allocated_count () =
+  (* printf "now have memory %d\n%!" !counter; *)
+  !counter
+;;
+
+let reset () = counter := 0
 
 let create index base offset size =
   incr counter;
+  (* printf "memory create %d\n" !counter; *)
   { index; base; offset; size }
 ;;
 

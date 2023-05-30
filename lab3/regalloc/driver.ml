@@ -304,6 +304,7 @@ let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest
   let nbr_int_s = Int.Set.of_list nbr_int_l in
   let black_set = Int.Set.of_list nbr_black_list in
   let r = find_min_available nbr_int_s black_set in
+  (* printf"allocate register/memory\n"; *)
   if r < Register.num_reg
   then Reg (Register.idx_reg r)
   else Mem (Memory.create r Register.RBP (r - Register.num_reg + 1) 8)
@@ -351,7 +352,7 @@ let rec gen_result (color : dest IG.Vertex.Map.t) prog =
 ;;
 
 let regalloc (fdefn : AS.fdefn) : (IG.Vertex.t * dest) option list =
-  Memory.reset;
+  Memory.reset ();
   if Temp.count () > threshold
   then (
     let vertex_set = Lazy.collect_vertex fdefn.body IG.Vertex.Set.empty in

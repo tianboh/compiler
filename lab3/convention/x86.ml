@@ -235,8 +235,7 @@ let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
            Dest.Mov { dest; src; line })
   in
   let line = empty_line () in
-  let uses_ret = List.map Register.callee_saved ~f:(fun r -> Dest.Reg r) in
-  let line_ret = { line with uses = Dest.Reg rax :: uses_ret } in
+  let line_ret = { line with uses = [ Dest.Reg rax ] } in
   let ret = Dest.Ret { line = line_ret } in
   restore @ [ ret ]
 ;;
