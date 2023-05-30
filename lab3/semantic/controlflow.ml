@@ -68,7 +68,7 @@ let rec cf_ret (ast : A.program) : unit =
       (match fdefn.ret_type with
       | Void -> ()
       | _ ->
-        if _cf_ret_stm fdefn.blk then () else error ~msg:"Some branches not return" None)
+        if not (_cf_ret_stm fdefn.blk) then error ~msg:"Some branches not return" None)
     | Typedef _ | Fdecl _ ->
       ();
       cf_ret t)
@@ -127,9 +127,8 @@ let rec cf_exp (exp : A.mexp) (env : env) : unit =
   let loc = Mark.src_span exp in
   match Mark.data exp with
   | Var var ->
-    if Set.mem env.var_def var
-    then ()
-    else error ~msg:(sprintf "var %s is used before decl" (Symbol.name var)) loc
+    if not (Set.mem env.var_def var)
+    then error ~msg:(sprintf "var %s is used before decl" (Symbol.name var)) loc
   | Const_int _ -> ()
   | True -> ()
   | False -> ()
@@ -181,17 +180,16 @@ let rec cf_stm (ast : A.mstm) (env : env) : env =
   | Declare decl_ast ->
     if live decl_ast.tail decl_ast.name
     then
-      error ~msg:(sprintf "var %s is live in decl scope" (Symbol.name decl_ast.name)) loc
-    else (
-      let env' = { env with var_decl = Set.add env.var_decl decl_ast.name } in
-      let env_inside = cf_stm decl_ast.tail env' in
-      (* We keep track of the declare variable as the same as before because
-       * declaration inside inner scope shouldn't reflect to outside scope.
-       * As for def, we intersect env.var_def and env_inside.var_def because 
-       * env_inside.var_def may contain some variable declared in inner scope *)
-      { var_decl = env.var_decl
-      ; var_def = Set.diff env_inside.var_def (Set.of_list [ decl_ast.name ])
-      })
+      error ~msg:(sprintf "var %s is live in decl scope" (Symbol.name decl_ast.name)) loc;
+    let env' = { env with var_decl = Set.add env.var_decl decl_ast.name } in
+    let env_inside = cf_stm decl_ast.tail env' in
+    (* We keep track of the declare variable as the same as before because
+     * declaration inside inner scope shouldn't reflect to outside scope.
+     * As for def, we intersect env.var_def and env_inside.var_def because 
+     * env_inside.var_def may contain some variable declared in inner scope *)
+    { var_decl = env.var_decl
+    ; var_def = Set.diff env_inside.var_def (Set.of_list [ decl_ast.name ])
+    }
   | Sexp sexp ->
     cf_exp sexp env;
     env
@@ -219,8 +217,7 @@ let rec cf_init (ast : A.program) =
     (match h with
     | Fdefn fdefn ->
       let env = { var_decl = Set.empty; var_def = Set.empty } in
-      cf_fdefn fdefn.pars fdefn.blk env
-    | Fdecl _ | Typedef _ ->
-      ();
-      cf_init t)
+      cf_fdefn fdefn.pars fdefn.blk env;
+      cf_init t
+    | Fdecl _ | Typedef _ -> cf_init t)
 ;;
