@@ -38,6 +38,7 @@ type cmd_line_args =
   ; dump_ast : bool
   ; dump_ir : bool
   ; dump_assem : bool
+  ; dump_conv : bool
   ; semcheck_only : bool
   ; regalloc_only : bool
   ; emit : Emit.t
@@ -88,6 +89,9 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and dump_assem =
     let doc = "If present, print the final assembly." in
     flag (Arg.info [ "dump-assem" ] ~doc)
+  and dump_conv =
+    let doc = "If present, print the x86 conventional assembly." in
+    flag (Arg.info [ "dump-conv" ] ~doc)
   and semcheck_only =
     let doc = "If present, exit after semantic analysis." in
     flag (Arg.info [ "t"; "semcheck-only" ] ~doc)
@@ -130,6 +134,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   ; dump_ast
   ; dump_ir
   ; dump_assem
+  ; dump_conv
   ; semcheck_only
   ; regalloc_only
   ; emit
@@ -166,9 +171,9 @@ let compile (cmd : cmd_line_args) : unit =
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Trans.translate ast tc_env.funcs in
-  let ir_ssa = List.map ir ~f:(fun ir -> Middle.Ssa.run ir.body) in
+  (* let ir_ssa = List.map ir ~f:(fun ir -> Middle.Ssa.run ir.body) in *)
   say_if cmd.dump_ir (fun () ->
-      List.map ir_ssa ~f:Tree.Print.pp_stms |> String.concat ~sep:"\n");
+      List.map ir ~f:Tree.Print.pp_fdefn |> String.concat ~sep:"\n");
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
@@ -192,6 +197,7 @@ let compile (cmd : cmd_line_args) : unit =
     (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
     (* let start = Unix.gettimeofday () in *)
     let assem_x86_conv = Convention.X86.gen assem_ps_ssa [] in
+    say_if cmd.dump_conv (fun () -> Convention.Inst.pp_program assem_x86_conv "");
     let progs =
       List.map assem_x86_conv ~f:(fun fdefn ->
           let reg_alloc_info = Regalloc.Driver.regalloc fdefn in

@@ -155,10 +155,10 @@ let pp_inst = function
     | Some var -> sprintf "return %s" (pp_operand var))
   | Fcall call ->
     sprintf
-      "%s%s <- %s(%s)"
+      "%s <- %s%s(%s)"
+      (Temp.name call.dest)
       (pp_scope call.scope)
       (Symbol.name call.func_name)
-      (Temp.name call.dest)
       (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
   | Assert asrt -> sprintf "assert %s" (pp_operand asrt)
 ;;

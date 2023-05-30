@@ -192,11 +192,20 @@ let pp_inst = function
   | Pop pop -> sprintf "pop %s " (pp_operand pop.var)
 ;;
 
-let rec pp_program (program : instr list) res =
+let rec pp_insts (program : instr list) res =
   match program with
   | [] -> res
   | h :: t ->
     let fdefn_str = pp_inst h ^ "\n" in
+    let res = res ^ fdefn_str in
+    pp_insts t res
+;;
+
+let rec pp_program (program : fdefn list) res =
+  match program with
+  | [] -> res
+  | h :: t ->
+    let fdefn_str = h.func_name ^ ":\n" ^ pp_insts h.body "" ^ "\n" in
     let res = res ^ fdefn_str in
     pp_program t res
 ;;

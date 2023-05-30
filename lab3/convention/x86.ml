@@ -151,8 +151,8 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
   let func_name = fcall.func_name in
   let dest = trans_operand (Src.Temp fcall.dest) in
   let args = List.map fcall.args ~f:(fun arg -> trans_operand arg) in
-  let x86_regs = Reg.caller_saved @ Reg.parameters in
-  let defines = dest :: List.map x86_regs ~f:(fun reg -> Dest.Reg reg) in
+  let x86_regs = (rax :: Reg.caller_saved) @ Reg.parameters in
+  let defines = List.map x86_regs ~f:(fun reg -> Dest.Reg reg) in
   let uses = List.mapi fcall.args ~f:(fun idx arg -> param_map idx arg) in
   let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
   let params =
