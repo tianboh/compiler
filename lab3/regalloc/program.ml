@@ -157,7 +157,43 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | _ -> gen_forward t inst_info line_num live_out_map)
+    | AS.Pop pop ->
+      let uses = gen_VertexSet pop.line.uses in
+      let line =
+        { line with
+          defines = gen_VertexSet pop.line.defines
+        ; uses
+        ; move = false
+        ; live_out = IG.Vertex.Set.union line.live_out uses
+        }
+      in
+      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      gen_forward t inst_info (line_num + 1) live_out_map
+    | AS.Push push ->
+      let uses = gen_VertexSet push.line.uses in
+      let line =
+        { line with
+          defines = gen_VertexSet push.line.defines
+        ; uses
+        ; move = false
+        ; live_out = IG.Vertex.Set.union line.live_out uses
+        }
+      in
+      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      gen_forward t inst_info (line_num + 1) live_out_map
+    | AS.Assert asrt ->
+      let uses = gen_VertexSet asrt.line.uses in
+      let line =
+        { line with
+          defines = gen_VertexSet asrt.line.defines
+        ; uses
+        ; move = false
+        ; live_out = IG.Vertex.Set.union line.live_out uses
+        }
+      in
+      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      gen_forward t inst_info (line_num + 1) live_out_map
+    | AS.Directive _ | AS.Comment _ -> gen_forward t inst_info line_num live_out_map)
 ;;
 
 let gen_regalloc_info (inst_list : AS.instr list) =
@@ -172,6 +208,8 @@ let gen_regalloc_info (inst_list : AS.instr list) =
         reginfo :: acc)
     |> List.rev
   in
+  List.iter lines ~f:(fun line -> print_line line);
+  printf "%s\n" (AS.pp_insts inst_list "");
   let lines = List.zip_exn lines inst_list in
   print_lines lines; *)
   ret

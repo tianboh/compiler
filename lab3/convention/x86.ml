@@ -172,6 +172,7 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
           let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
           let push = Dest.Push { var = src; line } in
           push))
+    |> List.rev
   in
   let scope = gen_scope fcall.scope in
   let fcall = Dest.Fcall { func_name; args; line; scope } in
@@ -243,16 +244,18 @@ let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
 (* Generate assigning parameter passing code. Parameters are passed through
  * registers or memories during function call. *)
 let gen_pars (pars : Temp.t list) : Dest.instr list =
+  (* printf "%s\n" (List.map pars ~f:(fun par -> Temp.name par) |> String.concat ~sep:", "); *)
   List.mapi pars ~f:(fun idx par ->
       let src = param_map idx (Src.Temp par) in
+      let dest = trans_operand (Src.Temp par) in
+      (* printf "%s <- %s\n" (Inst.pp_operand dest) (Inst.pp_operand src); *)
       if idx < 6
       then (
-        let dest = trans_operand (Src.Temp par) in
         let line = { defines = [ dest ]; uses = [ src ]; live_out = []; move = true } in
         Mov { dest; src; line })
       else (
         let line = { defines = [ src ]; uses = []; live_out = []; move = false } in
-        Pop { var = src; line }))
+        Pop { var = dest; line }))
 ;;
 
 let gen_section (prefix : string) (fname : Symbol.t) (content : Dest.instr list)
