@@ -74,11 +74,8 @@ let rdx = AS_x86.Reg Register.RDX
 let rbp = AS_x86.Reg Register.RBP
 let rsp = AS_x86.Reg Register.RSP
 let fpe_label = Label.label (Some "fpe")
+let abort_label = Label.label (Some "abt")
 
-(* We don't need to store rax because rax is not assigned to any temp.
- * Though rax, rdx may be used by div/idiv instruction, once those 
- * instructions are finished, rax, rdx will no longer be used. 
- * In a word, rax does not store temporary except ret. *)
 let gen_x86_relop_bin
     (op : AS.bin_op)
     (dest : AS_x86.operand)
@@ -213,7 +210,15 @@ let rec _codegen_w_reg_rev
       let func_name = fcall.func_name in
       let inst = AS_x86.Fcall { func_name; scope } in
       _codegen_w_reg_rev (inst :: res) t reg_alloc_info reg_swap
-    | AS.Assert _ -> failwith "x86 inst not impl yet"
+    | AS.Assert ast ->
+      let var = oprd_ps_to_x86 ast.var reg_alloc_info in
+      let insts_rev =
+        [ AS_x86.Cmp { lhs = var; rhs = AS_x86.Imm Int32.one; layout = QWORD }
+        ; AS_x86.JNE abort_label
+        ]
+        |> List.rev
+      in
+      _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | _ -> _codegen_w_reg_rev res t reg_alloc_info reg_swap)
 ;;
 
@@ -225,6 +230,8 @@ let fpe_handler =
   ; AS_x86.Div { src = Reg ecx; layout = DWORD }
   ]
 ;;
+
+let abort_handler = [ AS_x86.Label abort_label; AS_x86.Abort ]
 
 let gen (fdefn : AS.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) option list)
     : AS_x86.instr list
