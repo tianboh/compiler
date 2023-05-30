@@ -161,7 +161,7 @@ module Print : PRINT = struct
       let dest = Temp.name c.dest in
       let func_name = Symbol.name c.func_name in
       let args = List.map (fun arg -> pp_exp arg) c.args |> String.concat ", " in
-      sprintf "%s%s <- %s(%s)" scope dest func_name args
+      sprintf "%s <- %s%s(%s)" dest scope func_name args
     | Return e ->
       (match e with
       | None -> "return\n"

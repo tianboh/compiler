@@ -71,12 +71,10 @@ module Print = struct
         let t = IG.Print.pp_vertex k in
         let r =
           match IG.Vertex.Map.find_exn color k with
-          | Reg r -> Register.reg_idx r
-          | Mem m -> Memory.mem_idx m
+          | Reg r -> Register.reg_to_str r
+          | Mem m -> Memory.mem_to_str m
         in
-        printf "%s -> %d\n" t r);
-    let l = List.map (IG.Vertex.Map.data color) ~f:(fun x -> x) in
-    printf "Used %d register\n" (List.length l)
+        printf "%s -> %s\n" t r)
   ;;
 end
 
@@ -113,6 +111,7 @@ module Helper = struct
     | [] -> adj
     | h :: t ->
       let reginfo, _ = h in
+      (* Reg_info.print_line reginfo; *)
       let defs = Reg_info.get_defs reginfo in
       let adj =
         IG.Vertex.Set.fold defs ~init:adj ~f:(fun acc_adj def ->
@@ -366,7 +365,6 @@ let regalloc (fdefn : AS.fdefn) : (IG.Vertex.t * dest) option list =
           reginfo :: acc)
     in
     let seq = seo adj prog in
-    (* let vertex_to_dest = IG.Vertex.Map.empty in *)
     let vertex_to_dest = IG.Vertex.Map.empty in
     let color = greedy seq adj vertex_to_dest in
     (* Print.print_adj adj;

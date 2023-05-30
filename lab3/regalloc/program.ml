@@ -140,6 +140,18 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
+    | AS.Fcall fcall ->
+      let def = gen_VertexSet fcall.line.defines in
+      let uses = gen_VertexSet fcall.line.uses in
+      let line =
+        { line with
+          defines = def
+        ; uses
+        ; live_out = IG.Vertex.Set.union line.live_out uses
+        }
+      in
+      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      gen_forward t inst_info (line_num + 1) live_out_map
     | _ -> gen_forward t inst_info line_num live_out_map)
 ;;
 
