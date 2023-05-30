@@ -29,6 +29,7 @@ module Dfana = Flow.Dfana
 module Tree = Middle.Tree
 module Trans = Middle.Trans
 module Memory = Var.Memory
+module Symbol = Util.Symbol
 
 (* Command line arguments *)
 type cmd_line_args =
@@ -162,6 +163,9 @@ let compile (cmd : cmd_line_args) : unit =
   let cst = Parse.parse cmd.filename in
   say_if cmd.dump_cst (fun () -> Cst.Print.pp_program cst);
   let ast = Elab.elaborate cst in
+  let ast =
+    Ast.Fdecl { ret_type = Ast.Int; func_name = Symbol.symbol "main"; pars = [] } :: ast
+  in
   say_if cmd.dump_ast (fun () -> Ast.Print.pp_program ast);
   say_if cmd.verbose (fun () -> "Semantic analysis...");
   let tc_env = Typechecker.typecheck ast tc_env in
