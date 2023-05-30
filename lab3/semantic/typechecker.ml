@@ -327,15 +327,19 @@ let tc_fdefn ret_type func_name pars blk env scope =
     List.fold pars ~init:env.vars ~f:(fun acc par ->
         S.add_exn acc ~key:par.i ~data:{ state = Defn; dtype = par.t })
   in
-  let funcs =
-    S.add_exn env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
-  in
   let env =
     match S.find env.funcs func_name with
-    | None -> { funcs; vars }
+    | None ->
+      let funcs =
+        S.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
+      in
+      { funcs; vars }
     | Some s ->
       (match s.state with
       | Decl ->
+        let funcs =
+          S.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
+        in
         tc_redeclare env func_name pars ret_type;
         { funcs; vars }
       | Defn ->

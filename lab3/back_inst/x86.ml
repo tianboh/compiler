@@ -264,13 +264,6 @@ let safe_cmp (lhs : operand) (rhs : operand) (layout : layout) (swap : Register.
   | _ -> [ Cmp { lhs; rhs; layout } ]
 ;;
 
-(* prologue for a callee function. Handle callee-saved registers and allocate space for local variables *)
-let format_prologue =
-  let var_size = Memory.get_allocated_count * 8 in
-  let insts = [ "\tpush %rbp"; "mov %rsp, %rbp"; sprintf "sub $%d, %%rsp" var_size ] in
-  String.concat ~sep:"\n\t" insts
-;;
-
 let format_operand (oprd : operand) (layout : layout) =
   match oprd with
   | Imm n -> "$" ^ Int32.to_string n

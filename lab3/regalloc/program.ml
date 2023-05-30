@@ -58,17 +58,22 @@ let print_VertexSet (ts : IG.Vertex.Set.t) =
 ;;
 
 let print_line (line : line) =
-  printf "\n{def: ";
+  printf "{def: ";
   print_VertexSet line.defines;
   printf "\nuses: ";
   print_VertexSet line.uses;
   printf "\nlive_out: ";
   print_VertexSet line.live_out;
   printf "\nmove: %b" line.move;
-  printf "\nline_number: %d}\n" line.line_number
+  printf "\nline_number: %d}\n\n" line.line_number
 ;;
 
-let print_lines (lines : line list) = List.iter lines ~f:(fun line -> print_line line)
+let print_lines (l : (line * AS.instr) list) =
+  List.iter l ~f:(fun tuple ->
+      let line, inst = tuple in
+      printf "%s\n" (AS.pp_inst inst);
+      print_line line)
+;;
 
 (* Generate defines, use, move, liveout, line number. *)
 let rec gen_forward
@@ -165,7 +170,9 @@ let gen_regalloc_info (inst_list : AS.instr list) =
     List.fold_left ret ~init:[] ~f:(fun acc line ->
         let reginfo, _ = line in
         reginfo :: acc)
+    |> List.rev
   in
+  let lines = List.zip_exn lines inst_list in
   print_lines lines; *)
   ret
 ;;

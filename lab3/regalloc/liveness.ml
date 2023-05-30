@@ -162,7 +162,7 @@ let rec gen_temp (inst_list : AS.instr list) line_no map =
 
 (* Transform liveness information from int to temp. 
  * lo_int is the dataflow analysis result.
- * tmp_map is map from line_number to temporary *)
+ * tmp_map is map from line_number to temporary/register *)
 let rec trans_liveness (lo_int : (int list * int list * int) list) tmp_map res =
   match lo_int with
   | [] -> res
@@ -170,7 +170,9 @@ let rec trans_liveness (lo_int : (int list * int list * int) list) tmp_map res =
     let _, out_int_list, line_no = h in
     let liveout =
       List.fold out_int_list ~init:IG.Vertex.Set.empty ~f:(fun acc x ->
-          IG.Vertex.Set.add acc (IG.Vertex.T.Temp (Temp.of_int x)))
+          if x >= Register.num_reg
+          then IG.Vertex.Set.add acc (IG.Vertex.T.Temp (Temp.of_int x))
+          else IG.Vertex.Set.add acc (IG.Vertex.T.Reg (Register.idx_reg x)))
     in
     let res = Int.Map.set res ~key:line_no ~data:liveout in
     trans_liveness t tmp_map res
