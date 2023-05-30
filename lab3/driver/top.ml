@@ -209,7 +209,9 @@ let compile (cmd : cmd_line_args) : unit =
           fdefn.func_name, instrs)
     in
     let fnames, instrs = List.unzip progs in
-    let instrs = List.concat instrs @ Codegen.X86.fpe_handler in
+    let instrs =
+      List.concat instrs @ Codegen.X86.fpe_handler @ Codegen.X86.abort_handler
+    in
     File.dump_asm_x86 file fnames instrs
 ;;
 

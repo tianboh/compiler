@@ -146,6 +146,7 @@ type instr =
       { func_name : Symbol.t
       ; scope : scope
       }
+  | Abort
   | Fname of string
   | GDB of string
   | Directive of string
@@ -380,6 +381,7 @@ let format = function
   | Fcall fcall ->
     sprintf "call %s%s" (format_scope fcall.scope) (Symbol.name fcall.func_name)
   | Fname fname -> sprintf "%s:" fname
+  | Abort -> sprintf "call abort"
   | GDB gdb -> sprintf "%s" gdb
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
