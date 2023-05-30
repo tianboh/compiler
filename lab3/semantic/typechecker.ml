@@ -158,10 +158,13 @@ let rec tc_exp (exp : A.mexp) (env : env) : dtype =
       | None -> error ~msg:"calling a function that not defined" loc
       | Some s -> s
     in
-    let expected = List.map func.pars ~f:(fun par -> par.t) in
-    let input = List.map fcall.args ~f:(fun arg -> tc_exp arg env) in
-    tc_signature input expected fcall.func_name;
-    func.ret_type
+    if S.mem env.vars fcall.func_name
+    then error ~msg:"func name and var name conflict." None
+    else (
+      let expected = List.map func.pars ~f:(fun par -> par.t) in
+      let input = List.map fcall.args ~f:(fun arg -> tc_exp arg env) in
+      tc_signature input expected fcall.func_name;
+      func.ret_type)
 ;;
 
 (* 
