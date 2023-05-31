@@ -190,8 +190,7 @@ let rec tc_stm (ast : AST.mstm) (env : env) (func_name : Symbol.t) : env =
   | AST.Seq seq_ast ->
     let env = tc_stm seq_ast.head env func_name in
     tc_stm seq_ast.tail env func_name
-  | AST.Declare decl_ast ->
-    tc_declare decl_ast.t decl_ast.name decl_ast.tail loc env func_name
+  | AST.Declare decl_ast -> tc_declare (AST.Declare decl_ast) loc env func_name
   | AST.Sexp sexp ->
     ignore (tc_exp sexp env : dtype);
     env
@@ -249,21 +248,23 @@ and tc_while cond body loc env func_name =
  * Instead, we will return it once we check the tail.
  * We cannot declare a variable with type void. Void can only be used 
  * as return type for a function. *)
-and tc_declare decl_type decl_name tail loc env func_name =
-  if type_cmp decl_type Void
-  then (
-    let var_name = Symbol.name decl_name in
-    error ~msg:(sprintf "cannot declare variable %s with type void" var_name) None)
-  else ();
-  match Map.find env.vars decl_name with
-  | Some _ -> error ~msg:(sprintf "Declare a variable multiple time") loc
-  | None ->
-    let vars' =
+and[@warning "-8"] tc_declare (AST.Declare decl) loc env func_name =
+  let decl_type, decl_name, tail = decl.t, decl.name, decl.tail in
+  if type_cmp decl_type Void then error ~msg:(sprintf "cannot declare var with void") None;
+  if Map.mem env.vars decl_name then error ~msg:(sprintf "Redeclare a variable ") loc;
+  let vars' =
+    match decl.value with
+    | None ->
       Map.add_exn env.vars ~key:decl_name ~data:{ state = Decl; dtype = decl_type }
-    in
-    let env' = { env with vars = vars' } in
-    let env'' = (tc_stm tail env' func_name : env) in
-    { env with vars = Map.remove env''.vars decl_name }
+    | Some value ->
+      let exp_type = tc_exp value env in
+      if (not (type_cmp exp_type decl.t)) || type_cmp exp_type Void
+      then error ~msg:(sprintf "var type and exp type mismatch/exp type void") loc;
+      Map.set env.vars ~key:decl.name ~data:{ state = Defn; dtype = decl_type }
+  in
+  let env' = { env with vars = vars' } in
+  let env'' = (tc_stm tail env' func_name : env) in
+  { env with vars = Map.remove env''.vars decl_name }
 ;;
 
 (* If a function is already declared before, 
