@@ -14,20 +14,14 @@
  *)
 
 open Core
-
-(* open Json_reader *)
 open Args
-module AS_psu = Middle.Inst
-module AS_x86 = Inst.X86
 module Parse = Front.Parse
 module Elab = Front.Elab
-module Ast = Front.Ast
-module Cst = Front.Cst
+module AST = Front.Ast
+module CST = Front.Cst
 module Typechecker = Semantic.Typechecker
 module Controlflow = Semantic.Controlflow
 module Dfana = Flow.Dfana
-module Tree = Middle.Tree
-module Trans = Middle.Trans
 module Memory = Var.Memory
 module Symbol = Util.Symbol
 
@@ -161,12 +155,12 @@ let compile (cmd : cmd_line_args) : unit =
   say_if cmd.verbose (fun () -> "Parsing... " ^ cmd.filename);
   if cmd.dump_parsing then ignore (Parsing.set_trace true : bool);
   let cst = Parse.parse cmd.filename in
-  say_if cmd.dump_cst (fun () -> Cst.Print.pp_program cst);
+  say_if cmd.dump_cst (fun () -> CST.Print.pp_program cst);
   let ast = Elab.elaborate cst in
   let ast =
-    Ast.Fdecl { ret_type = Ast.Int; func_name = Symbol.symbol "main"; pars = [] } :: ast
+    AST.Fdecl { ret_type = AST.Int; func_name = Symbol.symbol "main"; pars = [] } :: ast
   in
-  say_if cmd.dump_ast (fun () -> Ast.Print.pp_program ast);
+  say_if cmd.dump_ast (fun () -> AST.Print.pp_program ast);
   say_if cmd.verbose (fun () -> "Semantic analysis...");
   let tc_env = Typechecker.typecheck ast tc_env in
   Controlflow.cf_ret ast;
@@ -174,19 +168,19 @@ let compile (cmd : cmd_line_args) : unit =
   if cmd.semcheck_only then exit 0;
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
-  let ir = Trans.translate ast tc_env.funcs in
-  (* let ir_ssa = List.map ir ~f:(fun ir -> Middle.Ssa.run ir.body) in *)
+  let ir = Ir_tree.Trans.translate ast tc_env.funcs in
+  (* let ir_ssa = List.map ir ~f:(fun ir -> Ir_tree.Ssa.run ir.body) in *)
   say_if cmd.dump_ir (fun () ->
-      List.map ir ~f:Tree.Print.pp_fdefn |> String.concat ~sep:"\n");
+      List.map ir ~f:Ir_tree.Inst.Print.pp_fdefn |> String.concat ~sep:"\n");
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
-  let assem_ps_ssa = Middle.Gen.gen ir in
+  let assem_ps_ssa = Quads.Trans.gen ir in
   (* let assem_ps_ssa = Codegen.Optimize.optimize assem_ps_ssa in *)
   (* let () = Codegen.Gen.Pseudo.print_insts assem_ps_ssa in *)
   (* let stop = Unix.gettimeofday () in *)
   (* let () = Printf.printf "Execution time assem_ps_ssa: %fs\n%!" (stop -. start) in *)
-  say_if cmd.dump_assem (fun () -> AS_psu.pp_program assem_ps_ssa "");
+  say_if cmd.dump_assem (fun () -> Quads.Inst.pp_program assem_ps_ssa "");
   match cmd.emit with
   (* Output: abstract 3-address assem *)
   | Abstract_assem ->
@@ -200,17 +194,17 @@ let compile (cmd : cmd_line_args) : unit =
     (* let stop = Unix.gettimeofday () in *)
     (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
     (* let start = Unix.gettimeofday () in *)
-    let assem_x86_conv = Convention.X86.gen assem_ps_ssa [] in
-    say_if cmd.dump_conv (fun () -> Convention.Inst.pp_program assem_x86_conv "");
+    let assem_x86_conv = Abs_asm.Trans.gen assem_ps_ssa [] in
+    say_if cmd.dump_conv (fun () -> Abs_asm.Inst.pp_program assem_x86_conv "");
     let progs =
       List.map assem_x86_conv ~f:(fun fdefn ->
           let reg_alloc_info = Regalloc.Driver.regalloc fdefn in
-          let instrs = Codegen.X86.gen fdefn reg_alloc_info in
+          let instrs = X86_asm.Trans.gen fdefn reg_alloc_info in
           fdefn.func_name, instrs)
     in
     let fnames, instrs = List.unzip progs in
     let instrs =
-      List.concat instrs @ Codegen.X86.fpe_handler @ Codegen.X86.abort_handler
+      List.concat instrs @ X86_asm.Trans.fpe_handler @ X86_asm.Trans.abort_handler
     in
     File.dump_asm_x86 file fnames instrs
 ;;

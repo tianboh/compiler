@@ -1,7 +1,7 @@
-(* L3 x86 convention
- * Transfrom from Middle Inst to x86 Inst with convention
+(* L3 x86 abstract assembly code
+ * Transfrom from Ir_tree Inst to x86 Inst with convention
  * This is done by providing each instruction with different
- * defines/uses operand. Compared with Middle Inst, this
+ * defines/uses operand. Compared with Ir_tree Inst, this
  * layer has extra register type for operand. 
  *
  * For each function, we provide prologue and epilogue.
@@ -22,7 +22,7 @@
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
 open Core
-module Src = Middle.Inst
+module Src = Quads.Inst
 module Dest = Inst
 module Reg = Var.X86_reg
 open Inst

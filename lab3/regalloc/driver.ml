@@ -31,7 +31,7 @@ module Temp = Var.Temp
 module Memory = Var.Memory
 module Register = Var.X86_reg
 module Reg_info = Program
-module AS = Convention.Inst
+module Abs_asm = Abs_asm.Inst
 module IG = Interference_graph
 
 type reg = Register.t
@@ -155,14 +155,14 @@ module Lazy = struct
   let ecx = Register.RCX
   let edx = Register.RDX
 
-  let trans_operand (operand : AS.operand) =
+  let trans_operand (operand : Abs_asm.operand) =
     match operand with
-    | AS.Temp t -> IG.Vertex.Set.of_list [ IG.Vertex.T.Temp t ]
-    | AS.Imm _ -> IG.Vertex.Set.empty
-    | AS.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r ]
+    | Abs_asm.Temp t -> IG.Vertex.Set.of_list [ IG.Vertex.T.Temp t ]
+    | Abs_asm.Imm _ -> IG.Vertex.Set.empty
+    | Abs_asm.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r ]
   ;;
 
-  let rec collect_vertex (prog : AS.instr list) res =
+  let rec collect_vertex (prog : Abs_asm.instr list) res =
     match prog with
     | [] -> res
     | h :: t ->
@@ -351,7 +351,7 @@ let rec gen_result (color : dest IG.Vertex.Map.t) prog =
     assign_l @ gen_result color t
 ;;
 
-let regalloc (fdefn : AS.fdefn) : (IG.Vertex.t * dest) option list =
+let regalloc (fdefn : Abs_asm.fdefn) : (IG.Vertex.t * dest) option list =
   Memory.reset ();
   if Temp.count () > threshold
   then (

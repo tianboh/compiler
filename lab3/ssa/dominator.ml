@@ -22,12 +22,12 @@
  * 
  * Author: Tianbo Hao<tianboh@alumni.cmu.edu>
  *)
-module T = Tree
+module Tree = Ir_tree.Inst
 module Label = Util.Label
 open Core
 
 type block =
-  { body : T.stm list
+  { body : Tree.stm list
   ; label : Label.t
   ; succ : Label.Set.t
   }
@@ -78,17 +78,17 @@ module Print = struct
     let sorted_key = List.sort keys ~compare:Label.compare in
     List.iter sorted_key ~f:(fun blk_no ->
         let blk = Label.Map.find_exn blk_map blk_no in
-        printf "block %s\n%s%!\n" (Label.name blk_no) (T.Print.pp_stms blk.body);
+        printf "block %s\n%s%!\n" (Label.name blk_no) (Tree.Print.pp_stms blk.body);
         printf "block %s succ %s%!\n" (Label.name blk_no) (pp_label_set blk.succ))
   ;;
 end
 
 let rec group_stm
-    (stms : T.stm list)
-    (acc_stms_rev : T.stm list)
-    (acc_blks_rev : (T.stm list * Label.t) list)
+    (stms : Tree.stm list)
+    (acc_stms_rev : Tree.stm list)
+    (acc_blks_rev : (Tree.stm list * Label.t) list)
     (acc_label : Label.t)
-    : (T.stm list * Label.t) list
+    : (Tree.stm list * Label.t) list
   =
   match stms with
   | [] ->
@@ -105,15 +105,15 @@ let rec group_stm
       let acc_blks_rev =
         if List.is_empty acc_stms_rev then acc_blks_rev else blk :: acc_blks_rev
       in
-      group_stm t [ T.Label label ] acc_blks_rev label
-    | Move move -> group_stm t (T.Move move :: acc_stms_rev) acc_blks_rev acc_label
-    | Return ret -> group_stm t (T.Return ret :: acc_stms_rev) acc_blks_rev acc_label
-    | Jump jp -> group_stm t (T.Jump jp :: acc_stms_rev) acc_blks_rev acc_label
-    | CJump cjp -> group_stm t (T.CJump cjp :: acc_stms_rev) acc_blks_rev acc_label
-    | Effect eft -> group_stm t (T.Effect eft :: acc_stms_rev) acc_blks_rev acc_label
+      group_stm t [ Tree.Label label ] acc_blks_rev label
+    | Move move -> group_stm t (Tree.Move move :: acc_stms_rev) acc_blks_rev acc_label
+    | Return ret -> group_stm t (Tree.Return ret :: acc_stms_rev) acc_blks_rev acc_label
+    | Jump jp -> group_stm t (Tree.Jump jp :: acc_stms_rev) acc_blks_rev acc_label
+    | CJump cjp -> group_stm t (Tree.CJump cjp :: acc_stms_rev) acc_blks_rev acc_label
+    | Effect eft -> group_stm t (Tree.Effect eft :: acc_stms_rev) acc_blks_rev acc_label
     | Nop -> group_stm t acc_stms_rev acc_blks_rev acc_label
-    | Fcall fcall -> group_stm t (T.Fcall fcall :: acc_stms_rev) acc_blks_rev acc_label
-    | Assert asrt -> group_stm t (T.Assert asrt :: acc_stms_rev) acc_blks_rev acc_label)
+    | Fcall fcall -> group_stm t (Tree.Fcall fcall :: acc_stms_rev) acc_blks_rev acc_label
+    | Assert asrt -> group_stm t (Tree.Assert asrt :: acc_stms_rev) acc_blks_rev acc_label)
 ;;
 
 (* entry block(empty) is entry. exit block(empty) is exit
@@ -132,19 +132,20 @@ let rec _build_block blks res : block Label.Map.t =
     in
     let succ_init =
       match List.last_exn body with
-      | T.Label _ | T.Move _ | T.Effect _ | T.Fcall _ | T.Nop -> [ succ_label ]
-      | T.Return _ | T.Assert _ -> [ exit; succ_label ]
-      | T.Jump jp -> [ jp ]
-      | T.CJump cjp -> [ cjp.target_true; cjp.target_false; succ_label ]
+      | Tree.Label _ | Tree.Move _ | Tree.Effect _ | Tree.Fcall _ | Tree.Nop ->
+        [ succ_label ]
+      | Tree.Return _ | Tree.Assert _ -> [ exit; succ_label ]
+      | Tree.Jump jp -> [ jp ]
+      | Tree.CJump cjp -> [ cjp.target_true; cjp.target_false; succ_label ]
     in
     let body_wo_tail = List.sub body ~pos:0 ~len:(List.length body - 1) in
     let succ_l =
       List.fold body_wo_tail ~init:succ_init ~f:(fun acc stm ->
           match stm with
-          | T.Label _ | T.Move _ | T.Effect _ | T.Nop | T.Fcall _ -> acc
-          | T.Return _ | T.Assert _ -> exit :: acc
-          | T.Jump jp -> jp :: acc
-          | T.CJump cjp -> [ cjp.target_true; cjp.target_false ] @ acc)
+          | Tree.Label _ | Tree.Move _ | Tree.Effect _ | Tree.Nop | Tree.Fcall _ -> acc
+          | Tree.Return _ | Tree.Assert _ -> exit :: acc
+          | Tree.Jump jp -> jp :: acc
+          | Tree.CJump cjp -> [ cjp.target_true; cjp.target_false ] @ acc)
     in
     let succ = Label.Set.of_list succ_l in
     let block = { body; label; succ } in
@@ -181,7 +182,7 @@ let remove_criticl_edge blk_map pred_map =
         (* find critical edge *)
         let label' = Label.label (Some "critical") in
         let blk' =
-          { body = [ T.Label label'; T.Jump dest_l ]
+          { body = [ Tree.Label label'; Tree.Jump dest_l ]
           ; label = label'
           ; succ = Label.Set.of_list [ dest_l ]
           }
@@ -202,14 +203,14 @@ let remove_criticl_edge blk_map pred_map =
       else acc)
 ;;
 
-let build_block (f_body : T.stm list) =
+let build_block (f_body : Tree.stm list) =
   let blks = group_stm f_body [] [] entry in
   let blk_map = _build_block blks Label.Map.empty in
   let blk_map =
     Label.Map.set
       blk_map
       ~key:exit
-      ~data:{ body = [ T.Label exit ]; label = exit; succ = Label.Set.empty }
+      ~data:{ body = [ Tree.Label exit ]; label = exit; succ = Label.Set.empty }
   in
   blk_map
 ;;
@@ -454,8 +455,8 @@ let build_DT (idom : Label.t Label.Map.t) =
 ;;
 
 (* Return dominance frontier, dominate tree, pred_map and blk_map *)
-let run (f_body : T.stm list) =
-  let f_body = (T.Label entry :: f_body) @ [ T.Label exit ] in
+let run (f_body : Tree.stm list) =
+  let f_body = (Tree.Label entry :: f_body) @ [ Tree.Label exit ] in
   let blk_map = build_block f_body in
   let pred_map = build_pred blk_map in
   let blk_map, pred_map = remove_criticl_edge blk_map pred_map in

@@ -1,5 +1,6 @@
 (* L3 Compiler
- * Convention layer between middle and back-end.
+ * Convention layer between ir_tree and back-end.
+ * This is the immediate layer before regalloc.
  * Once we finish a backend, we need to generate
  * code following this convention. register alloc
  * module will use this convention to build 
@@ -20,7 +21,7 @@ module Register = Var.X86_reg
 module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
-module AS = Middle.Inst
+module AS = Quads.Inst
 
 type scope =
   | Internal

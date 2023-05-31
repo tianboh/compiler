@@ -46,8 +46,8 @@
  *)
 
 open Core
-module A = Front.Ast
-module S = Util.Symbol.Map
+module AST = Front.Ast
+module Map = Util.Symbol.Map
 module Set = Util.Symbol.Set
 module Symbol = Util.Symbol
 module Mark = Util.Mark
@@ -56,8 +56,8 @@ type state =
   | Decl
   | Defn
 
-type dtype = A.dtype
-type param = A.param
+type dtype = AST.dtype
+type param = AST.param
 
 type scope =
   | Internal
@@ -76,8 +76,8 @@ type func =
   }
 
 type env =
-  { vars : var S.t (* variable decl/def tracker *)
-  ; funcs : func S.t (* function signature *)
+  { vars : var Map.t (* variable decl/def tracker *)
+  ; funcs : func Map.t (* function signature *)
   }
 
 (* functions not defined during TC. Check once TC is done. *)
@@ -116,25 +116,25 @@ let tc_signature (params1 : dtype list) (params2 : dtype list) func_name =
  * including whether the operand and operator consistent. 
  * It will return the type of expression if pass the check.
  * Otherwise, it will report an error and stop. *)
-let rec tc_exp (exp : A.mexp) (env : env) : dtype =
+let rec tc_exp (exp : AST.mexp) (env : env) : dtype =
   let loc = Mark.src_span exp in
   match Util.Mark.data exp with
-  | A.Var var ->
-    (match S.find env.vars var with
+  | AST.Var var ->
+    (match Map.find env.vars var with
     | None -> error ~msg:(sprintf "Identifier not declared: `%s`" (Symbol.name var)) loc
     | Some var -> var.dtype)
-  | A.Const_int _ -> Int
-  | A.True -> Bool
-  | A.False -> Bool
-  | A.Binop binop ->
+  | AST.Const_int _ -> Int
+  | AST.True -> Bool
+  | AST.False -> Bool
+  | AST.Binop binop ->
     (match binop.op with
     (* Relation op: < <= > >= *)
-    | A.Less | A.Less_eq | A.Greater | A.Greater_eq ->
+    | AST.Less | AST.Less_eq | AST.Greater | AST.Greater_eq ->
       (match tc_exp binop.lhs env, tc_exp binop.rhs env with
       | Int, Int -> Bool
       | _, _ -> error ~msg:"Relation operand should be integer." loc)
     (* Polyeq op: ==, != *)
-    | A.Equal_eq | A.Not_eq ->
+    | AST.Equal_eq | AST.Not_eq ->
       let t1 = tc_exp binop.lhs env in
       let t2 = tc_exp binop.rhs env in
       if type_cmp t1 t2 && not (type_cmp t1 Void)
@@ -147,7 +147,7 @@ let rec tc_exp (exp : A.mexp) (env : env) : dtype =
       (match t1, t2 with
       | Int, Int -> Int
       | _, _ -> error ~msg:"Integer binop operands are not integer" loc))
-  | A.Terop terop ->
+  | AST.Terop terop ->
     let t_cond = tc_exp terop.cond env in
     let t1 = tc_exp terop.true_exp env in
     let t2 = tc_exp terop.false_exp env in
@@ -156,10 +156,10 @@ let rec tc_exp (exp : A.mexp) (env : env) : dtype =
     | Int | Void -> error ~msg:"Terop condition should be bool" loc
     | Bool ->
       if type_cmp t1 t2 then t1 else error ~msg:"Terop true & false exp type mismatch" loc)
-  | A.Fcall fcall ->
-    if S.mem env.vars fcall.func_name || not (S.mem env.funcs fcall.func_name)
+  | AST.Fcall fcall ->
+    if Map.mem env.vars fcall.func_name || not (Map.mem env.funcs fcall.func_name)
     then error ~msg:"func and var name conflict/func not defined" None;
-    let func = S.find_exn env.funcs fcall.func_name in
+    let func = Map.find_exn env.funcs fcall.func_name in
     if phys_equal func.scope Internal && phys_equal func.state Decl
     then func_list := fcall.func_name :: !func_list;
     let expected = List.map func.pars ~f:(fun par -> par.t) in
@@ -179,23 +179,23 @@ let rec tc_exp (exp : A.mexp) (env : env) : dtype =
  * env: store the variables state: Defn, Decl.
  * func_name: function this current statement belongs to.
  *)
-let rec tc_stm (ast : A.mstm) (env : env) (func_name : Symbol.t) : env =
+let rec tc_stm (ast : AST.mstm) (env : env) (func_name : Symbol.t) : env =
   let loc = Mark.src_span ast in
   match Mark.data ast with
-  | A.Assign asn_ast -> tc_assign asn_ast.name loc asn_ast.value env
-  | A.If if_ast -> tc_if if_ast.cond if_ast.true_stm if_ast.false_stm loc env func_name
-  | A.While while_ast -> tc_while while_ast.cond while_ast.body loc env func_name
-  | A.Return ret_ast -> tc_return ret_ast env func_name
-  | A.Nop -> env
-  | A.Seq seq_ast ->
+  | AST.Assign asn_ast -> tc_assign asn_ast.name loc asn_ast.value env
+  | AST.If if_ast -> tc_if if_ast.cond if_ast.true_stm if_ast.false_stm loc env func_name
+  | AST.While while_ast -> tc_while while_ast.cond while_ast.body loc env func_name
+  | AST.Return ret_ast -> tc_return ret_ast env func_name
+  | AST.Nop -> env
+  | AST.Seq seq_ast ->
     let env = tc_stm seq_ast.head env func_name in
     tc_stm seq_ast.tail env func_name
-  | A.Declare decl_ast ->
+  | AST.Declare decl_ast ->
     tc_declare decl_ast.t decl_ast.name decl_ast.tail loc env func_name
-  | A.Sexp sexp ->
+  | AST.Sexp sexp ->
     ignore (tc_exp sexp env : dtype);
     env
-  | A.Assert aexp ->
+  | AST.Assert aexp ->
     let dtype = (tc_exp aexp env : dtype) in
     if type_cmp dtype Bool then env else error ~msg:"assert exp type expect bool" loc
 
@@ -205,17 +205,17 @@ let rec tc_stm (ast : A.mstm) (env : env) (func_name : Symbol.t) : env =
  * 3) If match, update env state *)
 and tc_assign name loc exp env : env =
   (* Check if variable is in env before assignment. *)
-  match S.find env.vars name with
+  match Map.find env.vars name with
   | None -> error ~msg:(sprintf "Not declared: `%s`" (Symbol.name name)) loc
   | Some var ->
     let exp_type = tc_exp exp env in
     if (not (type_cmp exp_type var.dtype)) || type_cmp exp_type Void
     then error ~msg:(sprintf "var type and exp type mismatch/exp type void") loc;
-    let env_vars = S.set env.vars ~key:name ~data:{ var with state = Defn } in
+    let env_vars = Map.set env.vars ~key:name ~data:{ var with state = Defn } in
     { env with vars = env_vars }
 
 and tc_return mexp env func_name =
-  let func = S.find_exn env.funcs func_name in
+  let func = Map.find_exn env.funcs func_name in
   let oracle_type = func.ret_type in
   let func_name_s = Symbol.name func_name in
   match mexp with
@@ -227,7 +227,7 @@ and tc_return mexp env func_name =
     then error ~msg:(sprintf "%s return type mismatch" func_name_s) loc;
     env
   | None ->
-    if not (type_cmp oracle_type A.Void)
+    if not (type_cmp oracle_type AST.Void)
     then error ~msg:(sprintf "%s ret type expected void, mismatch" func_name_s) None;
     env
 
@@ -255,22 +255,22 @@ and tc_declare decl_type decl_name tail loc env func_name =
     let var_name = Symbol.name decl_name in
     error ~msg:(sprintf "cannot declare variable %s with type void" var_name) None)
   else ();
-  match S.find env.vars decl_name with
+  match Map.find env.vars decl_name with
   | Some _ -> error ~msg:(sprintf "Declare a variable multiple time") loc
   | None ->
     let vars' =
-      S.add_exn env.vars ~key:decl_name ~data:{ state = Decl; dtype = decl_type }
+      Map.add_exn env.vars ~key:decl_name ~data:{ state = Decl; dtype = decl_type }
     in
     let env' = { env with vars = vars' } in
     let env'' = (tc_stm tail env' func_name : env) in
-    { env with vars = S.remove env''.vars decl_name }
+    { env with vars = Map.remove env''.vars decl_name }
 ;;
 
 (* If a function is already declared before, 
  * check if the old signature and new signature the same
  *)
 let tc_redeclare env func_name (pars : param list) ret_type =
-  let old_func = S.find_exn env.funcs func_name in
+  let old_func = Map.find_exn env.funcs func_name in
   let old_dtype = List.map old_func.pars ~f:(fun par -> par.t) in
   let new_dtype = List.map pars ~f:(fun par -> par.t) in
   tc_signature (old_func.ret_type :: old_dtype) (ret_type :: new_dtype) func_name
@@ -297,22 +297,22 @@ let tc_pars (pars : param list) =
  *)
 let tc_fdecl ret_type func_name (pars : param list) env scope =
   tc_pars pars;
-  if S.mem env.funcs func_name
+  if Map.mem env.funcs func_name
   then (
     tc_redeclare env func_name pars ret_type;
     env)
   else
     { env with
       funcs =
-        S.add_exn env.funcs ~key:func_name ~data:{ state = Decl; pars; ret_type; scope }
+        Map.add_exn env.funcs ~key:func_name ~data:{ state = Decl; pars; ret_type; scope }
     }
 ;;
 
 let pp_env env =
   printf "print env func\n%!";
-  S.iteri env.funcs ~f:(fun ~key:k ~data:d ->
-      let pars = List.map d.pars ~f:A.Print.pp_param |> String.concat ~sep:", " in
-      printf "%s %s(%s)\n%!" (A.Print.pp_dtype d.ret_type) (Util.Symbol.name k) pars)
+  Map.iteri env.funcs ~f:(fun ~key:k ~data:d ->
+      let pars = List.map d.pars ~f:AST.Print.pp_param |> String.concat ~sep:", " in
+      printf "%s %s(%s)\n%!" (AST.Print.pp_dtype d.ret_type) (Util.Symbol.name k) pars)
 ;;
 
 (* Rules to follow
@@ -327,20 +327,20 @@ let tc_fdefn ret_type func_name pars blk env scope =
   then error ~msg:"Cannot define function in header file" None;
   let vars =
     List.fold pars ~init:env.vars ~f:(fun acc par ->
-        S.add_exn acc ~key:par.i ~data:{ state = Defn; dtype = par.t })
+        Map.add_exn acc ~key:par.i ~data:{ state = Defn; dtype = par.t })
   in
   let env =
-    match S.find env.funcs func_name with
+    match Map.find env.funcs func_name with
     | None ->
       let funcs =
-        S.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
+        Map.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
       in
       { funcs; vars }
     | Some s ->
       (match s.state with
       | Decl ->
         let funcs =
-          S.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
+          Map.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
         in
         tc_redeclare env func_name pars ret_type;
         { funcs; vars }
@@ -354,7 +354,7 @@ let tc_fdefn ret_type func_name pars blk env scope =
 let _tc_post (env : env) =
   let funcs = !func_list in
   List.iter funcs ~f:(fun func ->
-      let f = S.find_exn env.funcs func in
+      let f = Map.find_exn env.funcs func in
       if phys_equal f.state Decl && phys_equal f.scope Internal
       then error ~msg:"func not defined" None)
 ;;
@@ -365,26 +365,26 @@ let rec _typecheck prog env scope =
     _tc_post env;
     env
   | h :: t ->
-    let env = { env with vars = S.empty } in
+    let env = { env with vars = Map.empty } in
     (match h with
-    | A.Fdecl fdecl ->
+    | AST.Fdecl fdecl ->
       let env = tc_fdecl fdecl.ret_type fdecl.func_name fdecl.pars env scope in
       _typecheck t env scope
-    | A.Fdefn fdefn ->
+    | AST.Fdefn fdefn ->
       let env = tc_fdefn fdefn.ret_type fdefn.func_name fdefn.pars fdefn.blk env scope in
       _typecheck t env scope
-    | A.Typedef _ -> _typecheck t env scope)
+    | AST.Typedef _ -> _typecheck t env scope)
 ;;
 
 (* env
  * | None: typecheck header file
  * | Some env: typecheck source file based on environment from header file. *)
-let typecheck (prog : A.gdecl list) (env : env option) =
+let typecheck (prog : AST.gdecl list) (env : env option) =
   let env, scope =
     match env with
     | None ->
-      ( { vars = S.empty (* variable decl/def tracker *)
-        ; funcs = S.empty (* function signature *)
+      ( { vars = Map.empty (* variable decl/def tracker *)
+        ; funcs = Map.empty (* function signature *)
         }
       , External )
     | Some s -> s, Internal

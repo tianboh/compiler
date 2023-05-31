@@ -1,10 +1,7 @@
-open Driver
 open Core
 module Temp = Var.Temp
 module Memory = Var.Memory
 module Register = Var.X86_reg
-module Reg_info = Program
-module AS = Convention.Inst
 module IG = Interference_graph
 module Inst_reg_info = Json_reader.Lab1_checkpoint
 
@@ -49,7 +46,7 @@ let transform_json_to_temp (program : Inst_reg_info.program) =
   List.map program ~f:(fun line -> transform_str_to_temp line)
 ;;
 
-let transform_vertex_to_json (vertex : (IG.Vertex.t * dest) option) =
+let transform_vertex_to_json (vertex : (IG.Vertex.t * Driver.dest) option) =
   match vertex with
   | None -> None
   | Some (vtx, dest) ->
@@ -58,21 +55,21 @@ let transform_vertex_to_json (vertex : (IG.Vertex.t * dest) option) =
     | Mem m -> Some (IG.Print.pp_vertex vtx, Memory.mem_to_str m))
 ;;
 
-let transform_vertices_to_json (vertices : (IG.Vertex.t * dest) option list) =
+let transform_vertices_to_json (vertices : (IG.Vertex.t * Driver.dest) option list) =
   List.map vertices ~f:(fun x -> transform_vertex_to_json x)
 ;;
 
-let regalloc_ckpt (prog : Program.line list) : (IG.Vertex.t * dest) option list =
-  let prog_dummy = List.map prog ~f:(fun x -> x, AS.Comment "") in
-  let adj = Helper.build_graph prog_dummy IG.Vertex.Map.empty in
-  let seq = seo adj prog in
+let regalloc_ckpt (prog : Program.line list) : (IG.Vertex.t * Driver.dest) option list =
+  let prog_dummy = List.map prog ~f:(fun x -> x, Abs_asm.Inst.Comment "") in
+  let adj = Driver.Helper.build_graph prog_dummy IG.Vertex.Map.empty in
+  let seq = Driver.seo adj prog in
   let vertex_to_reg = IG.Vertex.Map.empty in
-  let color = greedy seq adj vertex_to_reg in
+  let color = Driver.greedy seq adj vertex_to_reg in
   (* Print.print_adj adj;
   printf "SEO order\n";
   let seq_l = List.map seq ~f:(fun x -> IG.Print.pp_vertex x) in
   List.iter ~f:(printf "%s ") seq_l;
   Print.print_vertex_to_dest color;
   printf "\n"; *)
-  gen_result color prog
+  Driver.gen_result color prog
 ;;

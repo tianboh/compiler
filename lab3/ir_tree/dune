@@ -1,5 +1,5 @@
 (library
- (name middle)
+ (name ir_tree)
  (libraries core front semantic json_reader args var util)
  (inline_tests)
  (preprocess
