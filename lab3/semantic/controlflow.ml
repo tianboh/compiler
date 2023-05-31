@@ -11,14 +11,13 @@
  *)
 
 open Core
-module A = Front.Ast
-module S = Util.Symbol.Map
+module AST = Front.Ast
 module Symbol = Util.Symbol
 module Set = Util.Symbol.Set
 module Mark = Util.Mark
 module TC = Typechecker
 
-type param = A.param
+type param = AST.param
 
 (* env records defined(initialized) variables and declared variables in a function.
  * defined variables are subset of declared variables.
@@ -47,7 +46,7 @@ let error ~msg src_span =
  * Notice that While is treated as never return because we cannot
  * check every case, like how many times it will run in real time.
  * So we treat it conservatively as never return *)
-let rec _cf_ret_stm (ast : A.mstm) : bool =
+let rec _cf_ret_stm (ast : AST.mstm) : bool =
   match Mark.data ast with
   | Assign _ -> false
   | If if_ast -> _cf_ret_stm if_ast.true_stm && _cf_ret_stm if_ast.false_stm
@@ -59,7 +58,7 @@ let rec _cf_ret_stm (ast : A.mstm) : bool =
   | Sexp _ | Assert _ -> false
 ;;
 
-let rec cf_ret (ast : A.program) : unit =
+let rec cf_ret (ast : AST.program) : unit =
   match ast with
   | [] -> ()
   | h :: t ->
@@ -75,7 +74,7 @@ let rec cf_ret (ast : A.program) : unit =
 ;;
 
 (* Check whether var is used in exp. Return true if used, false otherwise. *)
-let rec use (exp : A.mexp) (var : Symbol.t) : bool =
+let rec use (exp : AST.mexp) (var : Symbol.t) : bool =
   match Mark.data exp with
   | Var var' -> phys_equal var' var
   | Const_int _ -> false
@@ -89,7 +88,7 @@ let rec use (exp : A.mexp) (var : Symbol.t) : bool =
 (* Check whether variable var is live in statement stm
  * Notice that liveness analysis does not require env.
  * We only need to check whether var is used on RHS of the expression *)
-let rec live (stm : A.mstm) (var : Symbol.t) : bool =
+let rec live (stm : AST.mstm) (var : Symbol.t) : bool =
   match Mark.data stm with
   | Assign asn_ast -> use asn_ast.value var
   | If if_ast ->
@@ -108,7 +107,7 @@ let rec live (stm : A.mstm) (var : Symbol.t) : bool =
   | Assert ast -> use ast var
 
 (* Check whether stm defines var *)
-and define (stm : A.mstm) (var : Symbol.t) : bool =
+and define (stm : AST.mstm) (var : Symbol.t) : bool =
   match Mark.data stm with
   | Assign asn_ast -> if phys_equal asn_ast.name var then true else false
   | If if_ast -> define if_ast.true_stm var && define if_ast.false_stm var
@@ -123,7 +122,7 @@ and define (stm : A.mstm) (var : Symbol.t) : bool =
 (* This is an expression level check. It is called by
  * cf_stm and check whether variable in exp is used
  * before any declaration(initialization) *)
-let rec cf_exp (exp : A.mexp) (env : env) : unit =
+let rec cf_exp (exp : AST.mexp) (env : env) : unit =
   let loc = Mark.src_span exp in
   match Mark.data exp with
   | Var var ->
@@ -158,7 +157,7 @@ let rec cf_exp (exp : A.mexp) (env : env) : unit =
  *
  * return: env, the updated environmant after executing current AST stm.
  *)
-let rec cf_stm (ast : A.mstm) (env : env) : env =
+let rec cf_stm (ast : AST.mstm) (env : env) : env =
   let loc = Mark.src_span ast in
   match Mark.data ast with
   | Assign asn_ast ->
@@ -210,7 +209,7 @@ let cf_fdefn pars blk env =
   ignore (cf_stm blk env : env)
 ;;
 
-let rec cf_init (ast : A.program) =
+let rec cf_init (ast : AST.program) =
   match ast with
   | [] -> ()
   | h :: t ->

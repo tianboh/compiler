@@ -9,7 +9,7 @@
  * Author: Tianbo Hao<tianboh@alumni.cmu.edu>
  *)
 open Core
-module T = Tree
+module Tree = Ir_tree.Inst
 module D = Dominator
 module Temp = Var.Temp
 module Label = Util.Label
@@ -28,7 +28,7 @@ type phi =
 (* SSA block extends phi list based on dominator block *)
 type ssa_block =
   { phis : phi list
-  ; body : T.stm list
+  ; body : Tree.stm list
   ; label : Label.t
   ; succ : Label.Set.t
   }
@@ -79,7 +79,7 @@ module Print : PRINT = struct
         let blk = Int.Map.find_exn blk_map blk_label in
         printf "block %d\n" blk_label;
         pp_phis blk.phis;
-        printf "%s\n" (T.Print.pp_stms blk.body))
+        printf "%s\n" (Tree.Print.pp_stms blk.body))
   ;;
 
   let pp_env env =
@@ -118,22 +118,22 @@ let get_blk_defsite_helper defsites dest blk_label =
   defsites
 ;;
 
-let rec get_blk_defsite blk_label (stms : T.stm list) defsites =
+let rec get_blk_defsite blk_label (stms : Tree.stm list) defsites =
   match stms with
   | [] -> defsites
   | stm :: t ->
     (match stm with
-    | T.Move move ->
+    | Tree.Move move ->
       let defsites = get_blk_defsite_helper defsites move.dest blk_label in
       get_blk_defsite blk_label t defsites
-    | T.Effect eft ->
+    | Tree.Effect eft ->
       let defsites = get_blk_defsite_helper defsites eft.dest blk_label in
       get_blk_defsite blk_label t defsites
-    | T.Fcall fcall ->
+    | Tree.Fcall fcall ->
       let defsites = get_blk_defsite_helper defsites fcall.dest blk_label in
       get_blk_defsite blk_label t defsites
-    | T.Return _ | T.Jump _ | T.CJump _ | T.Label _ | T.Nop | T.Assert _ ->
-      get_blk_defsite blk_label t defsites)
+    | Tree.Return _ | Tree.Jump _ | Tree.CJump _ | Tree.Label _ | Tree.Nop | Tree.Assert _
+      -> get_blk_defsite blk_label t defsites)
 ;;
 
 let rec _get_defsites blks defsites =
@@ -215,7 +215,7 @@ let insert blk_map defsites df pred_map =
       insert_temp temp defs_l df acc_blk_map pred_map)
 ;;
 
-let rec rename_exp (exp : T.exp) (env : env) : T.exp =
+let rec rename_exp (exp : Tree.exp) (env : env) : Tree.exp =
   match exp with
   | Const c -> Const c
   | Temp temp ->
@@ -234,7 +234,7 @@ let rec rename_exp (exp : T.exp) (env : env) : T.exp =
     let rhs_new = rename_exp binop.rhs env in
     Binop { binop with lhs = lhs_new; rhs = rhs_new }
 
-and rename_use (stm : T.stm) env : T.stm =
+and rename_use (stm : Tree.stm) env : Tree.stm =
   match stm with
   | Move move ->
     let src_new = rename_exp move.src env in
@@ -276,22 +276,22 @@ and rename_def_helper (dest : Temp.t) (env : env) =
   let env = { env with stack } in
   dest_new, env
 
-and rename_def (stm : T.stm) (env : env) : T.stm * env =
+and rename_def (stm : Tree.stm) (env : env) : Tree.stm * env =
   match stm with
   | Move move ->
     let dest_new, env = rename_def_helper move.dest env in
     (* printf "rename_move def from %s to %s\n" (Temp.name move.dest) (Temp.name dest_new); *)
-    let move = T.Move { move with dest = dest_new } in
+    let move = Tree.Move { move with dest = dest_new } in
     move, env
   | Effect eft ->
     let dest_new, env = rename_def_helper eft.dest env in
     (* printf "rename_eft def from %s to %s\n" (Temp.name eft.dest) (Temp.name dest_new); *)
-    let eft = T.Effect { eft with dest = dest_new } in
+    let eft = Tree.Effect { eft with dest = dest_new } in
     eft, env
   | Fcall fcall ->
     let dest_new, env = rename_def_helper fcall.dest env in
     (* printf "rename_eft def from %s to %s\n" (Temp.name eft.dest) (Temp.name dest_new); *)
-    let eft = T.Fcall { fcall with dest = dest_new } in
+    let eft = Tree.Fcall { fcall with dest = dest_new } in
     eft, env
   | Assert asrt -> Assert asrt, env
   | Return ret -> Return ret, env
@@ -301,7 +301,7 @@ and rename_def (stm : T.stm) (env : env) : T.stm * env =
   | Nop -> Nop, env
 
 (* rename stm includes replace temp in use and def *)
-and rename_stm stm env : T.stm * env =
+and rename_stm stm env : Tree.stm * env =
   let stm = rename_use stm env in
   rename_def stm env
 ;;
@@ -326,8 +326,8 @@ let rec rename_phis (phis : phi list) (env : env) (phis_new : phi list) : phi li
 ;;
 
 (* rename basic block at the begining of _rename *)
-let rec rename_bb (body : T.stm list) (new_body : T.stm list) (env : env)
-    : T.stm list * env
+let rec rename_bb (body : Tree.stm list) (new_body : Tree.stm list) (env : env)
+    : Tree.stm list * env
   =
   match body with
   | [] -> List.rev new_body, env
@@ -351,7 +351,7 @@ let cleanup_temp ori_name new_name env : env =
 
 (* pop variables defined in this block at the end of _rename *)
 let cleanup_bb (blk : ssa_block) (env : env) : env =
-  let rec cleanup_body (body : T.stm list) env =
+  let rec cleanup_body (body : Tree.stm list) env =
     match body with
     | [] ->
       (* printf "cleanup\n";
@@ -451,7 +451,7 @@ let rename blk_map dt =
   _rename entry blk_map env dt
 ;;
 
-let rec _decompose_blk phis (tail_map : T.stm list Label.Map.t) =
+let rec _decompose_blk phis (tail_map : Tree.stm list Label.Map.t) =
   match phis with
   | [] -> tail_map
   | phi :: t ->
@@ -466,7 +466,7 @@ let rec _decompose_blk phis (tail_map : T.stm list Label.Map.t) =
           match operand with
           | None -> acc
           | Some src ->
-            let new_tail = T.Move { dest; src = T.Temp src } :: old_tail in
+            let new_tail = Tree.Move { dest; src = Tree.Temp src } :: old_tail in
             Label.Map.set acc ~key:pred ~data:new_tail)
     in
     _decompose_blk t tail_map
@@ -476,7 +476,11 @@ let rec _decompose_blk phis (tail_map : T.stm list Label.Map.t) =
  * Add move instruction at the end of its predecessors 
  * except jump and cjump. 
  * Make sure those move are executed before jump/cjump *)
-let rec concat_tail_move (body : T.stm list) (moves : T.stm list) (res : T.stm list) =
+let rec concat_tail_move
+    (body : Tree.stm list)
+    (moves : Tree.stm list)
+    (res : Tree.stm list)
+  =
   match body with
   | [] -> List.rev res @ moves
   | h :: t ->
@@ -530,7 +534,7 @@ let decompose ssa_blk_map pred_map =
  * dt: dominance tree. Map for parent block_number -> children block_number set.
  * pred_map: predecesor map, block_number -> block_number set
  * blk_map: block number -> block *)
-let run (program : T.stm list) : T.stm list =
+let run (program : Tree.stm list) : Tree.stm list =
   (* printf "ssa run\n"; *)
   let df, dt, pred_map, blk_map = Dominator.run program in
   let ssa_blk_map = build_ssa_block blk_map in

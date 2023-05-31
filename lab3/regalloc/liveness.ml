@@ -13,7 +13,7 @@
  *)
 open Core
 module Dfana_info = Json_reader.Lab2_checkpoint
-module AS = Convention.Inst
+module Abs_asm = Abs_asm.Inst
 module Temp = Var.Temp
 module Register = Var.X86_reg
 module Dfana = Flow.Dfana
@@ -43,12 +43,12 @@ let print_liveout (liveout : (int list * int list * int) list) =
 ;;
 
 (* map is a hash table from label to line number *)
-let rec gen_succ (inst_list : AS.instr list) (line_no : int) map =
+let rec gen_succ (inst_list : Abs_asm.instr list) (line_no : int) map =
   match inst_list with
   | [] -> map
   | h :: t ->
     (match h with
-    | AS.Label l ->
+    | Abs_asm.Label l ->
       let map = Label.Map.set map ~key:l.label ~data:line_no in
       gen_succ t (line_no + 1) map
     | Jump _ | CJump _ | Ret _ | Mov _ | Binop _ | Assert _ | Fcall _ | Push _ | Pop _ ->
@@ -56,11 +56,11 @@ let rec gen_succ (inst_list : AS.instr list) (line_no : int) map =
     | Directive _ | Comment _ -> gen_succ t line_no map)
 ;;
 
-let[@warning "-8"] _gen_df_info_helper (line_no : int) (line : AS.line) =
+let[@warning "-8"] _gen_df_info_helper (line_no : int) (line : Abs_asm.line) =
   let uses = line.uses in
   let defs = line.defines in
-  let gen = Int.Set.of_list (AS.to_int_list uses) in
-  let kill = Int.Set.of_list (AS.to_int_list defs) in
+  let gen = Int.Set.of_list (Abs_asm.to_int_list uses) in
+  let kill = Int.Set.of_list (Abs_asm.to_int_list defs) in
   let kill = Int.Set.diff kill gen in
   let succ = [ line_no + 1 ] in
   let is_label = false in
@@ -73,9 +73,9 @@ let[@warning "-8"] _gen_df_info_helper (line_no : int) (line : AS.line) =
     : Dfana_info.line)
 ;;
 
-let[@warning "-8"] _gen_df_info_cjump line_no (AS.CJump cjump) label_map =
+let[@warning "-8"] _gen_df_info_cjump line_no (Abs_asm.CJump cjump) label_map =
   let uses = cjump.line.uses in
-  let gen = Int.Set.of_list (AS.to_int_list uses) in
+  let gen = Int.Set.of_list (Abs_asm.to_int_list uses) in
   let target_true_no = Label.Map.find_exn label_map cjump.target_true in
   let target_false_no = Label.Map.find_exn label_map cjump.target_false in
   ({ gen = Int.Set.to_list gen
@@ -87,7 +87,7 @@ let[@warning "-8"] _gen_df_info_cjump line_no (AS.CJump cjump) label_map =
     : Dfana_info.line)
 ;;
 
-let rec _gen_df_info_rev (inst_list : AS.instr list) line_no label_map res =
+let rec _gen_df_info_rev (inst_list : Abs_asm.instr list) line_no label_map res =
   match inst_list with
   | [] -> res
   | h :: t ->
@@ -112,8 +112,8 @@ let rec _gen_df_info_rev (inst_list : AS.instr list) line_no label_map res =
       | CJump cjp -> Some (_gen_df_info_cjump line_no (CJump cjp) label_map)
       | Ret ret ->
         Some
-          ({ gen = AS.to_int_list ret.line.uses
-           ; kill = AS.to_int_list ret.line.defines
+          ({ gen = Abs_asm.to_int_list ret.line.uses
+           ; kill = Abs_asm.to_int_list ret.line.defines
            ; succ = []
            ; is_label = false
            ; line_number = line_no
@@ -137,14 +137,14 @@ let rec _gen_df_info_rev (inst_list : AS.instr list) line_no label_map res =
 
 (* Generate information for each instruction. Info includes
  * gen, kill, succ, is_label, line_number *)
-let gen_df_info (inst_list : AS.instr list) : Dfana_info.line list =
+let gen_df_info (inst_list : Abs_asm.instr list) : Dfana_info.line list =
   let label_map = Label.Map.empty in
   let label_map = gen_succ inst_list 0 label_map in
   let res_rev = _gen_df_info_rev inst_list 0 label_map [] in
   List.rev res_rev
 ;;
 
-let rec gen_temp (inst_list : AS.instr list) line_no map =
+let rec gen_temp (inst_list : Abs_asm.instr list) line_no map =
   match inst_list with
   | [] -> map
   | h :: t ->
@@ -178,7 +178,7 @@ let rec trans_liveness (lo_int : (int list * int list * int) list) tmp_map res =
     trans_liveness t tmp_map res
 ;;
 
-let gen_liveness (inst_list : AS.instr list) =
+let gen_liveness (inst_list : Abs_asm.instr list) =
   let df_info = gen_df_info inst_list in
   (* print_df_info df_info; *)
   let lo_int = Dfana.dfana df_info Args.Df_analysis.Backward_may in

@@ -10,7 +10,7 @@
   Pseudo assembly instruction list -> register allocation info
 *)
 open Core
-module AS = Convention.Inst
+module Abs_asm = Abs_asm.Inst
 module Temp = Var.Temp
 module IG = Interference_graph
 module Register = Var.X86_reg
@@ -39,8 +39,8 @@ let empty_line line_num live_out =
 ;;
 
 (* Transform pseudo operands of type temp, imm, reg to reg/temp set*)
-let gen_VertexSet (l : AS.operand list) =
-  let rec _filter_imm (l : AS.operand list) (res : IG.Vertex.t list) =
+let gen_VertexSet (l : Abs_asm.operand list) =
+  let rec _filter_imm (l : Abs_asm.operand list) (res : IG.Vertex.t list) =
     match l with
     | [] -> res
     | h :: t ->
@@ -68,17 +68,17 @@ let print_line (line : line) =
   printf "\nline_number: %d}\n\n" line.line_number
 ;;
 
-let print_lines (l : (line * AS.instr) list) =
+let print_lines (l : (line * Abs_asm.instr) list) =
   List.iter l ~f:(fun tuple ->
       let line, inst = tuple in
-      printf "%s\n" (AS.pp_inst inst);
+      printf "%s\n" (Abs_asm.pp_inst inst);
       print_line line)
 ;;
 
 (* Generate defines, use, move, liveout, line number. *)
 let rec gen_forward
-    (inst_list : AS.instr list)
-    (inst_info : (int, line * AS.instr) Base.Hashtbl.t)
+    (inst_list : Abs_asm.instr list)
+    (inst_info : (int, line * Abs_asm.instr) Base.Hashtbl.t)
     (line_num : int)
     live_out_map
   =
@@ -88,7 +88,7 @@ let rec gen_forward
     let live_out = Int.Map.find_exn live_out_map line_num in
     let line = empty_line line_num live_out in
     (match h with
-    | AS.Binop binop ->
+    | Abs_asm.Binop binop ->
       let def = gen_VertexSet binop.line.defines in
       let uses = gen_VertexSet binop.line.uses in
       let line =
@@ -100,7 +100,7 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | AS.Mov mov ->
+    | Abs_asm.Mov mov ->
       let def = gen_VertexSet mov.line.defines in
       let uses = gen_VertexSet mov.line.uses in
       let line =
@@ -113,7 +113,7 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | AS.CJump cjp ->
+    | Abs_asm.CJump cjp ->
       let defines = gen_VertexSet cjp.line.defines in
       let uses = gen_VertexSet cjp.line.uses in
       let line =
@@ -121,7 +121,7 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | AS.Jump jp ->
+    | Abs_asm.Jump jp ->
       let defines = gen_VertexSet jp.line.defines in
       let uses = gen_VertexSet jp.line.uses in
       let line =
@@ -129,7 +129,7 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | AS.Ret ret ->
+    | Abs_asm.Ret ret ->
       let defines = gen_VertexSet ret.line.defines in
       let uses = gen_VertexSet ret.line.uses in
       let line =
@@ -137,7 +137,7 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | AS.Label _ ->
+    | Abs_asm.Label _ ->
       let defines = IG.Vertex.Set.empty in
       let uses = IG.Vertex.Set.empty in
       let line =
@@ -145,7 +145,7 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | AS.Fcall fcall ->
+    | Abs_asm.Fcall fcall ->
       let def = gen_VertexSet fcall.line.defines in
       let uses = gen_VertexSet fcall.line.uses in
       let line =
@@ -157,7 +157,7 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | AS.Pop pop ->
+    | Abs_asm.Pop pop ->
       let uses = gen_VertexSet pop.line.uses in
       let line =
         { line with
@@ -169,7 +169,7 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | AS.Push push ->
+    | Abs_asm.Push push ->
       let uses = gen_VertexSet push.line.uses in
       let line =
         { line with
@@ -181,7 +181,7 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | AS.Assert asrt ->
+    | Abs_asm.Assert asrt ->
       let uses = gen_VertexSet asrt.line.uses in
       let line =
         { line with
@@ -193,10 +193,11 @@ let rec gen_forward
       in
       Hashtbl.set inst_info ~key:line_num ~data:(line, h);
       gen_forward t inst_info (line_num + 1) live_out_map
-    | AS.Directive _ | AS.Comment _ -> gen_forward t inst_info line_num live_out_map)
+    | Abs_asm.Directive _ | Abs_asm.Comment _ ->
+      gen_forward t inst_info line_num live_out_map)
 ;;
 
-let gen_regalloc_info (inst_list : AS.instr list) =
+let gen_regalloc_info (inst_list : Abs_asm.instr list) =
   let inst_info = Hashtbl.create (module Int) in
   let liveness = Liveness.gen_liveness inst_list in
   let inst_info = gen_forward inst_list inst_info 0 liveness in
@@ -209,7 +210,7 @@ let gen_regalloc_info (inst_list : AS.instr list) =
     |> List.rev
   in
   List.iter lines ~f:(fun line -> print_line line);
-  printf "%s\n" (AS.pp_insts inst_list "");
+  printf "%s\n" (Abs_asm.pp_insts inst_list "");
   let lines = List.zip_exn lines inst_list in
   print_lines lines; *)
   ret

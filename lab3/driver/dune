@@ -6,15 +6,14 @@
   yojson
   json_reader
   args
-  inst
+  x86_asm
   var
   regalloc
   util
   front
   semantic
-  convention
+  abs_asm
   flow
-  codegen
   file)
  (inline_tests)
  (preprocess
