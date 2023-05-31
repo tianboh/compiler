@@ -87,6 +87,7 @@ type stm =
   | Declare of
       { t : dtype
       ; name : Symbol.t
+      ; value : mexp option
       ; tail : mstm
       }
   (* This is used for special case in elaboration from CST simp case. 

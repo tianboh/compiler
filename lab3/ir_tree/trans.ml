@@ -233,7 +233,14 @@ let rec trans_stm_rev
     let temp = Temp.create () in
     let var_env' = S.add_exn var_env ~key:decl_ast.name ~data:temp in
     let tail, _ = trans_stm_rev decl_ast.tail [] var_env' func_env in
-    tail @ acc, var_env'
+    let mov =
+      match decl_ast.value with
+      | None -> []
+      | Some value ->
+        let v_stms, v_exp = trans_mexp value var_env func_env in
+        [ Tree.Move { dest = temp; src = v_exp } ] @ List.rev v_stms
+    in
+    tail @ mov @ acc, var_env'
   | AST.Sexp sexp_ast ->
     let sexp_stms, _ = trans_mexp sexp_ast var_env func_env in
     List.rev sexp_stms @ acc, var_env

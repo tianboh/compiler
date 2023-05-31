@@ -192,17 +192,20 @@ and elab_declare (decl : Cst.decl) (src_span : Mark.src_span option) (tail : Cst
     if Symbol.Map.mem !ct2pt var.name
     then error None ~msg:"decl var name conflict with typedef name";
     let decl_ast =
-      Ast.Declare { t = elab_type var.t; name = var.name; tail = ast_tail }
+      Ast.Declare { t = elab_type var.t; name = var.name; value = None; tail = ast_tail }
     in
     Mark.mark' decl_ast src_span, []
   | Init init ->
     let ast_tail = elab_blk tail (Mark.naked Ast.Nop) in
     if Symbol.Map.mem !ct2pt init.name
     then error None ~msg:"init var name conflict with typedef name";
-    let assign = Ast.Assign { name = init.name; value = elab_mexp init.value } in
-    let seq = Ast.Seq { head = Mark.mark' assign src_span; tail = ast_tail } in
     let decl_ast =
-      Ast.Declare { t = elab_type init.t; name = init.name; tail = Mark.naked seq }
+      Ast.Declare
+        { t = elab_type init.t
+        ; name = init.name
+        ; value = Some (elab_mexp init.value)
+        ; tail = ast_tail
+        }
     in
     Mark.mark' decl_ast src_span, []
 
