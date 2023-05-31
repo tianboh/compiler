@@ -81,7 +81,7 @@ type env =
   }
 
 (* functions not defined during TC. Check once TC is done. *)
-let func_list = ref [ Symbol.symbol "main" ]
+let func_list = ref []
 let tc_errors : Util.Error_msg.t = Util.Error_msg.create ()
 
 let error ~msg src_span =
@@ -344,19 +344,28 @@ let tc_fdefn ret_type func_name pars blk env scope =
         in
         tc_redeclare env func_name pars ret_type;
         { funcs; vars }
-      | _, _ ->
-        error ~msg:(sprintf "function %s already defined." (Symbol.name func_name)) None)
+      | _, _ -> error ~msg:(sprintf "%s already defined." (Symbol.name func_name)) None)
   in
   tc_stm blk env func_name
 ;;
 
-(* Check if functions used in program are defined eventually. *)
+(* Check after all gdecls are processed
+ * 1) functions used in program are defined 
+ * 2) provide main function defination 
+ *)
 let _tc_post (env : env) =
   let funcs = !func_list in
   List.iter funcs ~f:(fun func ->
       let f = Map.find_exn env.funcs func in
       if phys_equal f.state Decl && phys_equal f.scope Internal
-      then error ~msg:"func not defined" None)
+      then error ~msg:"func not defined" None);
+  let cond =
+    Map.fold env.funcs ~init:false ~f:(fun ~key:fname ~data:func acc ->
+        if phys_equal fname (Symbol.symbol "main")
+        then acc || phys_equal func.state Defn
+        else acc)
+  in
+  if not cond then error ~msg:"main not defined" None
 ;;
 
 let rec _typecheck prog env scope =
