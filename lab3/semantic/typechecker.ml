@@ -81,7 +81,7 @@ type env =
   }
 
 (* functions not defined during TC. Check once TC is done. *)
-let func_list = ref []
+let func_list = ref [ Symbol.symbol "main" ]
 let tc_errors : Util.Error_msg.t = Util.Error_msg.create ()
 
 let error ~msg src_span =
@@ -292,8 +292,6 @@ let tc_pars (pars : param list) =
  * 2) Function may be declared multiple times, in which case 
  * the declarations must be compatible. Types should be the
  * same, but parameter name are not required to be the same.
- * 3) functions declared in header file cannot be defined
- * in source files again.
  *)
 let tc_fdecl ret_type func_name (pars : param list) env scope =
   tc_pars pars;
@@ -320,6 +318,7 @@ let pp_env env =
  * fdefn, so tc_stm is going to check whether parameter and local variable collide.
  * 2) Each function can only be defined once.
  * 3) Each function can only be define in source file, not header file.
+ * 4) functions declared in header file cannot be defined in source files again.
  *)
 let tc_fdefn ret_type func_name pars blk env scope =
   tc_pars pars;
@@ -337,14 +336,14 @@ let tc_fdefn ret_type func_name pars blk env scope =
       in
       { funcs; vars }
     | Some s ->
-      (match s.state with
-      | Decl ->
+      (match s.state, s.scope with
+      | Decl, Internal ->
         let funcs =
           Map.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
         in
         tc_redeclare env func_name pars ret_type;
         { funcs; vars }
-      | Defn ->
+      | _, _ ->
         error ~msg:(sprintf "function %s already defined." (Symbol.name func_name)) None)
   in
   tc_stm blk env func_name
@@ -362,7 +361,7 @@ let _tc_post (env : env) =
 let rec _typecheck prog env scope =
   match prog with
   | [] ->
-    _tc_post env;
+    if phys_equal scope Internal then _tc_post env;
     env
   | h :: t ->
     let env = { env with vars = Map.empty } in

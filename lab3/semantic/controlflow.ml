@@ -68,9 +68,8 @@ let rec cf_ret (ast : AST.program) : unit =
       | Void -> ()
       | _ ->
         if not (_cf_ret_stm fdefn.blk) then error ~msg:"Some branches not return" None)
-    | Typedef _ | Fdecl _ ->
-      ();
-      cf_ret t)
+    | Typedef _ | Fdecl _ -> ());
+    cf_ret t
 ;;
 
 (* Check whether var is used in exp. Return true if used, false otherwise. *)
