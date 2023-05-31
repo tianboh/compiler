@@ -128,8 +128,8 @@ and munch_stm_rev (stm : Tree.stm) =
           let e = munch_exp_acc t arg [] in
           t, e)
     in
-    let args, args_stms = List.unzip res in
-    let args_stms_rev = List.rev args_stms |> List.concat in
+    let args, args_stms_rev = List.unzip res in
+    let args_stms_rev = List.concat args_stms_rev in
     let scope = munch_scope fcall.scope in
     let call =
       Quads.Fcall { func_name = fcall.func_name; args; dest = fcall.dest; scope }

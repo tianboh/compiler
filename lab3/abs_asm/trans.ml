@@ -130,7 +130,7 @@ let[@warning "-8"] gen_asrt (Src.Assert asrt) =
   [ Dest.Assert { var; line } ]
 ;;
 
-let param_map idx temp : Dest.operand =
+let param_map idx : Dest.operand =
   match idx with
   | 0 -> Dest.Reg RDI
   | 1 -> Dest.Reg RSI
@@ -138,7 +138,7 @@ let param_map idx temp : Dest.operand =
   | 3 -> Dest.Reg RCX
   | 4 -> Dest.Reg R8
   | 5 -> Dest.Reg R9
-  | _ -> trans_operand temp
+  | _ -> Dest.Above_frame (idx - 5)
 ;;
 
 let gen_scope = function
@@ -153,14 +153,14 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
   let args = List.map fcall.args ~f:(fun arg -> trans_operand arg) in
   let x86_regs = (rax :: Reg.caller_saved) @ Reg.parameters in
   let defines = List.map x86_regs ~f:(fun reg -> Dest.Reg reg) in
-  let uses = List.mapi fcall.args ~f:(fun idx arg -> param_map idx arg) in
+  let uses = List.mapi fcall.args ~f:(fun idx _ -> param_map idx) in
   let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
   let params =
     List.mapi fcall.args ~f:(fun idx arg ->
         let src = trans_operand arg in
         if idx < 6
         then (
-          let dest = param_map idx arg in
+          let dest = param_map idx in
           let defines = [ dest ] in
           let uses = [ src ] in
           let line = ({ defines; uses; live_out = []; move = true } : Dest.line) in
@@ -172,7 +172,6 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
           let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
           let push = Dest.Push { var = src; line } in
           push))
-    |> List.rev
   in
   let scope = gen_scope fcall.scope in
   let fcall = Dest.Fcall { func_name; args; line; scope } in
@@ -242,11 +241,11 @@ let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
 ;;
 
 (* Generate assigning parameter passing code. Parameters are passed through
- * registers or memories during function call. *)
+ * registers(first 6 parameters) or memories(rest parameters)  during function call. *)
 let gen_pars (pars : Temp.t list) : Dest.instr list =
   (* printf "%s\n" (List.map pars ~f:(fun par -> Temp.name par) |> String.concat ~sep:", "); *)
   List.mapi pars ~f:(fun idx par ->
-      let src = param_map idx (Src.Temp par) in
+      let src = param_map idx in
       let dest = trans_operand (Src.Temp par) in
       (* printf "%s <- %s\n" (Inst.pp_operand dest) (Inst.pp_operand src); *)
       if idx < 6
@@ -254,8 +253,8 @@ let gen_pars (pars : Temp.t list) : Dest.instr list =
         let line = { defines = [ dest ]; uses = [ src ]; live_out = []; move = true } in
         Mov { dest; src; line })
       else (
-        let line = { defines = [ src ]; uses = []; live_out = []; move = false } in
-        Pop { var = dest; line }))
+        let line = { defines = [ dest ]; uses = [ src ]; live_out = []; move = true } in
+        Mov { dest; src; line }))
 ;;
 
 let gen_section (prefix : string) (fname : Symbol.t) (content : Dest.instr list)

@@ -307,7 +307,7 @@ let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest
   (* printf"allocate register/memory\n"; *)
   if r < Register.num_reg
   then Reg (Register.idx_reg r)
-  else Mem (Memory.create r Register.RBP (r - Register.num_reg + 1) 8)
+  else Mem (Memory.create r Register.RBP (-(r - Register.num_reg + 1)) 8)
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)

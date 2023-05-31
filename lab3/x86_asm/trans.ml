@@ -61,8 +61,12 @@ let oprd_ps_to_x86
     | Regalloc.Mem m -> X86_asm.Mem m)
   | Imm i -> X86_asm.Imm i
   | Reg r -> X86_asm.Reg r
-  | Above_frame af -> X86_asm.Mem (Memory.get_mem Reg.RBP af (type_size_byte DWORD))
-  | Below_frame bf -> X86_asm.Mem (Memory.get_mem Reg.RBP (-bf) (type_size_byte DWORD))
+  (* af + 1 because rsp always point to the next available memory. 
+   * The latest available memory is rsp + 8. Remember that caller push parameter and callee
+   * push rbp, mov rsp to rbp so in order to access parameters in callee function, 
+   * we need to skip the pushed rbp, which is 1. *)
+  | Above_frame af -> X86_asm.Mem (Memory.get_mem Reg.RBP (af + 1) (type_size_byte QWORD))
+  | Below_frame bf -> X86_asm.Mem (Memory.get_mem Reg.RSP (-bf) (type_size_byte DWORD))
 ;;
 
 let trans_scope = function
