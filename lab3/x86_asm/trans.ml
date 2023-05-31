@@ -32,7 +32,7 @@ open Var.Layout
 module Abs_asm = Abs_asm.Inst
 module X86_asm = Inst
 module Temp = Var.Temp
-module Register = Var.X86_reg
+module Reg = Var.X86_reg
 module Memory = Var.Memory
 module Label = Util.Label
 module IG = Regalloc.Interference_graph
@@ -54,13 +54,15 @@ let oprd_ps_to_x86
          * In this case, we will use %rax to represent it. Notice that it is only a representation
          * for this uninitialized temporary, and %rax will not be assigned in the following instruction.
          * Therefore, no worry for the return value. *)
-        Regalloc.Reg Register.RAX
+        Regalloc.Reg Reg.RAX
     in
     (match dest with
     | Regalloc.Reg r -> X86_asm.Reg r
     | Regalloc.Mem m -> X86_asm.Mem m)
   | Imm i -> X86_asm.Imm i
   | Reg r -> X86_asm.Reg r
+  | Above_frame af -> X86_asm.Mem (Memory.get_mem Reg.RBP af (type_size_byte DWORD))
+  | Below_frame bf -> X86_asm.Mem (Memory.get_mem Reg.RBP (-bf) (type_size_byte DWORD))
 ;;
 
 let trans_scope = function
@@ -68,10 +70,10 @@ let trans_scope = function
   | Abs_asm.External -> X86_asm.External
 ;;
 
-let rax = X86_asm.Reg Register.RAX
-let rdx = X86_asm.Reg Register.RDX
-let rbp = X86_asm.Reg Register.RBP
-let rsp = X86_asm.Reg Register.RSP
+let rax = X86_asm.Reg Reg.RAX
+let rdx = X86_asm.Reg Reg.RDX
+let rbp = X86_asm.Reg Reg.RBP
+let rsp = X86_asm.Reg Reg.RSP
 let fpe_label = Label.label (Some "fpe")
 let abort_label = Label.label (Some "abt")
 
@@ -80,7 +82,7 @@ let gen_x86_relop_bin
     (dest : X86_asm.operand)
     (lhs : X86_asm.operand)
     (rhs : X86_asm.operand)
-    (swap : Register.t)
+    (swap : Reg.t)
   =
   let set_inst =
     match op with
@@ -104,7 +106,7 @@ let gen_x86_inst_bin
     (dest : X86_asm.operand)
     (lhs : X86_asm.operand)
     (rhs : X86_asm.operand)
-    (swap : Register.t)
+    (swap : Reg.t)
   =
   match op with
   | Plus -> X86_asm.safe_mov dest lhs DWORD @ X86_asm.safe_add dest rhs DWORD
@@ -145,7 +147,7 @@ let rec _codegen_w_reg_rev
     (res : X86_asm.instr list)
     (inst_list : Abs_asm.instr list)
     (reg_alloc_info : Regalloc.dest IG.Vertex.Map.t)
-    (reg_swap : Register.t)
+    (reg_swap : Reg.t)
   =
   match inst_list with
   | [] -> res
@@ -222,7 +224,7 @@ let rec _codegen_w_reg_rev
 ;;
 
 let fpe_handler =
-  let ecx = Register.RCX in
+  let ecx = Reg.RCX in
   (* We use ecx as zero reg because it is saved for shift. *)
   [ X86_asm.Label fpe_label
   ; X86_asm.Mov { dest = Reg ecx; src = Imm Int32.zero; layout = DWORD }
@@ -245,7 +247,7 @@ let gen
           (match x with
           | temp, reg -> IG.Vertex.Map.set acc ~key:temp ~data:reg))
   in
-  let reg_swap = Register.R15 in
+  let reg_swap = Reg.R15 in
   let res_rev = _codegen_w_reg_rev [] fdefn.body reg_alloc reg_swap in
   let res = List.rev res_rev in
   (* printf "gen prologue\n%!"; *)

@@ -11,7 +11,7 @@ open Layout
 
 module T = struct
   type t =
-    { index : int (* This is a global unique id for memory.*)
+    { index : int option (* This is a global unique id for memory.*)
     ; base : X86_reg.t
     ; offset : int (* base + offset is start address of a variable *)
     ; size : int (* size of corresponding variable, byte as unit.*)
@@ -32,14 +32,19 @@ let reset () = counter := 0
 
 let create index base offset size =
   incr counter;
-  (* printf "memory create %d\n" !counter; *)
-  { index; base; offset; size }
+  { index = Some index; base; offset; size }
 ;;
+
+let get_mem base offset size = { index = None; base; offset; size }
 
 let mem_to_str t =
   Printf.sprintf "%d(%s)" (-t.offset * t.size) (X86_reg.reg_to_str ~layout:QWORD t.base)
 ;;
 
-let mem_idx (mem : t) = mem.index
+let mem_idx_exn (mem : t) =
+  match mem.index with
+  | None -> failwith "illegal access frame memory"
+  | Some idx -> idx
+;;
 
 include Comparable.Make (T)
