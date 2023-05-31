@@ -268,7 +268,7 @@ control :
          { Cst.For {init = init; cond = e; iter = iter; body = s} }
   | Return; e = expopt; Semicolon;
       { Cst.Return e }
-  | Assert; e = m(exp); Semicolon;
+  | Assert; L_paren; e = m(exp); R_paren; Semicolon;
       { Cst.Assert e }
 
 exp :

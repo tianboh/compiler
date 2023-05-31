@@ -64,7 +64,9 @@ let func_env = ref Symbol.Set.empty
  * 3) Now we only have binary and ternary op, translate them to AST exp 
  *)
 let rec elab_exp = function
-  | Cst.Var var -> Ast.Var var
+  | Cst.Var var ->
+    if Symbol.Map.mem !ct2pt var then error ~msg:"exp name conflict with typename" None;
+    Ast.Var var
   | Cst.Const_int i -> Ast.Const_int i
   | Cst.True -> Ast.True
   | Cst.False -> Ast.False
@@ -188,23 +190,21 @@ and elab_declare (decl : Cst.decl) (src_span : Mark.src_span option) (tail : Cst
   | New_var var ->
     let ast_tail = elab_blk tail (Mark.naked Ast.Nop) in
     if Symbol.Map.mem !ct2pt var.name
-    then error None ~msg:"decl var name conflict with typedef name"
-    else (
-      let decl_ast =
-        Ast.Declare { t = elab_type var.t; name = var.name; tail = ast_tail }
-      in
-      Mark.mark' decl_ast src_span, [])
+    then error None ~msg:"decl var name conflict with typedef name";
+    let decl_ast =
+      Ast.Declare { t = elab_type var.t; name = var.name; tail = ast_tail }
+    in
+    Mark.mark' decl_ast src_span, []
   | Init init ->
     let ast_tail = elab_blk tail (Mark.naked Ast.Nop) in
     if Symbol.Map.mem !ct2pt init.name
-    then error None ~msg:"init var name conflict with typedef name"
-    else (
-      let assign = Ast.Assign { name = init.name; value = elab_mexp init.value } in
-      let seq = Ast.Seq { head = Mark.mark' assign src_span; tail = ast_tail } in
-      let decl_ast =
-        Ast.Declare { t = elab_type init.t; name = init.name; tail = Mark.naked seq }
-      in
-      Mark.mark' decl_ast src_span, [])
+    then error None ~msg:"init var name conflict with typedef name";
+    let assign = Ast.Assign { name = init.name; value = elab_mexp init.value } in
+    let seq = Ast.Seq { head = Mark.mark' assign src_span; tail = ast_tail } in
+    let decl_ast =
+      Ast.Declare { t = elab_type init.t; name = init.name; tail = Mark.naked seq }
+    in
+    Mark.mark' decl_ast src_span, []
 
 (* Return: AST statement. *)
 and elab_control ctl (src_span : Mark.src_span option) =
@@ -273,13 +273,15 @@ and elab_control ctl (src_span : Mark.src_span option) =
 
 let elab_param (param : Cst.param) : Ast.param = { t = elab_type param.t; i = param.i }
 
-let elab_fdecl ret_type func_name par_type =
+let elab_fdecl ret_type func_name (par_type : Cst.param list) =
   func_env := Symbol.Set.add !func_env func_name;
   if Symbol.Map.mem !ct2pt func_name
-  then error None ~msg:"decl func name conflict with typename"
-  else
-    Ast.Fdecl
-      { ret_type = elab_type ret_type; func_name; pars = List.map par_type ~f:elab_param }
+  then error None ~msg:"decl func name conflict with typename";
+  List.iter par_type ~f:(fun par ->
+      if Symbol.Map.mem !ct2pt par.i
+      then error ~msg:"decl func par conflict with type name" None);
+  let ret_type = elab_type ret_type in
+  Ast.Fdecl { ret_type; func_name; pars = List.map par_type ~f:elab_param }
 ;;
 
 (* We explicitly add declare of parameters at the beginning of function definition body
@@ -310,16 +312,14 @@ let elab_typedef t t_var =
     | Cst.Bool -> Cst.Bool
     | Cst.Void -> error ~msg:"dest type cannot be void" None
   in
-  if Symbol.Set.mem !func_env t_var
-  then error None ~msg:"type name already exist"
-  else (
-    let env' =
-      match Symbol.Map.add env' ~key:t_var ~data:dest_type with
-      | `Duplicate -> error None ~msg:"type name already exist"
-      | `Ok s -> s
-    in
-    ct2pt := env';
-    Ast.Typedef { t = elab_type t; t_var })
+  if Symbol.Set.mem !func_env t_var then error None ~msg:"type name already exist";
+  let env' =
+    match Symbol.Map.add env' ~key:t_var ~data:dest_type with
+    | `Duplicate -> error None ~msg:"type name already exist"
+    | `Ok s -> s
+  in
+  ct2pt := env';
+  Ast.Typedef { t = elab_type t; t_var }
 ;;
 
 let rec elab (cst : Cst.program) (acc : Ast.program) : Ast.program =
