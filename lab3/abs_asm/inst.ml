@@ -1,27 +1,20 @@
 (* L3 Compiler
- * Convention layer between ir_tree and back-end.
+ *
  * This is the immediate layer before regalloc.
- * Once we finish a backend, we need to generate
- * code following this convention. register alloc
- * module will use this convention to build 
- * interference graph.
- *
- * This is a API that each convention 
- * (x86, arm, etc) should follow. 
- *
- * Compared with IR inst, this module has operand
- * of type register, and also add def-use info
- * for each instruction.
+ * Based on IR inst, this module provides extra
+ * 1) register type for operand
+ * 2) above_frame and below_frame for memory access
+ * 3) def-use info for each instruction.
  *
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
 
 open Core
+open Var.Layout
 module Register = Var.X86_reg
 module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
-module AS = Quads.Inst
 
 type scope =
   | Internal
@@ -31,6 +24,8 @@ type operand =
   | Imm of Int32.t
   | Temp of Temp.t
   | Reg of Register.t
+  | Above_frame of int
+  | Below_frame of int
 
 type line =
   { uses : operand list
@@ -125,9 +120,9 @@ type program = fdefn list
 let to_int_list (operands : operand list) : int list =
   List.fold operands ~init:[] ~f:(fun acc x ->
       match x with
-      | Imm _ -> acc
       | Temp t -> Temp.value t :: acc
-      | Reg r -> Register.reg_idx r :: acc)
+      | Reg r -> Register.reg_idx r :: acc
+      | Above_frame _ | Below_frame _ | Imm _ -> acc)
 ;;
 
 let pp_binop = function
@@ -153,6 +148,8 @@ let pp_operand = function
   | Imm n -> "$" ^ Int32.to_string n
   | Temp t -> Temp.name t
   | Reg r -> Register.reg_to_str r
+  | Above_frame af -> sprintf "%d(%%rbp)" (af * type_size_bit BYTE)
+  | Below_frame bf -> sprintf "-%d(%%rbp)" (bf * type_size_bit BYTE)
 ;;
 
 let pp_scope = function
