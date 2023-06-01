@@ -14,6 +14,7 @@
   semantic
   abs_asm
   flow
+  ssa
   file)
  (inline_tests)
  (preprocess
