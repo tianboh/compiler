@@ -287,8 +287,6 @@ let elab_fdecl ret_type func_name (par_type : Cst.param list) =
   Ast.Fdecl { ret_type; func_name; pars = List.map par_type ~f:elab_param }
 ;;
 
-(* We explicitly add declare of parameters at the beginning of function definition body
- * This aim to make following analysis and transformation easier *)
 let elab_fdefn (ret_type : Cst.dtype) (func_name : Symbol.t) par_type blk =
   func_env := Symbol.Set.add !func_env func_name;
   if Symbol.Map.mem !ct2pt func_name
