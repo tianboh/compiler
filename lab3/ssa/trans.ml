@@ -1,7 +1,13 @@
 (* 
- * SSA will read an IR tree and generate a SSA formed IR tree
- * Here, I use minimal SSA through dominance frontier to make
+ * SSA will read an IR fdefn and generate a SSA formed IR fdefn
+ * I use minimal SSA through dominance frontier to make
  * sure that phi function is inserted in a minimal time.
+ *
+ * Function parameters are assigned zero in parameter
+ * block for declare/assign consistency in the following SSA
+ * This module does not calculate so it will not lead to error.
+ * Parameter block will be removed once SSA is done, also, the 
+ * new temp name will be updated to function parameter.
  *
  * Check https://www.cs.rice.edu/~keith/EMBED/dom.pdf for 
  * algorithm details.
@@ -13,6 +19,7 @@ module Tree = Ir_tree.Inst
 module D = Dominator
 module Temp = Var.Temp
 module Label = Util.Label
+module Symbol = Util.Symbol
 
 (* dest = phi(src1, ..., srcn). Since dest and src may change
  * during rename procedure, we keep track of the original dest
@@ -530,12 +537,67 @@ let decompose ssa_blk_map pred_map =
   blk_map
 ;;
 
+(* Build a block for function parameter assignment.
+ * This is used to declare and define function parameters
+ * and this block will be removed after ssa done.
+ * Return block and its label *)
+let pre_process (fdefn : Tree.fdefn) : Tree.stm list * Label.t =
+  let param_label = Label.label (Some (Symbol.name fdefn.func_name)) in
+  let movs =
+    List.map fdefn.temps ~f:(fun temp ->
+        Tree.Move { dest = temp; src = Tree.Const Int32.zero })
+  in
+  Tree.Label param_label :: movs, param_label
+;;
+
+(* Once SSA finished, skip the parameter block and update fdefn arg temps.
+ * Return SSA Tree.fdefn *)
+let post_process
+    (fdefn : Tree.fdefn)
+    (blk_map : D.block Label.Map.t)
+    (par_label : Label.t)
+    (order : Label.t list)
+    : Tree.fdefn
+  =
+  (* get updated function parameters *)
+  let par_blk_ssa = Label.Map.find_exn blk_map par_label in
+  let args =
+    List.filter_map par_blk_ssa.body ~f:(fun stm ->
+        match stm with
+        | Tree.Move m -> Some (Tree.Move m)
+        | Tree.Label _ -> None
+        | _ -> failwith "parameter ssa should not contain this type")
+  in
+  let[@warning "-8"] (temps : Temp.t list) =
+    List.map args ~f:(fun (Tree.Move mov) -> mov.dest)
+  in
+  (* skip parameter, entry and exit block, and gen fdefn body *)
+  let body =
+    List.map order ~f:(fun l ->
+        let blk = Label.Map.find_exn blk_map l in
+        blk.body)
+    |> List.concat
+  in
+  { func_name = fdefn.func_name; temps; body }
+;;
+
 (* df: dominance frontier.
  * dt: dominance tree. Map for parent block_number -> children block_number set.
  * pred_map: predecesor map, block_number -> block_number set
  * blk_map: block number -> block *)
-let run (program : Tree.stm list) : Tree.stm list =
+let run (fdefn : Tree.fdefn) : Tree.fdefn =
   (* printf "ssa run\n"; *)
+  let par_blk_stms, par_label = pre_process fdefn in
+  let body =
+    Tree.Label (Label.label (Some (Symbol.name fdefn.func_name))) :: fdefn.body
+  in
+  let (valid_blk_label : Label.t list) =
+    List.filter_map body ~f:(fun stm ->
+        match stm with
+        | Tree.Label l -> Some l
+        | _ -> None)
+  in
+  let program = par_blk_stms @ body in
   let df, dt, pred_map, blk_map = Dominator.run program in
   let ssa_blk_map = build_ssa_block blk_map in
   (* printf "build_ssa_block\n";
@@ -551,8 +613,5 @@ let run (program : Tree.stm list) : Tree.stm list =
   Print.pp_blk ssa_blk_map; *)
   let blk_map = decompose ssa_blk_map pred_map in
   (* Dominator.Print.pp_blk blk_map; *)
-  let blks = Label.Map.to_alist ~key_order:`Increasing blk_map in
-  List.fold blks ~init:[] ~f:(fun acc blk_tuple ->
-      let _, blk = blk_tuple in
-      acc @ blk.body)
+  post_process fdefn blk_map par_label valid_blk_label
 ;;
