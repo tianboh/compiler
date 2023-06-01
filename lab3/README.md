@@ -1,133 +1,106 @@
-# L2 Compiler
+# L3 Compiler
 
-## Overview
-lab2 is dataflow analysis. Students are required to 
-1) Submit 10 test cases for l2 including scenarios in success, error and exception.
-2) Implement dataflow analysis algorithm.
-Core concept in dataflow analysis is gen and kill set. Each expression has a value on the left and an
-expression on the right. Gen is the right side part. Kill corresponds to expression using left side part.
-More information can be reached in [handout](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf) and [checkpoint](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2checkpoint.pdf).
+## Overview Workflow
 
-## Data structure
-Instead of traversing line by line, we use basic block as the traverse unit. Each block has gen, kill, pred, succ, in and out field. Once we calculate in set and out set for each block, we calculate in and out set for each line from the end/beginning of each block.
+**l3 program** ——c0_lexer, c0_parser——> **CST** ——elaborate——> **AST** ——semantic analysis——> **AST** ——ir_tree_trans——> **IR trees** ——dominator tree——> **IR trees in SSA form** ——quads_trans——> **Quads**  ——abs_codegen——> **Abstract Assembly** ——dataflow graph, liveness analysis, register allocation, x86codegen——> **x86-64 machine code**
 
-## Algorithm
-The dataflow analysis procedure is shown below, we first provide a dataflow analysis by statement, and then take block as a unit.
 
-### 1) Dataflow analysis algorithm by statement and complexity
-The dataflow analysis algorithm works as follows, check tiger book chapter 10 for more details. Here we take liveness analysis as an example to show complexity.
-```
-for each statement n
-    in[n] <- {}
-    out[n] <- {}
-repeat
-    for each statement n
-        in'[n] <- in[n]; out'[n] <- out[n]
-        out[n] = U in[s] for s belongs to successors of n
-        in[n] = use[n] U (out[n] - def[n])
-until in[n] = in'[n] and out[n] = out'[n]
-```
+## CST
+CST stands for Concret Syntax Tree, it is parsed from l3 source file. CST eliminate parenthesis and brackets compared with the actual syntax tree. However, the basic structure for CST and actual syntax tree is the same, for example, CST have if, while, for, block, postops etc.
 
-Complexity analysis
+## Elaboration and AST
+In order to make following analysis simpler, an elaboration pass is added after CST is constructed. The elaborated syntax tree is AST(Abstract Syntax Tree). This elaboration pass tries to simplify CST through
 
-Initialization will take $O(n)$.
+* for loops are elaborated into while loop.
+* Unary operations(negative, logical not, bitwise not) are elaborated into binary operations by identical value.
+* Logical operations are elaborated to ternary operation.
+* Bin assign operations (like +=, *=, etc.) are elaborated to binary operation.
+* Declare is elaborated to provide a namespace for the variable. So typecheck and controlflow check is much easier on AST.
+* Custom typenames are elaborated to primitive type
 
-The repeat part will run $O(n^2)$ iterations to terminate. We can union the in set and out set for every statements. Then this set will at most have $2n^2$ elements. Remeber each statement will have at most n element in its in set and its out set. So n statements will have at most $2n^2$ elements. Also notice that the in and out set for each statement will be increase monotonically(def and use are fixed, so the increase for in set will lead to increase for out set due to union operation, vice versa). Each iteration(update the whole n statements) will increase at least one element, otherwise it will terminate. There are at most $2n^2$ elements in the union set, so it will terminate at most $2n^2$ times iteration.
+Elaboration pass also provides simple checks for type definations because type alias is elaborated afterwards.
 
-Each iteration in the repeat part will traverse n statement, each statement will take $O(n)$ time to union(order the element and then use merge sort to union). So each iteration will take $O(n^2)$ complexity. 
+* Type definitions cannot conflict with variable names.
+* Type definitions cannot conflict with function names.
+* Type definitions cannot alias void. 
+* Same type definition only declared once.
+* No variable declaration at for loop iteration filed.
 
-Therefore, the overall complexity is $O(n^4)$. If we use bit vector to denote the set, then the union takes $O(1)$, and the overall compelxity is $O(n^3)$
+## Semantic Analysis
+Semantic analysis checks variable and function semantic correctness on AST. Specifically, it checks
 
-### 2) Worklist algorithm complexity
-We provide naive dataflow analysis complexity, now we introduce worklist algorithm and its complexity.
-We take forward union analysis as an example here.
-```
-for each statement n
-    in[n] <- {}
-    out[n] <- {}
-Q <- first statement
-while Q not empty
-    for any statement n in Q:
-        remove n from Q
-        out'[n] <- out[n]
-        in[n] = U out[s] for s belongs to predecessor of n
-        out[n] = gen[n] U (in[n] - kill[n])
-        if out[n] != out'[n] then Q <- Q U succ[n]
-```
-Complexity analysis
+* Variables are declared before defination, and all variables are defined before usage.
+* No variable can be declared more than once.
+* Variable names do not collide with type names, but can shadow function names.
+* No variable of type void. Void is only used as return type for function.
+* Functions may be declared more than once, but with the same argument and return type.
+* Functions are defined before calling, forward declare allowed.
+* Expressions are well typed. Including function call arguments, variable assignment, conditions, return etc. 
+* Control flow path with non-void return has proper returned.
 
-Initialization will take $O(n)$.
+## IR tree
+The IR data structure provides assembly-like statements and expressions. High-level controlflow statements in AST, like while and if, are translated to low-level jump and conditional jump in IR. Ternary operation are also translated to statements with jump.
 
-The repeat part will run $O(nk)$ iterations to terminate. There are two constraints, which is satisfied for all gen-kill scenarios.
-1) Transfer function is monotonic. Which means out[s] will never decrease in above example.
-2) Lattice set is finite. Which means in[s] or out[s] cannot be infinite. Consider our program is finite, so the expression/variable
-is obvious finite, so the set cannot be inifinite.
+Statements may have side effect and expressions are guaranteed to be effect-free. Some expressions(div, mod, shift) are transformed to effect statement, and the rest are pure as it is. New temporaries are created as destination of expressions with side-effect. 
 
-Suppose the longest path from top to fixed point in the lattice is $k$. The complexity for worklist algorithm is infact the number
-of adding node happens. Each state s can change atmost k times, which is the longest path from top to the fixed point, and there are
-n states, so the overall adding can be up to $O(nk)$ times. Notice that a state can atmost add 2 state once because their successor
-can at most be two, which is the case for CJump.
+Variables in AST are translated to temporary in IR. Boolean constant is replaced with integer(true for 1 and false for 0). 
 
-Each iteration in the repeat part will traverse n statement, each statement will take $O(n)$ time to union(order the element and then use merge sort to union). So each iteration will take $O(n^2)$ complexity. 
+## Dominator and SSA
+SSA is built on IR trees. SSA is composed with basic blocks, where each block start with a label and read until next label. SSA first build dominator trees based on [A Simple, Fast Dominance Algorithm](https://www.cs.rice.edu/~keith/EMBED/dom.pdf).
 
-Therefore, the overall complexity is $O(n^2k)$. If we use bit vector to denote the set for each statement, the complexity for union is 
-O(1), then the overall complexity for worklist algorithm is $O(nk)$
+Then, use [SSA algorithm](https://pfalcon.github.io/ssabook/latest/book.pdf)(section 3) to rename the temporaries. Critical edges are properly handled at the end of SSA. Also, SSA works for each function independently, and their parameters are translated to a block at the beginning of the function body. So the rename process takes into parameters as well.
 
-### 3) Build control flow graph in terms of basic block
-Lines within the same block are grouped together in order(dependes on forward/backward, check dfana.ml for more details). Gen, kill, successor, predecessor field are calculated for each basic block(BB) in this step. Specifically, traverse each statement by order and update as below:
+Notice that parallel copy in SSA deconstruction is not finished yet. This is still a ongoing task.
 
-    gen[BB] <- gen[BB] U gen[s] - kill[s]
+## Quads
+Quads is of assembly-like instructions. IR statements are translated to instructions using maximal munch algorithm. IR expressions are translated to binary/move instructions. 
 
-    kill[BB] <- kill[BB] U kill[s] - gen[s]
+Quads provide operand of temporary and immediate. Quads is hardware-independent, so operands of register and memory are not provided.
 
-Complexity: O(l) where l is number of lines in input file.
+## Abstract Assembly
+Abstract assembly provides operand of register, frame memory, temporary and immediate. This is the immediate layer before register allocation, so information for define, use, liveout is attached to each instruction. Instructions requiring special registers can add those registers to define field, so register allocation algorithm will preserve those register unassigned when those instructions are executed. In the x86 assembly code generation, we can move operand/destination to those special registers without risk.
 
-### 4) Update block until converge
-Initialize the process queue(check dfana.ml for details about the order).
+Instructions with special register treatments are
 
-For forward-may analysis, we calculate in set by
+* Div and mod. Preserve %RAX and %RDX.
+* Shift. Preserve %RCX.
 
-    in[BB] <- U out[BB'] where BB' are predecessors of BB. out[BB'] are initialized to empty set in the begining.
+Calling a function will 
 
-For forward-must analysis, 
+* Move parameters to %RDI, %RSI, %RDX, %RCX, %R8, %R9 respectively. If parameters are more than 6, then push them to the memory. Last parameter is pushed first, and gradually to the 7th.
+* Save caller-saved register by defining %R10 and %R11 at fcall instruction. 
+* Preserve parameter registers by defining %RDI, %RSI, %RDX, %RCX, %R8, %R9 at fcall as well. So the parameter source will not collide with those registers.
+* Preserve return register %RAX by defining it at fcall.
 
-    in[BB] <- Intersect out[BB'] where BB' are predecessors of BB. out[BB'] are initialized to full set.
+When a function is called, it will 
 
-Then use below formula to update out set for BB. If new out[BB] is different from previous ones, then push its successors to process queue.
+* Save %RBP(caller func return address) and update %RBP to %RSP(called func address) based on local allocated memory.
+* Store the callee-saved registers.
+* Read parameters from registers. Read from memories if necessary.
+* Execute function. Move result to %RAX if function returns.
+* Restore callee-saved registers.
+* Restore %RBP and %RSP.
 
-    out[BB] <- gen[BB] U (in[BB] - kill) 
+## Dataflow analysis
+Dataflow analysis provide four modes: forward/backward must/may analysis. Now we only need liveness analysis(backward may analysis) to allocate register. Abstract assembly code within a function defination will be decomposed to basic blocks. Define and use information is used to calculate liveout info. Operand in this process is of int type, and each value represents a unique register/temporary in abstract assembly operand. 0-15 represent 16 general registers, and higher value represent distinct temporaries.
 
-Complexity: Check [notes](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/09-df-theory.pdf) for details.
-### 5) Transform from block to line
-Finally, we should traverse each block and transfrom from block in/out set to line in/out set. We can apply in and out formula in terms of line from above step.
+## Register allocation
+Interference graph edge is built between def and liveout for each instruction. Some instructions may define multiple registers/temporaries, and they are mutually linked as well.
 
-Complexity: O(l)
-    
-## Test
-Start container. Mount workspace to the Root project which contains test cases. Root project contains compiler directory.
-sudo docker run -v ROOT_PROJECT:/workspace --name 411 -td cmu411/autograder-ocaml
-### Task 1 (test cases)
-First, modify ROOT_PROJECT/runverifier, change the last line from 
-```
-"$script_directory/harness/runHarness" verifyCheckpoint "$@"
-``` 
-to 
-```
-"$script_directory/harness/runHarness" gradeTests "$@"
-```
-Then, save the hand written test cases to /workspace/tests/l2-my-tests, then run
-```
-/workspace/compiler# ../runverifier l2-my-tests
-```
+Register allocation is done based on interference graph. Pre-color is not necessary because special registers are already preserved for those special instructions. Simply apply SEO and greedy coloring will do the rest work.
 
-### Task 2 (dataflow analysis)
-Modify ROOT_PROJECT/runverifier, change the last line to
-```
-"$script_directory/harness/runHarness" verifyCheckpoint "$@"
-``` 
-then run
-```
-cd /workspace/compiler
-../runverifier l2-basic-checkpoint
-../runverifier l2-large-checkpoint
-```
+13 registers are available for allocation. %RBP and %RSP are preserved for function call return address. And %R15 is used as swap register.
+
+If there are more than 5000 temporaries in the graph, it may cost much time to run the algorithm. In this case, it will spill all temporary to stack and do not allocate any register.
+
+## x86-64 machine code
+Abstract assembly code is translated to x86-64 machine code based on the information of register allocation. The transformation includs
+
+* Transform temporary to allocated register/memory address.
+* Transform frame memory(used in function call parameter passing) to real memory
+* Compared result is calculated by CMP and a followed SETCC.
+* MOV use swap register to handle memory to memory move.
+* RAX and RDX are preserved for div, mod. CVT is used to extend higher bits.
+* RCX is preserved for SAL and SAR.
+* Safety check for SAL and SAR is done by cmp and jump tp fpe handler.
+* Based on allocated memory, provide callee function rsp subtraction value.
