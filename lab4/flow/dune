@@ -1,0 +1,6 @@
+(library
+ (name flow)
+ (libraries core json_reader args)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))

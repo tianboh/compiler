@@ -1,0 +1,6 @@
+(library
+ (name regalloc)
+ (libraries core var ir_tree abs_asm json_reader flow)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))

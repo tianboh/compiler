@@ -1,0 +1,6 @@
+(library
+ (name abs_asm)
+ (libraries core ir_tree args var util quads)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))

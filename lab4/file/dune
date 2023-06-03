@@ -1,0 +1,6 @@
+(library
+ (name file)
+ (libraries core var front ir_tree x86_asm)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))

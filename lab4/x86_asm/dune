@@ -1,0 +1,6 @@
+(library
+ (name x86_asm)
+ (libraries core var util ir_tree json_reader regalloc)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))
