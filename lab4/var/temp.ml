@@ -1,10 +1,11 @@
-(* L1 Compiler
+(* L4 Compiler
  * Temporaries
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Alex Vaynberg <alv@andrew.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  * Modified: Alice Rao <alrao@andrew.cmu.edu>
+ * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
 
 open Core

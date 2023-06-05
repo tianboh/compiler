@@ -10,7 +10,7 @@ module Register = Var.X86_reg
 module Memory = Var.Memory
 module Label = Util.Label
 module Symbol = Util.Symbol
-open Var.Layout
+module Size = Var.Size
 
 type scope =
   | Internal
@@ -25,21 +25,21 @@ type instr =
   | Add of
       { src : operand
       ; dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | Sub of
       { src : operand
       ; dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | Mul of
       { src : operand
       ; dest : operand
-      ; layout : layout
+      ; size : Size.t
       } (* Destination is form of EDX:EAX by default. Only one operand required. *)
   | Div of
       { src : operand
-      ; layout : layout
+      ; size : Size.t
       }
   (* temp := EDX:EAX / SRC;
             IF temp > FFFFFFFFH
@@ -50,27 +50,27 @@ type instr =
             FI; *)
   | Mod of
       { src : operand
-      ; layout : layout
+      ; size : Size.t
       } (* Similar as above, but use edx after div.*)
   | Mov of
       { dest : operand
       ; src : operand
-      ; layout : layout
+      ; size : Size.t
       }
-  | Cvt of { layout : layout } (*could be cdq, cqo, etc based on size it wants to extend. EDX:EAX := sign-extend of EAX *)
+  | Cvt of { size : Size.t } (*could be cdq, cqo, etc based on size it wants to extend. EDX:EAX := sign-extend of EAX *)
   | Ret
   | Pop of
       { var : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | Push of
       { var : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | Cmp of
       { lhs : operand
       ; rhs : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | LAHF (* Load: AH := flags SF ZF xx AF xx PF xx CF *)
   | SAHF (* Store AH into flags SF ZF xx AF xx PF xx CF *)
@@ -86,61 +86,61 @@ type instr =
   (* SETCC family. Notice it can only set 8-bit operand to register, 
    * so it only works for %al, %bl, %cl and %dl. We use %al by default. *)
   | SETE of
-      { (* Set byte if equal (ZF=1). layout is a placeholder for dest,
+      { (* Set byte if equal (ZF=1). size is a placeholder for dest,
          * it can only be BYTE *)
         dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | SETNE of
       { dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | SETL of
       { dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | SETLE of
       { dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | SETG of
       { dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | SETGE of
       { dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | AND of
       { (* bitwise and *)
         src : operand
       ; dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | OR of
       { (* bitwise and *)
         src : operand
       ; dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | XOR of
       { src : operand
       ; dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | SAL of
-      { (* Inst layout is same as dest. 
+      { (* Inst size is same as dest. 
          * Immediate is 8bit, memory/register(%cl) is 16bit *)
         src : operand
       ; dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | SAR of
-      { (* Inst layout is same as dest. 
+      { (* Inst size is same as dest. 
          * Immediate is 8bit, memory/register(%cl) is 16bit *)
         src : operand
       ; dest : operand
-      ; layout : layout
+      ; size : Size.t
       }
   | Fcall of
       { func_name : Symbol.t
@@ -162,118 +162,118 @@ type program = fdefn list
 let shift_maximum_bit = Int32.of_int_exn 31 (* inclusive *)
 
 (* Now we provide safe instruction to avoid source and destination are both memory. *)
-let safe_mov (dest : operand) (src : operand) (layout : layout) =
+let safe_mov (dest : operand) (src : operand) (size : Size.t) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
-    ; Mov { dest = Mem dest; src = Reg Register.swap; layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; size }
+    ; Mov { dest = Mem dest; src = Reg Register.swap; size }
     ]
-  | _ -> [ Mov { dest; src; layout } ]
+  | _ -> [ Mov { dest; src; size } ]
 ;;
 
-let safe_add (dest : operand) (src : operand) (layout : layout) =
+let safe_add (dest : operand) (src : operand) (size : Size.t) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
-    ; Add { dest = Mem dest; src = Reg Register.swap; layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; size }
+    ; Add { dest = Mem dest; src = Reg Register.swap; size }
     ]
-  | _ -> [ Add { dest; src; layout } ]
+  | _ -> [ Add { dest; src; size } ]
 ;;
 
-let safe_sub (dest : operand) (src : operand) (layout : layout) =
+let safe_sub (dest : operand) (src : operand) (size : Size.t) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
-    ; Sub { dest = Mem dest; src = Reg Register.swap; layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; size }
+    ; Sub { dest = Mem dest; src = Reg Register.swap; size }
     ]
-  | _ -> [ Sub { dest; src; layout } ]
+  | _ -> [ Sub { dest; src; size } ]
 ;;
 
-let safe_and (dest : operand) (src : operand) (layout : layout) =
+let safe_and (dest : operand) (src : operand) (size : Size.t) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
-    ; AND { dest = Mem dest; src = Reg Register.swap; layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; size }
+    ; AND { dest = Mem dest; src = Reg Register.swap; size }
     ]
-  | _ -> [ AND { dest; src; layout } ]
+  | _ -> [ AND { dest; src; size } ]
 ;;
 
-let safe_or (dest : operand) (src : operand) (layout : layout) =
+let safe_or (dest : operand) (src : operand) (size : Size.t) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
-    ; OR { dest = Mem dest; src = Reg Register.swap; layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; size }
+    ; OR { dest = Mem dest; src = Reg Register.swap; size }
     ]
-  | _ -> [ OR { dest; src; layout } ]
+  | _ -> [ OR { dest; src; size } ]
 ;;
 
-let safe_xor (dest : operand) (src : operand) (layout : layout) =
+let safe_xor (dest : operand) (src : operand) (size : Size.t) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ Mov { dest = Reg Register.swap; src = Mem src; layout }
-    ; XOR { dest = Mem dest; src = Reg Register.swap; layout }
+    [ Mov { dest = Reg Register.swap; src = Mem src; size }
+    ; XOR { dest = Mem dest; src = Reg Register.swap; size }
     ]
-  | _ -> [ XOR { dest; src; layout } ]
+  | _ -> [ XOR { dest; src; size } ]
 ;;
 
 (* shift bit should be [0, 31] *)
 let shift_check (shift_bit : operand) (fpe_label : Label.t) =
-  [ Cmp { lhs = shift_bit; rhs = Imm shift_maximum_bit; layout = DWORD }
+  [ Cmp { lhs = shift_bit; rhs = Imm shift_maximum_bit; size = DWORD }
   ; JG fpe_label
-  ; Cmp { lhs = shift_bit; rhs = Imm Int32.zero; layout = DWORD }
+  ; Cmp { lhs = shift_bit; rhs = Imm Int32.zero; size = DWORD }
   ; JL fpe_label
   ]
 ;;
 
 (* Remember that ecx is preserved during register allocation.
  * So we can move src to ecx without store ecx value. *)
-let safe_sal (dest : operand) (src : operand) (layout : layout) (fpe_label : Label.t) =
+let safe_sal (dest : operand) (src : operand) (size : Size.t) (fpe_label : Label.t) =
   match dest, src with
   | _, Reg _ | _, Mem _ ->
     let ecx = Register.RCX in
     (* when src is register/memory, SAL can only use %cl to shift. *)
-    (Mov { dest = Reg ecx; src; layout } :: shift_check (Reg ecx) fpe_label)
-    @ [ SAL { dest; src = Reg ecx; layout } ]
-  | _ -> shift_check src fpe_label @ [ SAL { dest; src; layout = BYTE } ]
+    (Mov { dest = Reg ecx; src; size } :: shift_check (Reg ecx) fpe_label)
+    @ [ SAL { dest; src = Reg ecx; size } ]
+  | _ -> shift_check src fpe_label @ [ SAL { dest; src; size = BYTE } ]
 ;;
 
 (* Remember that ecx is preserved during register allocation.
  * So we can move src to ecx without store ecx value. *)
-let safe_sar (dest : operand) (src : operand) (layout : layout) (fpe_label : Label.t) =
+let safe_sar (dest : operand) (src : operand) (size : Size.t) (fpe_label : Label.t) =
   match dest, src with
   | _, Reg _ | _, Mem _ ->
     let ecx = Register.RCX in
     (* when src is register/memory, SAR can only use %cl to shift. *)
-    (Mov { dest = Reg ecx; src; layout } :: shift_check (Reg ecx) fpe_label)
-    @ [ SAR { dest; src = Reg ecx; layout } ]
-  | _ -> shift_check src fpe_label @ [ SAR { dest; src; layout = BYTE } ]
+    (Mov { dest = Reg ecx; src; size } :: shift_check (Reg ecx) fpe_label)
+    @ [ SAR { dest; src = Reg ecx; size } ]
+  | _ -> shift_check src fpe_label @ [ SAR { dest; src; size = BYTE } ]
 ;;
 
-let safe_ret (layout : layout) =
+let safe_ret (size : Size.t) =
   (* insts = [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] *)
-  [ Mov { dest = Reg Register.RSP; src = Reg Register.RBP; layout }
-  ; Pop { var = Reg Register.RBP; layout = QWORD }
+  [ Mov { dest = Reg Register.RSP; src = Reg Register.RBP; size }
+  ; Pop { var = Reg Register.RBP; size = QWORD }
   ; Ret
   ]
 ;;
 
 (* Prepare for conditional jump. *)
-let safe_cmp (lhs : operand) (rhs : operand) (layout : layout) (swap : Register.t) =
+let safe_cmp (lhs : operand) (rhs : operand) (size : Size.t) (swap : Register.t) =
   match lhs, rhs with
   | Mem _, Mem _ ->
-    [ Mov { dest = Reg swap; src = lhs; layout }; Cmp { lhs = Reg swap; rhs; layout } ]
-  | _ -> [ Cmp { lhs; rhs; layout } ]
+    [ Mov { dest = Reg swap; src = lhs; size }; Cmp { lhs = Reg swap; rhs; size } ]
+  | _ -> [ Cmp { lhs; rhs; size } ]
 ;;
 
-let format_operand (oprd : operand) (layout : layout) =
+let format_operand (oprd : operand) (size : Size.t) =
   match oprd with
   | Imm n -> "$" ^ Int32.to_string n
-  | Reg r -> Register.reg_to_str ~layout r
+  | Reg r -> Register.reg_to_str ~size r
   | Mem m -> Memory.mem_to_str m
 ;;
 
-let format_inst (layout : layout) =
-  match layout with
+let format_inst (size : Size.t) =
+  match size with
   | BYTE -> "b"
   | WORD -> "w"
   | DWORD -> "l"
@@ -291,26 +291,26 @@ let format = function
   | Add add ->
     sprintf
       "add%s %s, %s"
-      (format_inst add.layout)
-      (format_operand add.src add.layout)
-      (format_operand add.dest add.layout)
+      (format_inst add.size)
+      (format_operand add.src add.size)
+      (format_operand add.dest add.size)
   | Sub sub ->
     sprintf
       "sub%s %s, %s"
-      (format_inst sub.layout)
-      (format_operand sub.src sub.layout)
-      (format_operand sub.dest sub.layout)
+      (format_inst sub.size)
+      (format_operand sub.src sub.size)
+      (format_operand sub.dest sub.size)
   | Mul mul ->
     sprintf
       "imul%s %s, %s"
-      (format_inst mul.layout)
-      (format_operand mul.src mul.layout)
-      (format_operand mul.dest mul.layout)
+      (format_inst mul.size)
+      (format_operand mul.src mul.size)
+      (format_operand mul.dest mul.size)
   | Div div ->
-    sprintf "idiv%s %s" (format_inst div.layout) (format_operand div.src div.layout)
-  | Mod m -> sprintf "div %s" (format_operand m.src m.layout)
+    sprintf "idiv%s %s" (format_inst div.size) (format_operand div.src div.size)
+  | Mod m -> sprintf "div %s" (format_operand m.src m.size)
   | Cvt cvt ->
-    (match cvt.layout with
+    (match cvt.size with
     | BYTE -> failwith "nothing to extend for byte"
     | WORD -> "cwd"
     | DWORD -> "cdq"
@@ -318,20 +318,19 @@ let format = function
   | Mov mv ->
     sprintf
       "mov%s %s, %s"
-      (format_inst mv.layout)
-      (format_operand mv.src mv.layout)
-      (format_operand mv.dest mv.layout)
+      (format_inst mv.size)
+      (format_operand mv.src mv.size)
+      (format_operand mv.dest mv.size)
   | Ret -> "ret"
   | Push push ->
-    sprintf "push%s %s" (format_inst push.layout) (format_operand push.var push.layout)
-  | Pop pop ->
-    sprintf "pop%s %s" (format_inst pop.layout) (format_operand pop.var pop.layout)
+    sprintf "push%s %s" (format_inst push.size) (format_operand push.var push.size)
+  | Pop pop -> sprintf "pop%s %s" (format_inst pop.size) (format_operand pop.var pop.size)
   | Cmp cmp ->
     sprintf
       "cmp%s %s, %s"
-      (format_inst cmp.layout)
-      (format_operand cmp.rhs cmp.layout)
-      (format_operand cmp.lhs cmp.layout)
+      (format_inst cmp.size)
+      (format_operand cmp.rhs cmp.size)
+      (format_operand cmp.lhs cmp.size)
   | LAHF -> "lahf"
   | SAHF -> "sahf"
   | Label l -> Label.content l
@@ -342,42 +341,42 @@ let format = function
   | JLE jle -> sprintf "jle %s" (Label.name jle)
   | JG jg -> sprintf "jg %s" (Label.name jg)
   | JGE jge -> sprintf "jge %s" (Label.name jge)
-  | SETE sete -> sprintf "sete %s" (format_operand sete.dest sete.layout)
-  | SETNE setne -> sprintf "setne %s" (format_operand setne.dest setne.layout)
-  | SETL setl -> sprintf "setl %s" (format_operand setl.dest setl.layout)
-  | SETLE setle -> sprintf "setle %s" (format_operand setle.dest setle.layout)
-  | SETG setg -> sprintf "setg %s" (format_operand setg.dest setg.layout)
-  | SETGE setge -> sprintf "setge %s" (format_operand setge.dest setge.layout)
+  | SETE sete -> sprintf "sete %s" (format_operand sete.dest sete.size)
+  | SETNE setne -> sprintf "setne %s" (format_operand setne.dest setne.size)
+  | SETL setl -> sprintf "setl %s" (format_operand setl.dest setl.size)
+  | SETLE setle -> sprintf "setle %s" (format_operand setle.dest setle.size)
+  | SETG setg -> sprintf "setg %s" (format_operand setg.dest setg.size)
+  | SETGE setge -> sprintf "setge %s" (format_operand setge.dest setge.size)
   | AND a ->
     sprintf
       "and%s %s, %s"
-      (format_inst a.layout)
-      (format_operand a.src a.layout)
-      (format_operand a.dest a.layout)
+      (format_inst a.size)
+      (format_operand a.src a.size)
+      (format_operand a.dest a.size)
   | OR a ->
     sprintf
       "or%s %s, %s"
-      (format_inst a.layout)
-      (format_operand a.src a.layout)
-      (format_operand a.dest a.layout)
+      (format_inst a.size)
+      (format_operand a.src a.size)
+      (format_operand a.dest a.size)
   | XOR xor ->
     sprintf
       "xor%s %s, %s"
-      (format_inst xor.layout)
-      (format_operand xor.src xor.layout)
-      (format_operand xor.dest xor.layout)
+      (format_inst xor.size)
+      (format_operand xor.src xor.size)
+      (format_operand xor.dest xor.size)
   | SAR sar ->
     sprintf
       "sar%s %s, %s"
-      (format_inst sar.layout)
+      (format_inst sar.size)
       (format_operand sar.src BYTE)
-      (format_operand sar.dest sar.layout)
+      (format_operand sar.dest sar.size)
   | SAL sal ->
     sprintf
       "sal%s %s, %s"
-      (format_inst sal.layout)
+      (format_inst sal.size)
       (format_operand sal.src BYTE)
-      (format_operand sal.dest sal.layout)
+      (format_operand sal.dest sal.size)
   | Fcall fcall ->
     sprintf "call %s%s" (format_scope fcall.scope) (Symbol.name fcall.func_name)
   | Fname fname -> sprintf "%s:" fname

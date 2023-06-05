@@ -6,7 +6,7 @@
  * Author: Tianbo Hao<tianboh@alumni.cmu.edu>
  *)
 open Core
-open Layout
+open Size
 
 type t =
   | RAX
@@ -29,8 +29,8 @@ type t =
 
 let num_reg = 16
 
-let reg_to_str ?(layout = DWORD) (reg : t) =
-  match reg, layout with
+let reg_to_str ?(size = DWORD) (reg : t) =
+  match reg, size with
   | RAX, BYTE -> "%al"
   | RBX, BYTE -> "%bl"
   | RCX, BYTE -> "%cl"

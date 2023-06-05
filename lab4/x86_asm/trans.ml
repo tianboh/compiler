@@ -28,7 +28,7 @@
  * Therefore, we can reuse t3 as destination of t3 + t4 for x86 add inplace mechanism.
  *)
 open Core
-open Var.Layout
+open Var.Size
 module Abs_asm = Abs_asm.Inst
 module X86_asm = Inst
 module Temp = Var.Temp
@@ -90,19 +90,19 @@ let gen_x86_relop_bin
   =
   let set_inst =
     match op with
-    | Less -> [ X86_asm.SETL { dest = rax; layout = BYTE } ]
-    | Less_eq -> [ X86_asm.SETLE { dest = rax; layout = BYTE } ]
-    | Greater -> [ X86_asm.SETG { dest = rax; layout = BYTE } ]
-    | Greater_eq -> [ X86_asm.SETGE { dest = rax; layout = BYTE } ]
-    | Equal_eq -> [ X86_asm.SETE { dest = rax; layout = BYTE } ]
-    | Not_eq -> [ X86_asm.SETNE { dest = rax; layout = BYTE } ]
+    | Less -> [ X86_asm.SETL { dest = rax; size = BYTE } ]
+    | Less_eq -> [ X86_asm.SETLE { dest = rax; size = BYTE } ]
+    | Greater -> [ X86_asm.SETG { dest = rax; size = BYTE } ]
+    | Greater_eq -> [ X86_asm.SETGE { dest = rax; size = BYTE } ]
+    | Equal_eq -> [ X86_asm.SETE { dest = rax; size = BYTE } ]
+    | Not_eq -> [ X86_asm.SETNE { dest = rax; size = BYTE } ]
     | _ -> failwith "relop cannot handle other op"
   in
   let cmp_inst = X86_asm.safe_cmp lhs rhs DWORD swap in
-  [ X86_asm.XOR { dest = rax; src = rax; layout = DWORD } ]
+  [ X86_asm.XOR { dest = rax; src = rax; size = DWORD } ]
   @ cmp_inst
   @ set_inst
-  @ [ X86_asm.Mov { dest; src = rax; layout = DWORD } ]
+  @ [ X86_asm.Mov { dest; src = rax; size = DWORD } ]
 ;;
 
 let gen_x86_inst_bin
@@ -116,25 +116,25 @@ let gen_x86_inst_bin
   | Plus -> X86_asm.safe_mov dest lhs DWORD @ X86_asm.safe_add dest rhs DWORD
   | Minus -> X86_asm.safe_mov dest lhs DWORD @ X86_asm.safe_sub dest rhs DWORD
   | Times ->
-    [ X86_asm.Mov { dest = rax; src = lhs; layout = DWORD }
-    ; X86_asm.Mul { src = rhs; dest = rax; layout = DWORD }
-    ; X86_asm.Mov { dest; src = rax; layout = DWORD }
+    [ X86_asm.Mov { dest = rax; src = lhs; size = DWORD }
+    ; X86_asm.Mul { src = rhs; dest = rax; size = DWORD }
+    ; X86_asm.Mov { dest; src = rax; size = DWORD }
     ]
   | Divided_by ->
     (* Notice that lhs and rhs may be allocated on rdx. 
      * So we use reg_swap to avoid override in the rdx <- 0. *)
-    [ X86_asm.Mov { dest = rax; src = lhs; layout = DWORD }
-    ; X86_asm.Mov { dest = X86_asm.Reg swap; src = rhs; layout = DWORD }
-    ; X86_asm.Cvt { layout = DWORD }
-    ; X86_asm.Div { src = X86_asm.Reg swap; layout = DWORD }
-    ; X86_asm.Mov { dest; src = rax; layout = DWORD }
+    [ X86_asm.Mov { dest = rax; src = lhs; size = DWORD }
+    ; X86_asm.Mov { dest = X86_asm.Reg swap; src = rhs; size = DWORD }
+    ; X86_asm.Cvt { size = DWORD }
+    ; X86_asm.Div { src = X86_asm.Reg swap; size = DWORD }
+    ; X86_asm.Mov { dest; src = rax; size = DWORD }
     ]
   | Modulo ->
-    [ X86_asm.Mov { dest = rax; src = lhs; layout = DWORD }
-    ; X86_asm.Mov { dest = X86_asm.Reg swap; src = rhs; layout = DWORD }
-    ; X86_asm.Cvt { layout = DWORD }
-    ; X86_asm.Div { src = X86_asm.Reg swap; layout = DWORD }
-    ; X86_asm.Mov { dest; src = rdx; layout = DWORD }
+    [ X86_asm.Mov { dest = rax; src = lhs; size = DWORD }
+    ; X86_asm.Mov { dest = X86_asm.Reg swap; src = rhs; size = DWORD }
+    ; X86_asm.Cvt { size = DWORD }
+    ; X86_asm.Div { src = X86_asm.Reg swap; size = DWORD }
+    ; X86_asm.Mov { dest; src = rdx; size = DWORD }
     ]
   | And -> X86_asm.safe_mov dest lhs DWORD @ X86_asm.safe_and dest rhs DWORD
   | Or -> X86_asm.safe_mov dest lhs DWORD @ X86_asm.safe_or dest rhs DWORD
@@ -204,11 +204,11 @@ let rec _codegen_w_reg_rev
         reg_swap
     | Abs_asm.Push push ->
       let var = oprd_ps_to_x86 push.var reg_alloc_info in
-      let inst_rev = X86_asm.Push { var; layout = QWORD } in
+      let inst_rev = X86_asm.Push { var; size = QWORD } in
       _codegen_w_reg_rev (inst_rev :: res) t reg_alloc_info reg_swap
     | Abs_asm.Pop pop ->
       let var = oprd_ps_to_x86 pop.var reg_alloc_info in
-      let inst_rev = X86_asm.Pop { var; layout = QWORD } in
+      let inst_rev = X86_asm.Pop { var; size = QWORD } in
       _codegen_w_reg_rev (inst_rev :: res) t reg_alloc_info reg_swap
     | Abs_asm.Fcall fcall ->
       let scope = trans_scope fcall.scope in
@@ -218,7 +218,7 @@ let rec _codegen_w_reg_rev
     | Abs_asm.Assert ast ->
       let var = oprd_ps_to_x86 ast.var reg_alloc_info in
       let insts_rev =
-        [ X86_asm.Cmp { lhs = var; rhs = X86_asm.Imm Int32.one; layout = QWORD }
+        [ X86_asm.Cmp { lhs = var; rhs = X86_asm.Imm Int32.one; size = QWORD }
         ; X86_asm.JNE abort_label
         ]
         |> List.rev
@@ -231,8 +231,8 @@ let fpe_handler =
   let ecx = Reg.RCX in
   (* We use ecx as zero reg because it is saved for shift. *)
   [ X86_asm.Label fpe_label
-  ; X86_asm.Mov { dest = Reg ecx; src = Imm Int32.zero; layout = DWORD }
-  ; X86_asm.Div { src = Reg ecx; layout = DWORD }
+  ; X86_asm.Mov { dest = Reg ecx; src = Imm Int32.zero; size = DWORD }
+  ; X86_asm.Div { src = Reg ecx; size = DWORD }
   ]
 ;;
 
@@ -259,9 +259,10 @@ let gen
   (* printf "mem_cnt %d\n%!" (Int.of_int32_exn mem_cnt); *)
   (* store rbp and rsp at the beginning of each function *)
   [ X86_asm.Fname fdefn.func_name
-  ; X86_asm.Push { var = rbp; layout = QWORD }
-  ; X86_asm.Mov { dest = rbp; src = rsp; layout = QWORD }
-  ; X86_asm.Sub { src = X86_asm.Imm mem_cnt; dest = rsp; layout = QWORD }
+  ; X86_asm.Push { var = rbp; size = QWORD }
+  ; X86_asm.Mov { dest = rbp; src = rsp; size = QWORD }
+  ; X86_asm.Sub { src = X86_asm.Imm mem_cnt; dest = rsp; size = QWORD }
+  ; X86_asm.GDB "call malloc"
   ]
   @ res
 ;;

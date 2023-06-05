@@ -51,7 +51,7 @@ let transform_vertex_to_json (vertex : (IG.Vertex.t * Driver.dest) option) =
   | None -> None
   | Some (vtx, dest) ->
     (match dest with
-    | Reg reg -> Some (IG.Print.pp_vertex vtx, Register.reg_to_str ~layout:DWORD reg)
+    | Reg reg -> Some (IG.Print.pp_vertex vtx, Register.reg_to_str ~size:DWORD reg)
     | Mem m -> Some (IG.Print.pp_vertex vtx, Memory.mem_to_str m))
 ;;
 

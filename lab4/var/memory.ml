@@ -7,7 +7,7 @@
  *)
 
 open Core
-open Layout
+open Size
 
 module T = struct
   type t =
@@ -33,7 +33,7 @@ let create index base offset size =
 let get_mem base offset size = { index = None; base; offset; size }
 
 let mem_to_str t =
-  Printf.sprintf "%d(%s)" (t.offset * t.size) (X86_reg.reg_to_str ~layout:QWORD t.base)
+  Printf.sprintf "%d(%s)" (t.offset * t.size) (X86_reg.reg_to_str ~size:QWORD t.base)
 ;;
 
 let mem_idx_exn (mem : t) =

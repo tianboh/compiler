@@ -10,7 +10,7 @@
  *)
 
 open Core
-open Var.Layout
+open Var.Size
 module Register = Var.X86_reg
 module Temp = Var.Temp
 module Label = Util.Label
