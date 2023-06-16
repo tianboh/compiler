@@ -28,6 +28,7 @@ open Core
  *     Time complexity for coloring: O(v + e)
  *)
 module Temp = Var.Temp
+module Size = Var.Size
 module Memory = Var.Memory
 module Register = Var.X86_reg
 module Reg_info = Program
@@ -208,7 +209,7 @@ module Lazy = struct
           | IG.Vertex.T.Reg r -> Reg r
           | IG.Vertex.T.Temp t ->
             let idx = t.id in
-            Mem (Memory.create idx Register.RSP (idx - base + 1) 8)
+            Mem (Memory.create idx Register.RSP (idx - base + 1) Size.QWORD)
         in
         Some (vtx, dest))
   ;;
@@ -282,7 +283,7 @@ let find_min_available (nbr : Int.Set.t) (black_set : Int.Set.t) : int =
  * if t is connected to rax, it will not be assigned as rax.
  * 2) Minimum available registers among its temporary neighbors.
  *)
-let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest =
+let alloc size (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest =
   (* If a temporary is connected to a register, 
    * we cannot assign this register to it. *)
   let nbr_black_list =
@@ -307,7 +308,7 @@ let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest
   (* printf"allocate register/memory\n"; *)
   if r < Register.num_reg
   then Reg (Register.idx_reg r)
-  else Mem (Memory.create r Register.RBP (-(r - Register.num_reg + 1)) 8)
+  else Mem (Memory.create r Register.RBP (-(r - Register.num_reg + 1)) size)
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)
@@ -323,7 +324,7 @@ let rec greedy seq adj vertex_to_dest =
       greedy t adj vertex_to_dest
     | IG.Vertex.T.Temp temp ->
       let nbr = IG.Vertex.Map.find_exn adj h in
-      let dest = alloc nbr vertex_to_dest in
+      let dest = alloc temp.size nbr vertex_to_dest in
       let vertex_to_dest =
         IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Temp temp) ~data:dest
       in

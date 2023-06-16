@@ -14,7 +14,7 @@ module T = struct
     { index : int option (* This is a global unique id for memory.*)
     ; base : X86_reg.t
     ; offset : int (* base + offset * size is start address of a variable *)
-    ; size : int (* size of corresponding variable, byte as unit.*)
+    ; size : Size.t (* size of corresponding variable *)
     }
   [@@deriving sexp, compare, hash]
 end
@@ -33,7 +33,10 @@ let create index base offset size =
 let get_mem base offset size = { index = None; base; offset; size }
 
 let mem_to_str t =
-  Printf.sprintf "%d(%s)" (t.offset * t.size) (X86_reg.reg_to_str ~size:QWORD t.base)
+  Printf.sprintf
+    "%d(%s)"
+    (t.offset * type_size_byte t.size)
+    (X86_reg.reg_to_str ~size:QWORD t.base)
 ;;
 
 let mem_idx_exn (mem : t) =
