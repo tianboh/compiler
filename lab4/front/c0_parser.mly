@@ -25,6 +25,7 @@
  *)
 module Mark = Util.Mark
 module Symbol = Util.Symbol
+let cache = ref Util.Symbol.Set.empty
 
 let mark
   (data : 'a)
@@ -155,7 +156,8 @@ gdecl :
   | ret_type = dtype; fun_name = Ident; pars = param_list; blk = block;
       { Cst.Fdefn {ret_type = ret_type; func_name = fun_name; par_type = pars; blk = blk} }
   | Typedef; t = dtype; var = Ident; Semicolon
-      { Cst.Typedef {t = t; t_var = var} }
+      { cache := Util.Symbol.Set.add !cache var;
+        Cst.Typedef {t = t; t_var = var} }
   ;
 
 param : 
@@ -265,7 +267,7 @@ control :
   | While; L_paren; e = m(exp); R_paren; s = m(stm);
       { Cst.While {cond = e; body = s} }
   | For; L_paren; init = simpopt; Semicolon; e = m(exp); Semicolon; iter = simpopt; R_paren; s = m(stm);
-         { Cst.For {init = init; cond = e; iter = iter; body = s} }
+      { Cst.For {init = init; cond = e; iter = iter; body = s} }
   | Return; e = expopt; Semicolon;
       { Cst.Return e }
   | Assert; L_paren; e = m(exp); R_paren; Semicolon;
