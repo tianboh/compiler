@@ -5,6 +5,7 @@ module Temp = Var.Temp
 module Register = Var.X86_reg
 module Memory = Var.Memory
 module Label = Util.Label
+module Size = Var.Size
 
 let munch_op = function
   | Tree.Plus -> Quads.Plus
@@ -28,6 +29,25 @@ let munch_op = function
 let munch_scope = function
   | Tree.Internal -> Quads.Internal
   | Tree.External -> Quads.External
+;;
+
+(* get Tree.exp size *)
+let rec get_esize = function
+  | Tree.Const _ -> Size.DWORD
+  | Tree.Temp t -> t.size
+  | Tree.Binop binop ->
+    (match binop.op with
+    | Equal_eq | Greater | Greater_eq | Less | Less_eq | Not_eq -> Size.DWORD
+    | Plus
+    | Minus
+    | Times
+    | Divided_by
+    | Modulo
+    | And
+    | Or
+    | Xor
+    | Right_shift
+    | Left_shift -> get_esize binop.lhs)
 ;;
 
 (* munch_exp_acc dest exp rev_acc
@@ -69,17 +89,17 @@ and munch_binop_acc
   =
   let op = munch_op binop in
   (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
-  let t1 = Temp.create () in
-  let t2 = Temp.create () in
+  let t1 = Temp.create Size.DWORD in
+  let t2 = Temp.create Size.DWORD in
   let rev_acc' =
     rev_acc |> munch_exp_acc (Quads.Temp t1) e1 |> munch_exp_acc (Quads.Temp t2) e2
   in
   Quads.Binop { op; dest; lhs = Quads.Temp t1; rhs = Quads.Temp t2 } :: rev_acc'
 
+(* munch_exp dest exp
+ * Generates instructions for dest <-- exp.
+ *)
 and munch_exp : Quads.operand -> Tree.exp -> Quads.instr list =
- (* munch_exp dest exp
-  * Generates instructions for dest <-- exp.
-  *)
  fun dest exp ->
   (* Since munch_exp_acc returns the reversed accumulator, we must
    * reverse the list before returning. *)
@@ -93,14 +113,17 @@ and munch_stm_rev (stm : Tree.stm) =
     (match e with
     | None -> [ Quads.Ret { var = None } ]
     | Some e ->
-      let t = Temp.create () in
+      let size = get_esize e in
+      let t = Temp.create size in
       let inst = munch_exp_acc (Quads.Temp t) e [] in
       Quads.Ret { var = Some (Quads.Temp t) } :: inst)
   | Jump jmp -> [ Quads.Jump { target = jmp } ]
   | Tree.CJump cjmp ->
-    let lhs = Quads.Temp (Temp.create ()) in
+    let lhs_size = get_esize cjmp.lhs in
+    let lhs = Quads.Temp (Temp.create lhs_size) in
     let op = munch_op cjmp.op in
-    let rhs = Quads.Temp (Temp.create ()) in
+    let rhs_size = get_esize cjmp.rhs in
+    let rhs = Quads.Temp (Temp.create rhs_size) in
     let lhs_inst_rev = munch_exp_acc lhs cjmp.lhs [] in
     let rhs_inst_rev = munch_exp_acc rhs cjmp.rhs [] in
     (Quads.CJump
@@ -110,21 +133,25 @@ and munch_stm_rev (stm : Tree.stm) =
   | Tree.Label l -> [ Quads.Label l ]
   | Tree.Nop -> []
   | Tree.Effect eft ->
-    let lhs = Quads.Temp (Temp.create ()) in
+    let lhs_size = get_esize eft.lhs in
+    let lhs = Quads.Temp (Temp.create lhs_size) in
     let op = munch_op eft.op in
-    let rhs = Quads.Temp (Temp.create ()) in
+    let rhs_size = get_esize eft.rhs in
+    let rhs = Quads.Temp (Temp.create rhs_size) in
     let lhs_inst_rev = munch_exp_acc lhs eft.lhs [] in
     let rhs_inst_rev = munch_exp_acc rhs eft.rhs [] in
     (Quads.Binop { lhs; op; rhs; dest = Quads.Temp eft.dest } :: rhs_inst_rev)
     @ lhs_inst_rev
   | Tree.Assert asrt ->
-    let t = Temp.create () in
+    let size = get_esize asrt in
+    let t = Temp.create size in
     let inst = munch_exp_acc (Quads.Temp t) asrt [] in
     Quads.Assert (Quads.Temp t) :: inst
   | Tree.Fcall fcall ->
     let res =
       List.map fcall.args ~f:(fun arg ->
-          let t = Quads.Temp (Temp.create ()) in
+          let s = get_esize arg in
+          let t = Quads.Temp (Temp.create s) in
           let e = munch_exp_acc t arg [] in
           t, e)
     in

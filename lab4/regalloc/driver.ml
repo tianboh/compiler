@@ -207,7 +207,7 @@ module Lazy = struct
           match vtx with
           | IG.Vertex.T.Reg r -> Reg r
           | IG.Vertex.T.Temp t ->
-            let idx = Temp.value t in
+            let idx = t.id in
             Mem (Memory.create idx Register.RSP (idx - base + 1) 8)
         in
         Some (vtx, dest))

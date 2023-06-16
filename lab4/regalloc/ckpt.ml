@@ -1,5 +1,6 @@
 open Core
 module Temp = Var.Temp
+module Size = Var.Size
 module Memory = Var.Memory
 module Register = Var.X86_reg
 module IG = Interference_graph
@@ -17,7 +18,7 @@ let gen_VertexSet (l : string list) =
         | 't' ->
           let str_l = String.split_on_chars ~on:[ 't' ] h in
           let idx = Int.of_string (List.last_exn str_l) in
-          let temp = Temp.of_int idx in
+          let temp = Temp.create' idx in
           _gen_VertexList t (IG.Vertex.T.Temp temp :: res)
         | 'r' | 's' | 'e' ->
           let reg = Register.str_to_reg h in

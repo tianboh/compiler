@@ -120,7 +120,7 @@ type program = fdefn list
 let to_int_list (operands : operand list) : int list =
   List.fold operands ~init:[] ~f:(fun acc x ->
       match x with
-      | Temp t -> Temp.value t :: acc
+      | Temp t -> t.id :: acc
       | Reg r -> Register.reg_idx r :: acc
       | Above_frame _ | Below_frame _ | Imm _ -> acc)
 ;;

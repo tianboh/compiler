@@ -262,7 +262,6 @@ let gen
   ; X86_asm.Push { var = rbp; size = QWORD }
   ; X86_asm.Mov { dest = rbp; src = rsp; size = QWORD }
   ; X86_asm.Sub { src = X86_asm.Imm mem_cnt; dest = rsp; size = QWORD }
-  ; X86_asm.GDB "call malloc"
   ]
   @ res
 ;;

@@ -271,7 +271,7 @@ and rename_use (stm : Tree.stm) env : Tree.stm =
   | Nop -> Nop
 
 and rename_def_helper (dest : Temp.t) (env : env) =
-  let dest_new = Temp.create () in
+  let dest_new = Temp.create dest.size in
   let env = update_root env dest dest_new in
   let dest_new_root = Temp.Map.find_exn env.root dest_new in
   let stack_temp =
@@ -317,7 +317,7 @@ let rec rename_phis (phis : phi list) (env : env) (phis_new : phi list) : phi li
   match phis with
   | [] -> phis_new, env
   | h :: t ->
-    let dest_new = Temp.create () in
+    let dest_new = Temp.create h.dest.size in
     let env = update_root env h.name dest_new in
     let stack_temp =
       match Temp.Map.find env.stack h.name with

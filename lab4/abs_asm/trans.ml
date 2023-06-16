@@ -25,6 +25,7 @@ open Core
 module Src = Quads.Inst
 module Dest = Inst
 module Reg = Var.X86_reg
+module Size = Var.Size
 open Inst
 
 type line = Dest.line
@@ -209,7 +210,7 @@ let rec gen_body (program : Src.instr list) (res : Dest.instr list) (exit_label 
 (* Generate move instruction for callee-saved register of define info *)
 let save_callee () : Dest.instr list =
   List.fold Register.callee_saved ~init:[] ~f:(fun acc r ->
-      let t = Temp.create () in
+      let t = Temp.create Size.QWORD in
       let line =
         { defines = [ Dest.Temp t ]; uses = [ Dest.Reg r ]; move = true; live_out = [] }
       in

@@ -278,6 +278,7 @@ let format_inst (size : Size.t) =
   | WORD -> "w"
   | DWORD -> "l"
   | QWORD -> ""
+  | VOID -> ""
 ;;
 
 let format_scope = function
@@ -311,7 +312,7 @@ let format = function
   | Mod m -> sprintf "div %s" (format_operand m.src m.size)
   | Cvt cvt ->
     (match cvt.size with
-    | BYTE -> failwith "nothing to extend for byte"
+    | VOID | BYTE -> failwith "nothing to extend for byte/void"
     | WORD -> "cwd"
     | DWORD -> "cdq"
     | QWORD -> "cqo")
