@@ -30,10 +30,10 @@
 open Core
 module Size = Var.Size
 module Abs_asm = Abs_asm.Inst
-module Register = Var.X86_reg
+module Register = Var.X86_reg.Logic
 module X86_asm = Inst
 module Temp = Var.Temp
-module Reg = Var.X86_reg
+module Reg = Var.X86_reg.Logic
 module Memory = Var.Memory
 module Label = Util.Label
 module IG = Regalloc.Interference_graph

@@ -2,7 +2,7 @@ open Core
 module Tree = Ir_tree.Inst
 module Quads = Inst
 module Temp = Var.Temp
-module Register = Var.X86_reg
+module Register = Var.X86_reg.Logic
 module Memory = Var.Memory
 module Label = Util.Label
 module Size = Var.Size

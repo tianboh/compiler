@@ -30,7 +30,7 @@ open Core
 module Temp = Var.Temp
 module Size = Var.Size
 module Memory = Var.Memory
-module Register = Var.X86_reg
+module Register = Var.X86_reg.Logic
 module Reg_info = Program
 module Abs_asm = Abs_asm.Inst
 module IG = Interference_graph

@@ -2,7 +2,7 @@ open Core
 module Temp = Var.Temp
 module Size = Var.Size
 module Memory = Var.Memory
-module Register = Var.X86_reg
+module Register = Var.X86_reg.Logic
 module IG = Interference_graph
 module Inst_reg_info = Json_reader.Lab1_checkpoint
 

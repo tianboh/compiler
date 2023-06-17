@@ -6,7 +6,7 @@
  *)
 
 open Core
-module Register = Var.X86_reg
+module Register = Var.X86_reg.Logic
 module Memory = Var.Memory
 module Label = Util.Label
 module Symbol = Util.Symbol

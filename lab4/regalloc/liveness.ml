@@ -15,7 +15,7 @@ open Core
 module Dfana_info = Json_reader.Lab2_checkpoint
 module Abs_asm = Abs_asm.Inst
 module Temp = Var.Temp
-module Register = Var.X86_reg
+module Register = Var.X86_reg.Logic
 module Dfana = Flow.Dfana
 module Label = Util.Label
 module IG = Interference_graph

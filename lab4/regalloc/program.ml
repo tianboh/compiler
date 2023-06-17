@@ -13,7 +13,7 @@ open Core
 module Abs_asm = Abs_asm.Inst
 module Temp = Var.Temp
 module IG = Interference_graph
-module Register = Var.X86_reg
+module Register = Var.X86_reg.Logic
 module Memory = Var.Memory
 
 type line =

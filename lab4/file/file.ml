@@ -2,7 +2,7 @@ open Core
 module Ast = Front.Ast
 module Asm_ps = Quads.Inst
 module Asm_x86 = X86_asm.Inst
-module Register = Var.X86_reg
+module Register = Var.X86_reg.Logic
 module Memory = Var.Memory
 module Symbol = Util.Symbol
 module Temp = Var.Temp

@@ -24,7 +24,7 @@
 open Core
 module Src = Quads.Inst
 module Dest = Inst
-module Reg = Var.X86_reg
+module Reg = Var.X86_reg.Logic
 module Size = Var.Size
 open Inst
 

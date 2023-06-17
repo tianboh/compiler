@@ -12,7 +12,7 @@ open Size
 module T = struct
   type t =
     { index : int option (* This is a global unique id for memory.*)
-    ; base : X86_reg.t
+    ; base : X86_reg.Logic.t
     ; offset : int (* base + offset * size is start address of a variable *)
     ; size : Size.t (* size of corresponding variable *)
     }
@@ -36,7 +36,7 @@ let mem_to_str t =
   Printf.sprintf
     "%d(%s)"
     (t.offset * type_size_byte t.size)
-    (X86_reg.reg_to_str ~size:QWORD t.base)
+    (X86_reg.Logic.reg_to_str ~size:QWORD t.base)
 ;;
 
 let mem_idx_exn (mem : t) =

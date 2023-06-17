@@ -11,7 +11,7 @@
 
 open Core
 open Var.Size
-module Register = Var.X86_reg
+module Register = Var.X86_reg.Logic
 module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol

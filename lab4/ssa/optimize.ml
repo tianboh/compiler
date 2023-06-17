@@ -12,7 +12,7 @@ module T = Tree
 module AS = Inst
 module Reg_info = Json_reader.Lab1_checkpoint
 module Temp = Var.Temp
-module Register = Var.X86_reg
+module Register = Var.X86_reg.Logic
 module Memory = Var.Memory
 
 (* Check if key is stored in cache before, if key -> Imm

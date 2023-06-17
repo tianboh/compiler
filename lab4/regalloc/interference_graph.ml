@@ -1,5 +1,5 @@
 open Core
-module X86_reg = Var.X86_reg
+module X86_reg = Var.X86_reg.Logic
 module Temp = Var.Temp
 
 module Vertex = struct
