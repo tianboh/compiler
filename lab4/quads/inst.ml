@@ -66,7 +66,7 @@ type instr =
       }
   | Fcall of
       { func_name : Symbol.t
-      ; dest : Temp.t
+      ; dest : Temp.t option
       ; args : operand list
       ; scope : scope
       }
@@ -154,12 +154,20 @@ let pp_inst = function
     | None -> sprintf "return"
     | Some var -> sprintf "return %s" (pp_operand var))
   | Fcall call ->
-    sprintf
-      "%s <- %s%s(%s)"
-      (Temp.name call.dest)
-      (pp_scope call.scope)
-      (Symbol.name call.func_name)
-      (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
+    (match call.dest with
+    | None ->
+      sprintf
+        "%s%s(%s)"
+        (pp_scope call.scope)
+        (Symbol.name call.func_name)
+        (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
+    | Some dest ->
+      sprintf
+        "%s <- %s%s(%s)"
+        (Temp.name dest)
+        (pp_scope call.scope)
+        (Symbol.name call.func_name)
+        (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", "))
   | Assert asrt -> sprintf "assert %s" (pp_operand asrt)
 ;;
 

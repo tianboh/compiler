@@ -6,7 +6,7 @@
  *)
 
 open Core
-module Register = Var.X86_reg.Logic
+module Register = Var.X86_reg.Hard
 module Memory = Var.Memory
 module Label = Util.Label
 module Symbol = Util.Symbol
@@ -159,11 +159,18 @@ type fdefn =
 
 type program = fdefn list
 
-let format_operand (oprd : operand) (size : Size.t) =
+let format_operand (oprd : operand) =
   match oprd with
   | Imm n -> "$" ^ Int32.to_string n
-  | Reg r -> Register.reg_to_str ~size r
+  | Reg r -> Register.reg_to_str r
   | Mem m -> Memory.mem_to_str m
+;;
+
+let format_operand_size (oprd : operand) : Size.t =
+  match oprd with
+  | Imm _ -> DWORD
+  | Reg r -> r.size
+  | Mem m -> m.size
 ;;
 
 let format_inst (size : Size.t) =
@@ -187,23 +194,22 @@ let format = function
     sprintf
       "add%s %s, %s"
       (format_inst add.size)
-      (format_operand add.src add.size)
-      (format_operand add.dest add.size)
+      (format_operand add.src)
+      (format_operand add.dest)
   | Sub sub ->
     sprintf
       "sub%s %s, %s"
       (format_inst sub.size)
-      (format_operand sub.src sub.size)
-      (format_operand sub.dest sub.size)
+      (format_operand sub.src)
+      (format_operand sub.dest)
   | Mul mul ->
     sprintf
       "imul%s %s, %s"
       (format_inst mul.size)
-      (format_operand mul.src mul.size)
-      (format_operand mul.dest mul.size)
-  | Div div ->
-    sprintf "idiv%s %s" (format_inst div.size) (format_operand div.src div.size)
-  | Mod m -> sprintf "div %s" (format_operand m.src m.size)
+      (format_operand mul.src)
+      (format_operand mul.dest)
+  | Div div -> sprintf "idiv%s %s" (format_inst div.size) (format_operand div.src)
+  | Mod m -> sprintf "div %s" (format_operand m.src)
   | Cvt cvt ->
     (match cvt.size with
     | VOID | BYTE -> failwith "nothing to extend for byte/void"
@@ -213,19 +219,19 @@ let format = function
   | Mov mv ->
     sprintf
       "mov%s %s, %s"
-      (format_inst mv.size)
-      (format_operand mv.src mv.size)
-      (format_operand mv.dest mv.size)
+      (format_inst (format_operand_size mv.dest))
+      (* (format_inst mv.size) *)
+      (format_operand mv.src)
+      (format_operand mv.dest)
   | Ret -> "ret"
-  | Push push ->
-    sprintf "push%s %s" (format_inst push.size) (format_operand push.var push.size)
-  | Pop pop -> sprintf "pop%s %s" (format_inst pop.size) (format_operand pop.var pop.size)
+  | Push push -> sprintf "push%s %s" (format_inst push.size) (format_operand push.var)
+  | Pop pop -> sprintf "pop%s %s" (format_inst pop.size) (format_operand pop.var)
   | Cmp cmp ->
     sprintf
       "cmp%s %s, %s"
       (format_inst cmp.size)
-      (format_operand cmp.rhs cmp.size)
-      (format_operand cmp.lhs cmp.size)
+      (format_operand cmp.rhs)
+      (format_operand cmp.lhs)
   | LAHF -> "lahf"
   | SAHF -> "sahf"
   | Label l -> Label.content l
@@ -236,42 +242,43 @@ let format = function
   | JLE jle -> sprintf "jle %s" (Label.name jle)
   | JG jg -> sprintf "jg %s" (Label.name jg)
   | JGE jge -> sprintf "jge %s" (Label.name jge)
-  | SETE sete -> sprintf "sete %s" (format_operand sete.dest sete.size)
-  | SETNE setne -> sprintf "setne %s" (format_operand setne.dest setne.size)
-  | SETL setl -> sprintf "setl %s" (format_operand setl.dest setl.size)
-  | SETLE setle -> sprintf "setle %s" (format_operand setle.dest setle.size)
-  | SETG setg -> sprintf "setg %s" (format_operand setg.dest setg.size)
-  | SETGE setge -> sprintf "setge %s" (format_operand setge.dest setge.size)
+  | SETE sete -> sprintf "sete %s" (format_operand sete.dest)
+  | SETNE setne -> sprintf "setne %s" (format_operand setne.dest)
+  | SETL setl -> sprintf "setl %s" (format_operand setl.dest)
+  | SETLE setle -> sprintf "setle %s" (format_operand setle.dest)
+  | SETG setg -> sprintf "setg %s" (format_operand setg.dest)
+  | SETGE setge -> sprintf "setge %s" (format_operand setge.dest)
   | AND a ->
     sprintf
       "and%s %s, %s"
       (format_inst a.size)
-      (format_operand a.src a.size)
-      (format_operand a.dest a.size)
+      (format_operand a.src)
+      (format_operand a.dest)
   | OR a ->
     sprintf
       "or%s %s, %s"
       (format_inst a.size)
-      (format_operand a.src a.size)
-      (format_operand a.dest a.size)
+      (format_operand a.src)
+      (format_operand a.dest)
   | XOR xor ->
     sprintf
       "xor%s %s, %s"
-      (format_inst xor.size)
-      (format_operand xor.src xor.size)
-      (format_operand xor.dest xor.size)
+      (* (format_inst xor.size) *)
+      (format_inst (format_operand_size xor.dest))
+      (format_operand xor.src)
+      (format_operand xor.dest)
   | SAR sar ->
     sprintf
       "sar%s %s, %s"
       (format_inst sar.size)
-      (format_operand sar.src BYTE)
-      (format_operand sar.dest sar.size)
+      (format_operand sar.src)
+      (format_operand sar.dest)
   | SAL sal ->
     sprintf
       "sal%s %s, %s"
       (format_inst sal.size)
-      (format_operand sal.src BYTE)
-      (format_operand sal.dest sal.size)
+      (format_operand sal.src)
+      (format_operand sal.dest)
   | Fcall fcall ->
     sprintf "call %s%s" (format_scope fcall.scope) (Symbol.name fcall.func_name)
   | Fname fname -> sprintf "%s:" fname

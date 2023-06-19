@@ -27,3 +27,11 @@ let type_size_byte = function
   | DWORD -> 4
   | QWORD -> 8
 ;;
+
+let pp_size = function
+  | VOID -> "void"
+  | BYTE -> "byte"
+  | WORD -> "word"
+  | DWORD -> "dword"
+  | QWORD -> "qword"
+;;

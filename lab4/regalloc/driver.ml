@@ -38,7 +38,7 @@ module IG = Interference_graph
 type reg = Register.t
 
 type dest =
-  | Reg of Register.t
+  | Reg of Var.X86_reg.Hard.t
   | Mem of Memory.t
 
 let threshold = 2000
@@ -72,7 +72,7 @@ module Print = struct
         let t = IG.Print.pp_vertex k in
         let r =
           match IG.Vertex.Map.find_exn color k with
-          | Reg r -> Register.reg_to_str r
+          | Reg r -> Register.reg_to_str r.reg
           | Mem m -> Memory.mem_to_str m
         in
         printf "%s -> %s\n" t r)
@@ -160,7 +160,7 @@ module Lazy = struct
     match operand with
     | Abs_asm.Temp t -> IG.Vertex.Set.of_list [ IG.Vertex.T.Temp t ]
     | Abs_asm.Imm _ | Abs_asm.Above_frame _ | Abs_asm.Below_frame _ -> IG.Vertex.Set.empty
-    | Abs_asm.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r ]
+    | Abs_asm.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r.reg ]
   ;;
 
   let rec collect_vertex (prog : Abs_asm.instr list) res =
@@ -200,13 +200,14 @@ module Lazy = struct
       | Jump _ | Label _ | Directive _ | Comment _ -> collect_vertex t res)
   ;;
 
+  (* BUG: traverse program and use define info to generate mem/reg. *)
   let gen_result_dummy vertex_set =
     let base = Register.num_reg in
     let vertex_list = IG.Vertex.Set.to_list vertex_set in
     List.map vertex_list ~f:(fun vtx ->
         let dest =
           match vtx with
-          | IG.Vertex.T.Reg r -> Reg r
+          | IG.Vertex.T.Reg r -> Reg { reg = r; size = QWORD }
           | IG.Vertex.T.Temp t ->
             let idx = t.id in
             Mem (Memory.create idx Register.RSP (idx - base + 1) Size.QWORD)
@@ -299,15 +300,14 @@ let alloc size (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) :
         | None -> acc
         | Some u' ->
           (match u' with
-          | Reg r -> Register.reg_idx r :: acc
+          | Reg r -> Register.reg_idx r.reg :: acc
           | Mem m -> Memory.mem_idx_exn m :: acc))
   in
   let nbr_int_s = Int.Set.of_list nbr_int_l in
   let black_set = Int.Set.of_list nbr_black_list in
   let r = find_min_available nbr_int_s black_set in
-  (* printf"allocate register/memory\n"; *)
   if r < Register.num_reg
-  then Reg (Register.idx_reg r)
+  then Reg (Var.X86_reg.Hard.idx_reg r size)
   else Mem (Memory.create r Register.RBP (-(r - Register.num_reg + 1)) size)
 ;;
 
@@ -317,11 +317,7 @@ let rec greedy seq adj vertex_to_dest =
   | [] -> vertex_to_dest
   | h :: t ->
     (match h with
-    | IG.Vertex.T.Reg reg ->
-      let vertex_to_dest =
-        IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Reg reg) ~data:(Reg reg)
-      in
-      greedy t adj vertex_to_dest
+    | IG.Vertex.T.Reg _ -> greedy t adj vertex_to_dest
     | IG.Vertex.T.Temp temp ->
       let nbr = IG.Vertex.Map.find_exn adj h in
       let dest = alloc temp.size nbr vertex_to_dest in

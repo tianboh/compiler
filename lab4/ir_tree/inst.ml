@@ -58,6 +58,7 @@ type binop =
   | Not_eq
 
 type exp =
+  | Void
   | Const of Int32.t
   | Temp of Temp.t
   | Binop of
@@ -78,7 +79,7 @@ and stm =
       ; rhs : exp
       }
   | Fcall of
-      { dest : Temp.t
+      { dest : Temp.t option
       ; func_name : Symbol.t
       ; args : exp list
       ; scope : scope
@@ -142,6 +143,7 @@ module Print : PRINT = struct
   ;;
 
   let rec pp_exp = function
+    | Void -> "void"
     | Const x -> Int32.to_string x
     | Temp t -> Temp.name t
     | Binop binop ->
@@ -158,10 +160,13 @@ module Print : PRINT = struct
         (pp_exp eft.rhs)
     | Fcall c ->
       let scope = pp_scope c.scope in
-      let dest = Temp.name c.dest in
       let func_name = Symbol.name c.func_name in
       let args = List.map (fun arg -> pp_exp arg) c.args |> String.concat ", " in
-      sprintf "%s <- %s%s(%s)" dest scope func_name args
+      (match c.dest with
+      | Some dest ->
+        let dest = Temp.name dest in
+        sprintf "%s <- %s%s(%s)" dest scope func_name args
+      | None -> sprintf "%s%s(%s)" scope func_name args)
     | Return e ->
       (match e with
       | None -> "return\n"

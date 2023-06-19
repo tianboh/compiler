@@ -33,6 +33,7 @@ let munch_scope = function
 
 (* get Tree.exp size *)
 let rec get_esize = function
+  | Tree.Void -> failwith "void doesn't have esize"
   | Tree.Const _ -> Size.DWORD
   | Tree.Temp t -> t.size
   | Tree.Binop binop ->
@@ -70,6 +71,7 @@ let rec munch_exp_acc (dest : Quads.operand) (exp : Tree.exp) (rev_acc : Quads.i
     : Quads.instr list
   =
   match exp with
+  | Tree.Void -> rev_acc
   | Tree.Const i -> Quads.Mov { dest; src = Quads.Imm i } :: rev_acc
   | Tree.Temp t -> Quads.Mov { dest; src = Quads.Temp t } :: rev_acc
   | Tree.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc

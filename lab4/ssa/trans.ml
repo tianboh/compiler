@@ -137,8 +137,11 @@ let rec get_blk_defsite blk_label (stms : Tree.stm list) defsites =
       let defsites = get_blk_defsite_helper defsites eft.dest blk_label in
       get_blk_defsite blk_label t defsites
     | Tree.Fcall fcall ->
-      let defsites = get_blk_defsite_helper defsites fcall.dest blk_label in
-      get_blk_defsite blk_label t defsites
+      (match fcall.dest with
+      | None -> get_blk_defsite blk_label t defsites
+      | Some dest ->
+        let defsites = get_blk_defsite_helper defsites dest blk_label in
+        get_blk_defsite blk_label t defsites)
     | Tree.Return _ | Tree.Jump _ | Tree.CJump _ | Tree.Label _ | Tree.Nop | Tree.Assert _
       -> get_blk_defsite blk_label t defsites)
 ;;
@@ -224,6 +227,7 @@ let insert blk_map defsites df pred_map =
 
 let rec rename_exp (exp : Tree.exp) (env : env) : Tree.exp =
   match exp with
+  | Void -> Void
   | Const c -> Const c
   | Temp temp ->
     (* In some special cases, exp may be used when there is such temp stack
@@ -296,10 +300,12 @@ and rename_def (stm : Tree.stm) (env : env) : Tree.stm * env =
     let eft = Tree.Effect { eft with dest = dest_new } in
     eft, env
   | Fcall fcall ->
-    let dest_new, env = rename_def_helper fcall.dest env in
-    (* printf "rename_eft def from %s to %s\n" (Temp.name eft.dest) (Temp.name dest_new); *)
-    let eft = Tree.Fcall { fcall with dest = dest_new } in
-    eft, env
+    (match fcall.dest with
+    | None -> Tree.Fcall fcall, env
+    | Some dest ->
+      let dest_new, env = rename_def_helper dest env in
+      let eft = Tree.Fcall { fcall with dest = Some dest_new } in
+      eft, env)
   | Assert asrt -> Assert asrt, env
   | Return ret -> Return ret, env
   | Jump jp -> Jump jp, env
@@ -375,9 +381,12 @@ let cleanup_bb (blk : ssa_block) (env : env) : env =
         let env = cleanup_temp name eft.dest env in
         cleanup_body t env
       | Fcall fcall ->
-        let name = Temp.Map.find_exn env.root fcall.dest in
-        let env = cleanup_temp name fcall.dest env in
-        cleanup_body t env
+        (match fcall.dest with
+        | None -> cleanup_body t env
+        | Some dest ->
+          let name = Temp.Map.find_exn env.root dest in
+          let env = cleanup_temp name dest env in
+          cleanup_body t env)
       | Return _ | Jump _ | CJump _ | Label _ | Nop | Assert _ -> cleanup_body t env)
   in
   let rec cleanup_phi (phis : phi list) (env : env) : env =

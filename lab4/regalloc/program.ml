@@ -47,7 +47,7 @@ let gen_VertexSet (l : Abs_asm.operand list) =
       (match h with
       | Imm _ | Above_frame _ | Below_frame _ -> _filter_imm t res
       | Temp temp -> _filter_imm t (IG.Vertex.T.Temp temp :: res)
-      | Reg r -> _filter_imm t (IG.Vertex.T.Reg r :: res))
+      | Reg r -> _filter_imm t (IG.Vertex.T.Reg r.reg :: res))
   in
   let l = _filter_imm l [] in
   IG.Vertex.Set.of_list l

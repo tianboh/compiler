@@ -54,6 +54,7 @@ let trans_binop = function
 
 let gen_cond (exp : Tree.exp) : Tree.exp * Tree.binop * Tree.exp =
   match exp with
+  | Tree.Void -> failwith "void cannot be used as cond"
   | Tree.Const i -> Tree.Const i, Tree.Equal_eq, Tree.Const Int32.one
   | Tree.Temp t -> Tree.Temp t, Tree.Equal_eq, Tree.Const Int32.one
   | Tree.Binop binop -> binop.lhs, binop.op, binop.rhs
@@ -127,12 +128,21 @@ let rec trans_exp (exp_ast : AST.exp) (var_env : Temp.t S.t) (func_env : TC.func
     let func = S.find_exn func_env fcall.func_name in
     let scope = trans_scope func.scope in
     let size = trans_tsize func.ret_type in
-    let dest = Temp.create size in
-    let call =
-      Tree.Fcall { dest; args = args_exps; func_name = fcall.func_name; scope }
-    in
-    let call_stms = args_stms @ [ call ] in
-    call_stms, Tree.Temp dest, size
+    (match size with
+    | VOID ->
+      let call =
+        Tree.Fcall { dest = None; args = args_exps; func_name = fcall.func_name; scope }
+      in
+      let call_stms = args_stms @ [ call ] in
+      call_stms, Tree.Void, size
+    | _ ->
+      let dest = Temp.create size in
+      let call =
+        Tree.Fcall
+          { dest = Some dest; args = args_exps; func_name = fcall.func_name; scope }
+      in
+      let call_stms = args_stms @ [ call ] in
+      call_stms, Tree.Temp dest, size)
 
 and trans_mexp mexp var_env func_env = trans_exp (Mark.data mexp) var_env func_env
 
@@ -266,16 +276,15 @@ let rec trans_stm_rev
 let trans_fdefn func_name (pars : AST.param list) blk (func_env : TC.func S.t)
     : Tree.fdefn
   =
-  (* let par_list = List.map pars ~f:(fun par -> par.i) in *)
   let var_env =
     List.fold pars ~init:S.empty ~f:(fun acc par ->
         let temp = Temp.create (trans_tsize par.t) in
         S.add_exn acc ~key:par.i ~data:temp)
   in
   let blk_rev, var_env = trans_stm_rev blk [] var_env func_env in
-  let blk = List.rev blk_rev in
+  let body = List.rev blk_rev in
   let temps = List.map pars ~f:(fun par -> S.find_exn var_env par.i) in
-  { func_name; temps; body = blk }
+  { func_name; temps; body }
 ;;
 
 let rec trans_prog (program : AST.program) (acc : Tree.program) (func_env : TC.func S.t)
