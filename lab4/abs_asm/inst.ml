@@ -10,7 +10,9 @@
  *)
 
 open Core
-open Var.Size
+
+(* open Var.Size *)
+module Size = Var.Size
 module Register = Var.X86_reg.Hard
 module Temp = Var.Temp
 module Label = Util.Label
@@ -24,8 +26,14 @@ type operand =
   | Imm of Int32.t
   | Temp of Temp.t
   | Reg of Register.t
-  | Above_frame of int
-  | Below_frame of int
+  | Above_frame of
+      { offset : int
+      ; size : Size.t
+      }
+  | Below_frame of
+      { offset : int
+      ; size : Size.t
+      }
 
 type line =
   { uses : operand list
@@ -148,8 +156,8 @@ let pp_operand = function
   | Imm n -> "$" ^ Int32.to_string n
   | Temp t -> Temp.name t
   | Reg r -> Register.reg_to_str r
-  | Above_frame af -> sprintf "%d(%%rbp)" (af * type_size_bit BYTE)
-  | Below_frame bf -> sprintf "-%d(%%rbp)" (bf * type_size_bit BYTE)
+  | Above_frame af -> sprintf "%d(%%rbp)" af.offset
+  | Below_frame bf -> sprintf "-%d(%%rbp)" bf.offset
 ;;
 
 let pp_scope = function

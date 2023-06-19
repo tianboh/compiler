@@ -56,6 +56,7 @@ type instr =
       { dest : operand
       ; src : operand
       ; size : Size.t
+            (* how many bytes to move from src. size <= dest.size; size <= src.size. *)
       }
   | Cvt of { size : Size.t } (*could be cdq, cqo, etc based on size it wants to extend. EDX:EAX := sign-extend of EAX *)
   | Ret
@@ -159,6 +160,20 @@ type fdefn =
 
 type program = fdefn list
 
+let set_size (operand : operand) (size : Size.t) : operand =
+  match operand with
+  | Reg r -> Reg { r with size }
+  | Mem m -> Mem { m with size }
+  | Imm i -> Imm i
+;;
+
+let get_size (operand : operand) : Size.t =
+  match operand with
+  | Reg r -> r.size
+  | Mem m -> m.size
+  | Imm _ -> DWORD
+;;
+
 let format_operand (oprd : operand) =
   match oprd with
   | Imm n -> "$" ^ Int32.to_string n
@@ -178,8 +193,15 @@ let format_inst (size : Size.t) =
   | BYTE -> "b"
   | WORD -> "w"
   | DWORD -> "l"
-  | QWORD -> ""
+  | QWORD -> "q"
   | VOID -> ""
+;;
+
+let format_inst' (operand : operand) =
+  match operand with
+  | Reg r -> format_inst r.size
+  | Mem m -> format_inst m.size
+  | Imm _ -> format_inst DWORD
 ;;
 
 let format_scope = function
@@ -217,19 +239,23 @@ let format = function
     | DWORD -> "cdq"
     | QWORD -> "cqo")
   | Mov mv ->
-    sprintf
-      "mov%s %s, %s"
-      (format_inst (format_operand_size mv.dest))
-      (* (format_inst mv.size) *)
-      (format_operand mv.src)
-      (format_operand mv.dest)
+    let src_str = format_operand mv.src in
+    let dest_str = format_operand mv.dest in
+    let src_size, dest_size = get_size mv.src, get_size mv.dest in
+    if Size.compare src_size dest_size < 0
+    then sprintf "mov%s %s, %s" (format_inst src_size) src_str dest_str
+    else sprintf "mov%s %s, %s" (format_inst dest_size) src_str dest_str
   | Ret -> "ret"
-  | Push push -> sprintf "push%s %s" (format_inst push.size) (format_operand push.var)
+  | Push push ->
+    (match push.var with
+    | Reg r -> sprintf "push %s" (format_operand (Reg { r with size = QWORD }))
+    | Mem m -> sprintf "push %s" (format_operand (Mem { m with size = QWORD }))
+    | Imm i -> sprintf "push %s" (format_operand (Imm i)))
   | Pop pop -> sprintf "pop%s %s" (format_inst pop.size) (format_operand pop.var)
   | Cmp cmp ->
     sprintf
       "cmp%s %s, %s"
-      (format_inst cmp.size)
+      (format_inst' cmp.lhs)
       (format_operand cmp.rhs)
       (format_operand cmp.lhs)
   | LAHF -> "lahf"
@@ -263,8 +289,7 @@ let format = function
   | XOR xor ->
     sprintf
       "xor%s %s, %s"
-      (* (format_inst xor.size) *)
-      (format_inst (format_operand_size xor.dest))
+      (format_inst' xor.dest)
       (format_operand xor.src)
       (format_operand xor.dest)
   | SAR sar ->

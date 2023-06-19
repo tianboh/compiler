@@ -137,8 +137,10 @@ module Helper = struct
       | [] -> hash
       | h :: t ->
         let defs = Reg_info.get_defs h in
+        let uses = Reg_info.get_uses h in
+        let vs = IG.Vertex.Set.union defs uses in
         let hash =
-          IG.Vertex.Set.fold defs ~init:hash ~f:(fun acc_hash def_ ->
+          IG.Vertex.Set.fold vs ~init:hash ~f:(fun acc_hash def_ ->
               let acc_hash = IG.Vertex.Map.set acc_hash ~key:def_ ~data:0 in
               acc_hash)
         in
@@ -202,7 +204,6 @@ module Lazy = struct
 
   (* BUG: traverse program and use define info to generate mem/reg. *)
   let gen_result_dummy vertex_set =
-    let base = Register.num_reg in
     let vertex_list = IG.Vertex.Set.to_list vertex_set in
     List.map vertex_list ~f:(fun vtx ->
         let dest =
@@ -210,9 +211,11 @@ module Lazy = struct
           | IG.Vertex.T.Reg r -> Reg { reg = r; size = QWORD }
           | IG.Vertex.T.Temp t ->
             let idx = t.id in
-            Mem (Memory.create idx Register.RSP (idx - base + 1) Size.QWORD)
+            Mem (Memory.create idx Register.RBP t.size)
         in
-        Some (vtx, dest))
+        match dest with
+        | Mem _ -> Some (vtx, dest)
+        | Reg _ -> None)
   ;;
 end
 
@@ -308,7 +311,7 @@ let alloc size (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) :
   let r = find_min_available nbr_int_s black_set in
   if r < Register.num_reg
   then Reg (Var.X86_reg.Hard.idx_reg r size)
-  else Mem (Memory.create r Register.RBP (-(r - Register.num_reg + 1)) size)
+  else Mem (Memory.create r Register.RBP size)
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)
@@ -332,15 +335,17 @@ let rec gen_result (color : dest IG.Vertex.Map.t) prog =
   | [] -> []
   | h :: t ->
     let defs = Reg_info.get_defs h in
+    let uses = Reg_info.get_uses h in
+    let vs = IG.Vertex.Set.union defs uses in
     let assign_l =
-      IG.Vertex.Set.fold defs ~init:[] ~f:(fun acc def ->
-          match def with
+      IG.Vertex.Set.fold vs ~init:[] ~f:(fun acc v ->
+          match v with
           | IG.Vertex.T.Temp _ ->
-            let dest = IG.Vertex.Map.find color def in
+            let dest = IG.Vertex.Map.find color v in
             let tk =
               match dest with
               | None -> None
-              | Some dest' -> Some (def, dest')
+              | Some dest' -> Some (v, dest')
             in
             tk :: acc
           | IG.Vertex.T.Reg _ -> None :: acc)

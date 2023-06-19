@@ -46,17 +46,7 @@ let oprd_ps_to_x86
   =
   match operand with
   | Temp t ->
-    let dest =
-      match IG.Vertex.Map.find reg_alloc_info (IG.Vertex.T.Temp t) with
-      | Some s -> s
-      | None ->
-        (* Some variable that is only declared but not defined during the whole program. 
-         * For example: int a; and no assignment afterwards.
-         * In this case, we will use %rax to represent it. Notice that it is only a representation
-         * for this uninitialized temporary, and %rax will not be assigned in the following instruction.
-         * Therefore, no worry for the return value. *)
-        Regalloc.Reg { reg = Reg.RAX; size = Abs_asm.Trans.gen_size' (Src.Temp t) }
-    in
+    let dest = IG.Vertex.Map.find_exn reg_alloc_info (IG.Vertex.T.Temp t) in
     (match dest with
     | Regalloc.Reg r -> X86_asm.Reg r
     | Regalloc.Mem m -> X86_asm.Mem m)
@@ -66,8 +56,8 @@ let oprd_ps_to_x86
    * The latest available memory is rsp + 8. Remember that caller push parameter and callee
    * push rbp, mov rsp to rbp so in order to access parameters in callee function, 
    * we need to skip the pushed rbp, which is 1. *)
-  | Above_frame af -> X86_asm.Mem (Memory.get_mem Reg.RBP (af + 1) QWORD)
-  | Below_frame bf -> X86_asm.Mem (Memory.get_mem Reg.RSP (-bf) DWORD)
+  | Above_frame af -> X86_asm.Mem (Memory.above_frame Reg.RBP af.offset af.size)
+  | Below_frame bf -> X86_asm.Mem (Memory.below_frame Reg.RSP bf.offset bf.size)
 ;;
 
 let trans_scope = function
@@ -147,20 +137,6 @@ let shift_check (shift_bit : X86_asm.operand) (fpe_label : Label.t) =
   ]
 ;;
 
-let trans_size (operand : X86_asm.operand) (size : Size.t) : X86_asm.operand =
-  match operand with
-  | Reg r -> Reg { r with size }
-  | Mem m -> Mem { m with size }
-  | Imm i -> Imm i
-;;
-
-let get_size (operand : X86_asm.operand) : Size.t =
-  match operand with
-  | Reg r -> r.size
-  | Mem m -> m.size
-  | Imm _ -> DWORD
-;;
-
 (* Remember that ecx is preserved during register allocation.
  * So we can move src to ecx without store ecx value. *)
 let safe_sal
@@ -177,7 +153,8 @@ let safe_sal
     :: shift_check (Reg { reg = ecx; size }) fpe_label)
     @ [ SAL { dest; src = Reg { reg = ecx; size = BYTE }; size } ]
   | Imm _ ->
-    shift_check src fpe_label @ [ SAL { dest; src = trans_size src BYTE; size = BYTE } ]
+    shift_check src fpe_label
+    @ [ SAL { dest; src = Inst.set_size src BYTE; size = BYTE } ]
 ;;
 
 (* Remember that ecx is preserved during register allocation.
@@ -244,7 +221,7 @@ let gen_x86_relop_bin
   [ X86_asm.XOR { dest = rax; src = rax; size = DWORD } ]
   @ cmp_inst
   @ set_inst
-  @ [ X86_asm.Mov { dest; src = trans_size rax (get_size dest); size = DWORD } ]
+  @ [ X86_asm.Mov { dest; src = Inst.set_size rax (Inst.get_size dest); size = DWORD } ]
 ;;
 
 let gen_x86_inst_bin
