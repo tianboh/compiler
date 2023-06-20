@@ -1,0 +1,11 @@
+//test error
+// last element in array is not allocated.
+
+int main(){
+    int n = 10;
+    int*[] b = alloc_array(int*, n);
+    for(int i = 0; i < n - 1; i++){
+        b[i] = alloc(int);
+    }
+    return b[n-1];
+}

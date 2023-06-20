@@ -1,0 +1,14 @@
+//test error
+// NULL is wildcard for pointer, but variable with NULL cannot be cast.
+
+struct node {
+    struct node* next;
+    int id;
+};
+
+int main(){
+    struct node* n = NULL;
+    int* a = NULL;
+    n = a;
+    return *a;
+}

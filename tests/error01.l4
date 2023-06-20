@@ -1,0 +1,7 @@
+//test error
+// array type and pointer is not the same type
+
+int main(){
+    int[] b = alloc(int);
+    return 0;
+}

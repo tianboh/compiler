@@ -1,0 +1,13 @@
+//test return 18
+
+struct student {
+    bool male;
+    int age;
+};
+
+int main(){
+    struct student* tom = alloc(struct student);
+    tom->male = true;
+    tom->age = 18;
+    return tom->age;
+}

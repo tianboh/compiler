@@ -1,0 +1,13 @@
+//test memerror
+
+int main(){
+    int n = 100;
+    int*[] a = alloc_array(int*, n);
+    for(int i = 0; i < n; i++){
+        a[i] = alloc(int);
+    }
+    for(int i = 0; i < n; i++){
+        a[i] = NULL;
+    }
+    return *a[0];
+}

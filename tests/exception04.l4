@@ -1,0 +1,16 @@
+//test memerror
+//not initialize struct variable in array
+
+struct node {
+    struct node* next;
+    int id;
+};
+
+int main(){
+    int n = 233;
+    struct node*[] nodes = alloc_array(struct node*, n);
+    for(int i = 0; i < n; i++){
+        nodes[i]-> id = 0;
+    }
+    return 0;
+}

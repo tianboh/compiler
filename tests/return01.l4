@@ -1,0 +1,11 @@
+//test return 6
+typedef int myint;
+
+int main() {
+    int b = 0;
+    myint * c = alloc(myint);
+    int m = 3;
+    *c = 2;
+    int n = m * (*c);
+    return n;
+}

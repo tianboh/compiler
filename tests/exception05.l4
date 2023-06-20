@@ -1,0 +1,12 @@
+//test memerror
+
+int main(){
+    int n = 100;
+    int[] a = alloc_array(int, 100);
+    a[0] = 1;
+    a[1] = 1;
+    for(int i = 2; i < n; i++){
+        a[i] = a[i-1] + a[i-2];
+    }
+    return a[n]; // out of bound
+}

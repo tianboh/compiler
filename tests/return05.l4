@@ -1,0 +1,19 @@
+//test return 18
+struct student {
+    int age;
+    int gpa;
+};
+
+int ident(int i ){
+    return i;
+}
+
+int main(){
+    struct student* tom = alloc(struct student);
+    if(ident(3) == 3){
+        tom->age = 18;
+    }else{
+        tom->gpa = 3;
+    }
+    return tom->age;
+}

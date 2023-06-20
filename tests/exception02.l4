@@ -1,0 +1,12 @@
+//test memerror
+// allocate negative number of element
+
+int main(){
+    int n = 2147483647;
+    int[] a;
+    while(n > 0){
+      n += 1;
+      a = alloc_array(int, n);
+    }
+    return 0;
+}

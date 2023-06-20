@@ -1,0 +1,15 @@
+//test error
+// struct cannot be stay on stack
+
+struct node {
+    struct node* next;
+    int id;
+};
+
+int main(){
+    struct node a;
+    a.id = 3;
+    a.next = NULL;
+    
+    return 0;
+}

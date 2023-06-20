@@ -1,0 +1,30 @@
+//test return 2
+
+struct node {
+    struct node* next;
+    int id;
+};
+
+int end(struct node* u){
+    if(u->next == NULL){
+        return u->id;
+    }else{
+        return end(u->next);
+    }
+}
+
+struct node* init(struct node* u, int id, struct node* next){
+    u->id = id;
+    u->next = next;
+    return u;
+}
+
+int main(){
+    struct node* a = alloc(struct node);
+    struct node* b = alloc(struct node);
+    struct node* c = alloc(struct node);
+    a = init(a, 0, b);
+    b = init(b, 1, c);
+    c = init(c, 2, NULL);
+    return end(c);
+}

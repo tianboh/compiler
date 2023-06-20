@@ -1,0 +1,14 @@
+//test error
+// type mismatch for NULL
+
+int main(){
+    int* a = NULL;
+    bool* b = NULL;
+    int c = 0;
+    if(a == b){
+        c = 2;
+    }else{
+        c = 3;
+    }
+    return c;
+}

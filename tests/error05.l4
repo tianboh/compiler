@@ -1,0 +1,14 @@
+//test error
+// misuse arrow and dot for accessing struct field
+
+struct node {
+    struct node* next;
+    int id;
+};
+
+int main(){
+    struct node* n = alloc(struct node);
+    n.id = 3;
+    n.next = NULL;
+    return n.id;
+}

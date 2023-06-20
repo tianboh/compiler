@@ -1,0 +1,42 @@
+//test return 3
+// dereference and dot access
+
+struct employer;
+
+struct employee {
+    struct employer* boss;
+    int id;
+};
+
+struct employer {
+    struct employee*[] team;
+    int id;
+};
+
+struct employee* set_employee(struct employee* u, struct employer* v, int id){
+    u->boss = v;
+    u->id = id;
+    return u;
+}
+
+struct employer* set_team(struct employer* u, struct employee*[] team){
+    u->team = team;
+    return u;
+}
+
+int main(){
+    struct employee* a = alloc(struct employee);
+    struct employee* b = alloc(struct employee);
+    struct employer* c = alloc(struct employer);
+    a = set_employee(a, c, 1);
+    b = set_employee(b, c, 2);
+    struct employee*[] team = alloc_array(struct employee*, 2);
+    team[0] = a;
+    team[1] = b;
+    c = set_team(c, team);
+    int s = 0;
+    for(int i = 0; i < 2; i++){
+        s += (*(c->team[i])).id;
+    }
+    return s;
+}

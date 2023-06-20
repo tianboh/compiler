@@ -1,0 +1,10 @@
+//test return 10
+// what about double star
+
+int main(){
+    int** a = alloc(int*);
+    int* b = alloc(int);
+    *a = b;
+    *b = 10;
+    return **a;
+}
