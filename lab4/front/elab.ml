@@ -135,6 +135,9 @@ let elab_ptype = function
   | Cst.Bool -> Ast.Bool
   | Cst.Void -> Ast.Void
   | Cst.Ctype _ -> failwith "elab_ptype should only handle primitive types"
+  | Cst.Pointer _ -> failwith "not yet"
+  | Cst.Array _ -> failwith "not yet"
+  | Cst.Struct _ -> failwith "not yet"
 ;;
 
 let elab_type ctype =
@@ -144,6 +147,9 @@ let elab_type ctype =
     | Cst.Bool -> Cst.Bool
     | Cst.Void -> Cst.Void
     | Cst.Ctype c -> Symbol.Map.find_exn !ct2pt c
+    | Cst.Pointer _ -> failwith "not yet"
+    | Cst.Array _ -> failwith "not yet"
+    | Cst.Struct _ -> failwith "not yet"
   in
   elab_ptype ptype
 ;;
@@ -312,6 +318,9 @@ let elab_typedef t t_var =
     | Cst.Int -> Cst.Int
     | Cst.Bool -> Cst.Bool
     | Cst.Void -> error ~msg:"dest type cannot be void" None
+    | Cst.Pointer _ -> failwith "not yet"
+    | Cst.Array _ -> failwith "not yet"
+    | Cst.Struct _ -> failwith "not yet"
   in
   if Symbol.Set.mem !func_env t_var then error None ~msg:"type name already exist";
   let env' =

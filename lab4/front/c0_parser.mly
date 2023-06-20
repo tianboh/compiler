@@ -217,6 +217,13 @@ dtype :
       { Cst.Void }
   | ident = Ident;
       { Cst.Ctype ident }
+  | t = dtype; Star;
+      { Cst.Pointer t }
+  | t = dtype; L_bracket; R_bracket
+      { Cst.Array t }
+  | Struct; var = Ident;
+      { Cst.Struct var }
+      
 
 decl :
   | t = dtype; ident = Ident;
