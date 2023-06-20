@@ -99,6 +99,11 @@ rule initial = parse
   | '}' { T.R_brace }
   | '(' { T.L_paren }
   | ')' { T.R_paren }
+  | '[' { T.L_bracket }
+  | ']' { T.R_bracket }
+
+  | '.' { T.Dot }
+  | "->" { T.Arrow }
 
   | ';' { T.Semicolon }
   | ',' { T.Comma }
@@ -158,9 +163,7 @@ rule initial = parse
                 initial lexbuf }
   | "int"     { T.Int }
   | "void"    { T.Void }
-  | "struct"  { error lexbuf
-                ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-                initial lexbuf }
+  | "struct"  { T.Struct }
   | "typedef" { T.Typedef }
 
   | "if"    { T.If }
@@ -171,15 +174,9 @@ rule initial = parse
   | "true"  { T.True }
   | "false" { T.False }
 
-  | "NULL"  { error lexbuf
-              ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-              initial lexbuf }
-  | "alloc" { error lexbuf
-              ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-              initial lexbuf }
-  | "alloc_array" { error lexbuf
-                    ~msg:(sprintf "Illegal character '%s'" (text lexbuf));
-                    initial lexbuf }
+  | "NULL"  { T.NULL }
+  | "alloc" { T.Alloc }
+  | "alloc_array" { T.Alloc_array }
 
   | "string"   { error lexbuf
                  ~msg:(sprintf "Illegal character '%s'" (text lexbuf));

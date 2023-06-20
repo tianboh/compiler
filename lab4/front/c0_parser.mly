@@ -86,12 +86,19 @@ let expand_postop lhs op
 %token Return
 %token Typedef
 %token Assert
+%token Struct
+%token Alloc
+%token Alloc_array
 (* Special characters *)
 %token L_brace R_brace
 %token L_paren R_paren
+%token L_bracket R_bracket
 %token Eof
 %token Semicolon
 %token Comma
+%token Dot
+%token Arrow
+%token NULL
 (* Binary operators *) 
 %token Plus Minus Star Slash Percent Less Less_eq Greater Greater_eq Equal_eq Not_eq
         And_and Or_or And Or Left_shift Right_shift Hat (* bitwise exclusive or *)
@@ -103,9 +110,6 @@ let expand_postop lhs op
 %token Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq And_eq Or_eq Hat_eq Left_shift_eq Right_shift_eq
 (* Ternary op *)
 %token Question_mark Colon
-(* Others *)
-// %token <Int32.t> Dbg_line
-// %token <Int32.t> Dbg_col
 
 (* Negative is a dummy terminal.
  * We need dummy terminals if we wish to assign a precedence
