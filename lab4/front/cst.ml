@@ -165,7 +165,12 @@ and mstms = mstm list
 
 and block = mstms
 
-and param =
+type param =
+  { t : dtype
+  ; i : Symbol.t
+  }
+
+type field =
   { t : dtype
   ; i : Symbol.t
   }
@@ -185,6 +190,11 @@ and gdecl =
   | Typedef of
       { t : dtype
       ; t_var : Symbol.t
+      }
+  | Sdecl of { struct_name : Symbol.t }
+  | Sdefn of
+      { struct_name : Symbol.t
+      ; fields : field list
       }
 
 type program = gdecl list
@@ -296,7 +306,7 @@ module Print = struct
     | [] -> ""
     | h :: t -> sprintf "%s" (pp_mstm h) ^ pp_blk t
 
-  and pp_param param = sprintf " %s %s" (pp_dtype param.t) (Symbol.name param.i)
+  and pp_param (param : param) = sprintf " %s %s" (pp_dtype param.t) (Symbol.name param.i)
 
   and pp_gdecl = function
     | Fdecl fdecl ->
@@ -314,6 +324,8 @@ module Print = struct
         (pp_block fdefn.blk)
     | Typedef typedef ->
       sprintf "typedef %s %s" (pp_dtype typedef.t) (Symbol.name typedef.t_var)
+    | Sdefn _ -> failwith "not yet"
+    | Sdecl _ -> failwith "not yet"
 
   and pp_mstm stm = pp_stm (Mark.data stm)
   and pp_msimp msimp = pp_simp (Mark.data msimp)

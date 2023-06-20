@@ -332,7 +332,9 @@ let rec elab (cst : Cst.program) (acc : Ast.program) : Ast.program =
       elab t (elab_fdecl fdecl.ret_type fdecl.func_name fdecl.par_type :: acc)
     | Cst.Fdefn fdenf ->
       elab t (elab_fdefn fdenf.ret_type fdenf.func_name fdenf.par_type fdenf.blk :: acc)
-    | Cst.Typedef typedef -> elab t (elab_typedef typedef.t typedef.t_var :: acc))
+    | Cst.Typedef typedef -> elab t (elab_typedef typedef.t typedef.t_var :: acc)
+    | Cst.Sdefn _ -> failwith "not yet"
+    | Cst.Sdecl _ -> failwith "not yet")
 ;;
 
 let elaborate (cst : Cst.program) : Ast.program = elab cst []

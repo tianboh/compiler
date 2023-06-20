@@ -152,7 +152,6 @@ program :
       { [] }
   | gdecl = gdecl; prog = program;
       { gdecl :: prog }
-  ;
 
 gdecl :
   | ret_type = dtype; fun_name = Ident; pars = param_list; Semicolon;
@@ -162,33 +161,42 @@ gdecl :
   | Typedef; t = dtype; var = Ident; Semicolon
       { cache := Util.Symbol.Set.add !cache var;
         Cst.Typedef {t = t; t_var = var} }
-  ;
+  | Struct; var = Ident; Semicolon
+      { Cst.Sdecl { struct_name = var } }
+  | Struct; var = Ident; L_brace; fields = field_list; R_brace; 
+      { Cst.Sdefn { struct_name = var; fields = fields; } }
+
+field : 
+  | t = dtype; var = Ident; Semicolon
+      { {t = t; i = var} : Cst.field }
+
+field_list :
+  | 
+      { [] }
+  |  field = field; fields = field_list
+      { field :: fields }
 
 param : 
   | t = dtype; var = Ident;
       { {t = t; i = var} : Cst.param }
-  ;
 
 param_list_follow:
   | 
       { [] }
   | Comma; par = param; pars = param_list_follow;
       { par :: pars }
-  ;
 
 param_list : 
   | L_paren; R_paren;
       { [] }
   | L_paren; par = param; pars = param_list_follow ; R_paren;
       { par :: pars }
-  ;
 
 block : 
    | L_brace;
      body = mstms;
      R_brace;
       { body }
-  ;
 
 (* This higher-order rule produces a marked result of whatever the
  * rule passed as argument will produce.
@@ -199,7 +207,6 @@ m(x) :
        * Parsing.symbol_start_pos and Parsing.symbol_end_pos, but,
        * unfortunately, they can only be called from productions. *)
       { mark x $startpos(x) $endpos(x) }
-  ;
 
 dtype : 
   | Int;
@@ -216,14 +223,12 @@ decl :
       { Cst.New_var { t = t; name = ident } }
   | t = dtype; ident = Ident; Assign; e = m(exp);
       { Cst.Init { t = t; name = ident; value = e } }
-  ;
 
 mstms :
   | (* empty *)
       { [] }
   | hd = m(stm); tl = mstms;
       { hd :: tl }
-  ;
 
 stm :
   | s = simp; Semicolon;
@@ -232,8 +237,6 @@ stm :
       { Cst.Control c }
   | b = block;
       { Cst.Block b }
-
-  ;
 
 simp :
   | lhs = m(lvalue); op = asnop; rhs = m(exp);
@@ -244,14 +247,12 @@ simp :
       { Cst.Declare d }
   | e = m(exp);
       { Cst.Sexp e }
-  ;
 
 lvalue :
   | ident = Ident;
       { ident }
   | L_paren; lhs = lvalue; R_paren;
       { lhs }
-  ;
 
 simpopt : 
   |
@@ -304,7 +305,6 @@ exp :
     { Cst.Terop {cond = cond; true_exp = true_exp; false_exp = false_exp} }
   | fname = Ident; arg_list = arg_list;
     { Cst.Fcall {func_name = fname; args = arg_list} }
-  ;
 
 arg_list : 
   | L_paren; R_paren;
@@ -329,7 +329,6 @@ int_const :
       { c }
   | c = Hex_const;
       { c }
-  ;
 
 (* See the menhir documentation for %inline.
  * This allows us to factor out binary operators while still
