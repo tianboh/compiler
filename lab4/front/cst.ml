@@ -135,7 +135,7 @@ type stm =
 
 and simp =
   | Assign of
-      { name : Symbol.t
+      { name : mexp
       ; value : mexp
       }
   | Declare of decl
@@ -269,7 +269,7 @@ module Print = struct
   ;;
 
   let pp_simp = function
-    | Assign id -> sprintf "%s = %s;" (Symbol.name id.name) (pp_mexp id.value)
+    | Assign id -> sprintf "%s = %s;" (pp_mexp id.name) (pp_mexp id.value)
     | Declare d -> pp_decl d
     | Sexp e -> "Sexp " ^ pp_mexp e ^ ";"
   ;;

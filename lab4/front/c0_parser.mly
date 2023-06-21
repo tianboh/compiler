@@ -2,6 +2,8 @@
 (* L3 Compiler
  * L3 grammar
  *
+ * Reference: http://gallium.inria.fr/~fpottier/menhir/manual.pdf
+ *
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  *
@@ -42,14 +44,14 @@ let expand_asnop ~lhs ~op ~rhs
   (start_pos : Lexing.position)
   (end_pos : Lexing.position) =
     match lhs, op, rhs with
-    | id, None, exp -> Cst.Assign {name = Mark.data id; value = exp}
+    | id, None, exp -> Cst.Assign {name = id; value = exp}
     | id, Some op, exp ->
       let binop = Cst.Binop {
         op;
-        lhs = Mark.map lhs ~f:(fun id -> Cst.Var id);
+        lhs = id;
         rhs = exp;
       } in
-      Cst.Assign {name = Mark.data id; value = mark binop start_pos end_pos}
+      Cst.Assign {name = id; value = mark binop start_pos end_pos}
 
 (* expand_postop (id, "postop") region = "id = id postop 1"
  * syntactically expands a compound post operator
@@ -57,14 +59,12 @@ let expand_asnop ~lhs ~op ~rhs
 let expand_postop lhs op 
   (start_pos : Lexing.position) =
     let op = match op with | Cst.Plus_plus -> Cst.Plus  | Cst.Minus_minus -> Cst.Minus in
-    match lhs, op with
-    | id, op ->
-      let binop = Cst.Binop {
-        op;
-        lhs = Mark.map lhs ~f:(fun id -> Cst.Var id);
-        rhs = Mark.naked (Cst.Const_int Int32.one);
-      } in
-      Cst.Assign {name = Mark.data id; value = mark binop start_pos start_pos}
+    let binop = Cst.Binop {
+      op;
+      lhs;
+      rhs = Mark.naked (Cst.Const_int Int32.one);
+    } in
+    Cst.Assign {name = lhs; value = mark binop start_pos start_pos}
 %}
 
 (* Variable name *)
@@ -140,6 +140,10 @@ let expand_postop lhs op
 %left Plus Minus
 %left Star Slash Percent
 %right Negative Excalmation_mark Dash_mark Plus_plus Minus_minus
+
+(* Else shift-reduce conflict solution reference
+ * https://stackoverflow.com/questions/12731922/reforming-the-grammar-to-remove-shift-reduce-conflict-in-if-then-else*)
+%right Else None 
 
 %start program
 
@@ -246,20 +250,14 @@ stm :
       { Cst.Block b }
 
 simp :
-  | lhs = m(lvalue); op = asnop; rhs = m(exp);
+  | lhs = m(exp); op = asnop; rhs = m(exp);
       { expand_asnop ~lhs ~op ~rhs $startpos(lhs) $endpos(rhs) }
-  | lhs = m(lvalue); op = postop;
+  | lhs = m(exp); op = postop;
       { expand_postop lhs op $startpos(lhs)}
   | d = decl;
       { Cst.Declare d }
   | e = m(exp);
       { Cst.Sexp e }
-
-lvalue :
-  | ident = Ident;
-      { ident }
-  | L_paren; lhs = lvalue; R_paren;
-      { lhs }
 
 simpopt : 
   |
@@ -268,7 +266,7 @@ simpopt :
       { Some simp_ }
 
 elseopt : 
-  | 
+  | %prec None
       { None }
   | Else; else_ = m(stm);
       { Some else_ }
@@ -294,20 +292,12 @@ exp :
     { Cst.True }
   | False;
     { Cst.False }
-  | ident = lvalue; 
+  | ident = Ident; 
     { Cst.Var ident }
   | unop = unop; e = m(exp);
     { Cst.Unop {op = unop; operand = e} }
-  | lhs = m(exp);
-    op = binop;
-    rhs = m(exp);
+  | lhs = m(exp); op = binop; rhs = m(exp);
     { Cst.Binop { op; lhs; rhs; } }
-  | Minus; e = m(exp); %prec Negative
-    { Cst.Unop { op = Cst.Negative; operand = e; } }
-  | Excalmation_mark; e = m(exp); %prec Excalmation_mark
-    { Cst.Unop {op = Cst.Excalmation_mark; operand = e; } }
-  | Dash_mark; e = m(exp); %prec Dash_mark
-    { Cst.Unop {op = Cst.Dash_mark; operand = e; } }
   | cond = m(exp); Question_mark; true_exp = m(exp); Colon; false_exp = m(exp);
     { Cst.Terop {cond = cond; true_exp = true_exp; false_exp = false_exp} }
   | fname = Ident; arg_list = arg_list;
@@ -381,11 +371,14 @@ binop :
     { Cst.Hat }
   ;
 
+%inline
 unop : 
   | Excalmation_mark
     { Cst.Excalmation_mark }
-  | Dash_mark
+  | Dash_mark 
     { Cst.Dash_mark }
+  | Minus 
+    { Cst.Negative }
   ;
 
 postop : 
