@@ -27,7 +27,6 @@
  *)
 module Mark = Util.Mark
 module Symbol = Util.Symbol
-let cache = ref Util.Symbol.Set.empty
 
 let mark
   (data : 'a)
@@ -68,7 +67,8 @@ let expand_postop lhs op
 %}
 
 (* Variable name *)
-%token <Util.Symbol.t> Ident
+%token <Util.Symbol.t> VIdent
+%token <Util.Symbol.t> TIdent
 (* Data type  *) 
 %token Int
 %token Bool
@@ -158,20 +158,19 @@ program :
       { gdecl :: prog }
 
 gdecl :
-  | ret_type = dtype; fun_name = Ident; pars = param_list; Semicolon;
+  | ret_type = dtype; fun_name = VIdent; pars = param_list; Semicolon;
       { Cst.Fdecl {ret_type = ret_type; func_name = fun_name; par_type = pars} }
-  | ret_type = dtype; fun_name = Ident; pars = param_list; blk = block;
+  | ret_type = dtype; fun_name = VIdent; pars = param_list; blk = block;
       { Cst.Fdefn {ret_type = ret_type; func_name = fun_name; par_type = pars; blk = blk} }
-  | Typedef; t = dtype; var = Ident; Semicolon
-      { cache := Util.Symbol.Set.add !cache var;
-        Cst.Typedef {t = t; t_var = var} }
-  | Struct; var = Ident; Semicolon
+  | Typedef; t = dtype; var = midrule(var = VIdent {Env.add var; var}); Semicolon
+      { Cst.Typedef {t = t; t_var = var} }
+  | Struct; var = VIdent; Semicolon
       { Cst.Sdecl { struct_name = var } }
-  | Struct; var = Ident; L_brace; fields = field_list; R_brace; 
+  | Struct; var = VIdent; L_brace; fields = field_list; R_brace; 
       { Cst.Sdefn { struct_name = var; fields = fields; } }
 
 field : 
-  | t = dtype; var = Ident; Semicolon
+  | t = dtype; var = VIdent; Semicolon
       { {t = t; i = var} : Cst.field }
 
 field_list :
@@ -181,7 +180,7 @@ field_list :
       { field :: fields }
 
 param : 
-  | t = dtype; var = Ident;
+  | t = dtype; var = VIdent;
       { {t = t; i = var} : Cst.param }
 
 param_list_follow:
@@ -219,20 +218,20 @@ dtype :
       { Cst.Bool }
   | Void;
       { Cst.Void }
-  | ident = Ident;
+  | ident = TIdent;
       { Cst.Ctype ident }
   | t = dtype; Star;
       { Cst.Pointer t }
   | t = dtype; L_bracket; R_bracket
       { Cst.Array t }
-  | Struct; var = Ident;
+  | Struct; var = TIdent;
       { Cst.Struct var }
       
 
 decl :
-  | t = dtype; ident = Ident;
+  | t = dtype; ident = VIdent;
       { Cst.New_var { t = t; name = ident } }
-  | t = dtype; ident = Ident; Assign; e = m(exp);
+  | t = dtype; ident = VIdent; Assign; e = m(exp);
       { Cst.Init { t = t; name = ident; value = e } }
 
 mstms :
@@ -292,7 +291,7 @@ exp :
     { Cst.True }
   | False;
     { Cst.False }
-  | ident = Ident; 
+  | ident = VIdent; 
     { Cst.Var ident }
   | unop = unop; e = m(exp);
     { Cst.Unop {op = unop; operand = e} }
@@ -300,7 +299,7 @@ exp :
     { Cst.Binop { op; lhs; rhs; } }
   | cond = m(exp); Question_mark; true_exp = m(exp); Colon; false_exp = m(exp);
     { Cst.Terop {cond = cond; true_exp = true_exp; false_exp = false_exp} }
-  | fname = Ident; arg_list = arg_list;
+  | fname = VIdent; arg_list = arg_list;
     { Cst.Fcall {func_name = fname; args = arg_list} }
 
 arg_list : 
