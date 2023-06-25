@@ -1,5 +1,5 @@
 {
-(* L3 Compiler
+(* L4 Compiler
  * Lexer
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
@@ -25,10 +25,17 @@
  * in order to make the grammar forward compatible with C0.
  * 
  * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
- *    Implemented L3 lexer based on L2. Features are listed below.
- *    - Provide function call and type alias.
- *    - Provide assert statement.
- *    - Provide void type. Only used as function return.
+ *    Implemented L4 lexer based on L3. Features are listed below.
+ *    - Provide struct
+ *    - Provide pointer
+ *    - Provide array
+ *    L4 grammar is context dependent, consider foo * var; It can indicate
+ *    1) foo multiply var 
+ *    2) declare variable var pointing to type foo
+ *    Lexer will return variable identifier or type identifier to avoid
+ *    this ambiguity. The token returned depends on current environment,
+ *    if foo is a type declared in typedef before, then return type identifier
+ *    otherwise, return variable identifier.
  *)
 
 open Core

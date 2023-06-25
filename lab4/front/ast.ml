@@ -64,6 +64,24 @@ type dtype =
   | Bool
   | Void
 
+type lvalue =
+  | Ident of Symbol.t
+  | Dot of
+      { struct_obj : lvalue
+      ; field : Symbol.t
+      }
+  | Arrow of
+      { struct_ptr : lvalue
+      ; field : Symbol.t
+      }
+  | Deref of lvalue
+  | Nth of
+      { arr : lvalue
+      ; index : mexp
+      }
+
+and mlvalue = lvalue Mark.t
+
 type stm =
   | Assign of
       { name : Symbol.t
@@ -171,6 +189,17 @@ module Print = struct
         (List.map fcall.args ~f:(fun arg -> pp_mexp arg) |> String.concat ~sep:",")
 
   and pp_mexp e = pp_exp (Mark.data e)
+
+  let rec pp_lvalue = function
+    | Ident ident -> Symbol.name ident
+    | Dot dot -> sprintf "%s.%s" (pp_lvalue dot.struct_obj) (Symbol.name dot.field)
+    | Arrow arrow ->
+      sprintf "%s->%s" (pp_lvalue arrow.struct_ptr) (Symbol.name arrow.field)
+    | Deref deref -> sprintf "*%s" (pp_lvalue deref)
+    | Nth nth -> sprintf "%s[%s]" (pp_lvalue nth.arr) (pp_mexp nth.index)
+  ;;
+
+  let pp_mlvalue mlv = pp_lvalue (Mark.data mlv)
 
   let rec pp_stm = function
     | Assign asn_ast ->

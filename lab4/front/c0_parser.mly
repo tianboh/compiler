@@ -1,6 +1,6 @@
 %{
-(* L3 Compiler
- * L3 grammar
+(* L4 Compiler
+ * L4 grammar
  *
  * Reference: http://gallium.inria.fr/~fpottier/menhir/manual.pdf
  *
@@ -20,8 +20,9 @@
  *   - Update to use menhir instead of ocamlyacc.
  *   - Improve presentation of marked Csts.
  *
- * Modified: Tianbo Hao  May 2023 
- *   - Provide L3 grammar.
+ * Modified: Tianbo Hao  June 2023 
+ *   - Provide L4 grammar.
+ *   - Provide context dependent parser based on a smart lexer
  *
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  *)
@@ -35,35 +36,6 @@ let mark
   let src_span = Mark.of_positions start_pos end_pos in
   Mark.mark data src_span
 
-(* expand_asnop (id, "op=", exp) region = "id = id op exps"
- * or = "id = exp" if asnop is "="
- * syntactically expands a compound assignment operator
- *)
-let expand_asnop ~lhs ~op ~rhs
-  (start_pos : Lexing.position)
-  (end_pos : Lexing.position) =
-    match lhs, op, rhs with
-    | id, None, exp -> Cst.Assign {name = id; value = exp}
-    | id, Some op, exp ->
-      let binop = Cst.Binop {
-        op;
-        lhs = id;
-        rhs = exp;
-      } in
-      Cst.Assign {name = id; value = mark binop start_pos end_pos}
-
-(* expand_postop (id, "postop") region = "id = id postop 1"
- * syntactically expands a compound post operator
- *)
-let expand_postop lhs op 
-  (start_pos : Lexing.position) =
-    let op = match op with | Cst.Plus_plus -> Cst.Plus  | Cst.Minus_minus -> Cst.Minus in
-    let binop = Cst.Binop {
-      op;
-      lhs;
-      rhs = Mark.naked (Cst.Const_int Int32.one);
-    } in
-    Cst.Assign {name = lhs; value = mark binop start_pos start_pos}
 %}
 
 (* Variable name *)
@@ -105,22 +77,13 @@ let expand_postop lhs op
 (* postop *)
 %token Minus_minus Plus_plus
 (* unop *)
-%token Excalmation_mark (* logical not *) Dash_mark (* bitwise not *) Negative (* This is a placeholder for minus *)
+%token Excalmation_mark (* logical not *) Dash_mark (* bitwise not *) 
 (* assign op *)
 %token Assign Plus_eq Minus_eq Star_eq Slash_eq Percent_eq And_eq Or_eq Hat_eq Left_shift_eq Right_shift_eq
 (* Ternary op *)
 %token Question_mark Colon
-
-(* Negative is a dummy terminal.
- * We need dummy terminals if we wish to assign a precedence
- * to a production that does not correspond to the precedence of
- * the rightmost terminal in that production.
- * Implicit in this is that precedence can only be inferred for
- * terminals. Therefore, don't try to assign precedence to "rules"
- * or "productions".
- *
- * Minus_minus is a dummy terminal to parse-fail on.
- *)
+(* Dummy token *)
+%token Deref Explicit_parenthesis Arr_sub Negative
 
 (*
  * Operation declared before has lower precedence. Check 
@@ -139,12 +102,13 @@ let expand_postop lhs op
 %left Left_shift Right_shift
 %left Plus Minus
 %left Star Slash Percent
-%right Negative Excalmation_mark Dash_mark Plus_plus Minus_minus
-
+%right Negative Deref Excalmation_mark Dash_mark Plus_plus Minus_minus
+%nonassoc Explicit_parenthesis Arr_sub L_bracket R_bracket Arrow Dot 
 (* Else shift-reduce conflict solution reference
  * https://stackoverflow.com/questions/12731922/reforming-the-grammar-to-remove-shift-reduce-conflict-in-if-then-else*)
 %right Else None 
-
+%nonassoc Side_eff
+%nonassoc LHS
 %start program
 
 %type <Cst.program> program
@@ -224,7 +188,7 @@ dtype :
       { Cst.Pointer t }
   | t = dtype; L_bracket; R_bracket
       { Cst.Array t }
-  | Struct; var = TIdent;
+  | Struct; var = VIdent;
       { Cst.Struct var }
       
 
@@ -249,13 +213,16 @@ stm :
       { Cst.Block b }
 
 simp :
-  | lhs = m(exp); op = asnop; rhs = m(exp);
-      { expand_asnop ~lhs ~op ~rhs $startpos(lhs) $endpos(rhs) }
+  | lhs = m(exp); op = asnop; rhs = m(exp); 
+      { Cst.Assign { name = lhs; value = rhs; op = op } }
   | lhs = m(exp); op = postop;
-      { expand_postop lhs op $startpos(lhs)}
+      { let rhs = Mark.naked (Cst.Const_int Int32.one) in
+        match op with 
+        | Cst.Plus_plus -> Cst.Assign { name = lhs; op = Cst.Plus_asn; value = rhs}
+        | Cst.Minus_minus -> Cst.Assign { name = lhs; op = Cst.Minus_asn; value = rhs } }
   | d = decl;
       { Cst.Declare d }
-  | e = m(exp);
+  | e = m(exp); 
       { Cst.Sexp e }
 
 simpopt : 
@@ -293,14 +260,32 @@ exp :
     { Cst.False }
   | ident = VIdent; 
     { Cst.Var ident }
-  | unop = unop; e = m(exp);
-    { Cst.Unop {op = unop; operand = e} }
+  | NULL;
+    { Cst.NULL }
+  | Minus; e = m(exp); %prec Negative
+    { Cst.Unop {op = Cst.Negative; operand = e} }
+  | Excalmation_mark; e = m(exp); %prec Excalmation_mark
+    { Cst.Unop {op = Cst.Excalmation_mark; operand = e} }
+  | Dash_mark; e = m(exp); %prec Dash_mark
+    { Cst.Unop {op = Cst.Dash_mark; operand = e} }
   | lhs = m(exp); op = binop; rhs = m(exp);
     { Cst.Binop { op; lhs; rhs; } }
   | cond = m(exp); Question_mark; true_exp = m(exp); Colon; false_exp = m(exp);
     { Cst.Terop {cond = cond; true_exp = true_exp; false_exp = false_exp} }
   | fname = VIdent; arg_list = arg_list;
     { Cst.Fcall {func_name = fname; args = arg_list} }
+  | struct_obj = m(exp); Dot; ident = VIdent; 
+      { Cst.Dot { struct_obj = struct_obj; field = ident } }
+  | ptr = m(exp); Arrow; ident = VIdent; 
+      { Cst.Arrow { struct_ptr = ptr; field = ident } }
+  | Alloc; L_paren; t = dtype; R_paren;
+      { Cst.Alloc {t = t} }
+  | Star; lv = m(exp); 
+      { Cst.Deref lv }
+  | Alloc_array; L_paren; t = dtype; Comma; e = m(exp); R_paren;
+      { Cst.Alloc_arr {t = t; e = e} }
+  | arr = m(exp); L_bracket; e = m(exp); R_bracket; 
+      { Cst.Nth { arr = arr; index = e } }
 
 arg_list : 
   | L_paren; R_paren;
@@ -370,16 +355,6 @@ binop :
     { Cst.Hat }
   ;
 
-%inline
-unop : 
-  | Excalmation_mark
-    { Cst.Excalmation_mark }
-  | Dash_mark 
-    { Cst.Dash_mark }
-  | Minus 
-    { Cst.Negative }
-  ;
-
 postop : 
   | Plus_plus
     { Cst.Plus_plus }
@@ -389,27 +364,27 @@ postop :
 
 asnop :
   | Assign
-      { None }
+      { Cst.Asn }
   | Plus_eq
-      { Some Cst.Plus }
+      { Cst.Plus_asn }
   | Minus_eq
-      { Some Cst.Minus }
+      { Cst.Minus_asn }
   | Star_eq
-      { Some Cst.Times }
+      { Cst.Times_asn }
   | Slash_eq
-      { Some Cst.Divided_by }
+      { Cst.Div_asn }
   | Percent_eq
-      { Some Cst.Modulo }
+      { Cst.Mod_asn }
   | And_eq
-      { Some Cst.And }
+      { Cst.And_asn }
   | Hat_eq
-      { Some Cst.Hat }
+      { Cst.Hat_asn }
   | Or_eq
-      { Some Cst.Or }
+      { Cst.Or_asn }
   | Left_shift_eq
-      { Some Cst.Left_shift }
+      { Cst.Left_shift_asn }
   | Right_shift_eq
-      { Some Cst.Right_shift }
+      { Cst.Right_shift_asn }
   ;
 
 %%

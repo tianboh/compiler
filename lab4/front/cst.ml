@@ -1,11 +1,10 @@
-(* L3 Compiler
+(* L4 Compiler
  * Concrete Syntax Trees
  *
- * We provide new features for L3 grammar based on L2
- * 1) function declaration and function defination.
- * 2) type alias system. including new type for "ident", 
- * which is used by type alias, and "void", which is a 
- * choice for function return type.
+ * We provide new features for L4 grammar based on L3
+ *  - struct
+ *  - array
+ *  - pointer
  *
  * Author: Alex Vaynberg
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
@@ -50,38 +49,30 @@ type binop =
   | Less_eq
   | Not_eq
 
-(* They are not used in CST because they are parsed to binop in mly *)
 type unop =
   | Negative
-  | Excalmation_mark
   (* "!" logical not *)
+  | Excalmation_mark
+  (* "~" bitwise not *)
   | Dash_mark
-(* "~" bitwise not *)
 
-(* They are not used as well, reason as unop. *)
 type postop =
   | Plus_plus
   | Minus_minus
 
-(* Notice that the subexpressions of an expression are marked.
- * (That is, the subexpressions are of type exp Mark.t, not just
- * type exp.) This means that source code location (a src_span) is
- * associated with the subexpression. Currently, the typechecker uses
- * this source location to print more helpful error messages.
- *
- * It's the parser and lexer's job to associate src_span locations with each
- * ast. It's instructive, but not necessary, to closely read the source code
- * for c0_parser.mly, c0_lexer.mll, and parse.ml to get a good idea of how
- * src_spans are created.
- *
- * Check out the Mark module for ways of converting a marked expression into
- * the original expression or to the src_span location. You could also just
- * look at how the typechecker gets the src_span from an expression when it
- * prints error messages.
- *
- * It's completely possible to remove Marks entirely from your compiler, but
- * it will be harder to figure out typechecking errors for later labs.
- *)
+type asnop =
+  | Asn
+  | Plus_asn
+  | Minus_asn
+  | Times_asn
+  | Div_asn
+  | Mod_asn
+  | And_asn
+  | Hat_asn
+  | Or_asn
+  | Left_shift_asn
+  | Right_shift_asn
+
 type exp =
   | Var of Symbol.t
   | Const_int of Int32.t
@@ -105,10 +96,29 @@ type exp =
       { func_name : Symbol.t
       ; args : mexp list
       }
+  | Dot of
+      { struct_obj : mexp
+      ; field : Symbol.t
+      }
+  | Arrow of
+      { struct_ptr : mexp
+      ; field : Symbol.t
+      }
+  | Deref of mexp
+  | Nth of
+      { arr : mexp
+      ; index : mexp
+      }
+  | NULL
+  | Alloc of { t : dtype }
+  | Alloc_arr of
+      { t : dtype
+      ; e : mexp
+      }
 
 and mexp = exp Mark.t
 
-type dtype =
+and dtype =
   | Int
   | Bool
   | Ctype of Symbol.t (* for custom type alias *)
@@ -137,6 +147,7 @@ and simp =
   | Assign of
       { name : mexp
       ; value : mexp
+      ; op : asnop
       }
   | Declare of decl
   | Sexp of mexp
@@ -230,6 +241,20 @@ module Print = struct
     | Dash_mark -> "~"
   ;;
 
+  let pp_asnop = function
+    | Asn -> "="
+    | Plus_asn -> "+="
+    | Minus_asn -> "-="
+    | Times_asn -> "*="
+    | Div_asn -> "/="
+    | Mod_asn -> "%="
+    | And_asn -> "&="
+    | Hat_asn -> "^="
+    | Or_asn -> "|="
+    | Left_shift_asn -> "<<="
+    | Right_shift_asn -> ">>="
+  ;;
+
   let rec pp_exp = function
     | Var id -> Symbol.name id
     | Const_int c -> Int32.to_string c
@@ -249,10 +274,18 @@ module Print = struct
         "%s(%s)"
         (Symbol.name fcall.func_name)
         (List.map fcall.args ~f:(fun arg -> pp_mexp arg) |> String.concat ~sep:",")
+    | Dot dot -> sprintf "%s.%s" (pp_mexp dot.struct_obj) (Symbol.name dot.field)
+    | Arrow arrow -> sprintf "%s->%s" (pp_mexp arrow.struct_ptr) (Symbol.name arrow.field)
+    | Deref deref -> sprintf "*%s" (pp_mexp deref)
+    | Nth nth -> sprintf "%s[%s]" (pp_mexp nth.arr) (pp_mexp nth.index)
+    | NULL -> "NULL"
+    | Alloc alloc -> sprintf "alloc(%s)" (pp_dtype alloc.t)
+    | Alloc_arr alloc_arr ->
+      sprintf "alloc_arracy(%s, %s)" (pp_dtype alloc_arr.t) (pp_mexp alloc_arr.e)
 
   and pp_mexp e = pp_exp (Mark.data e)
 
-  let rec pp_dtype = function
+  and pp_dtype = function
     | Int -> "int"
     | Bool -> "bool"
     | Void -> "void"
@@ -269,7 +302,8 @@ module Print = struct
   ;;
 
   let pp_simp = function
-    | Assign id -> sprintf "%s = %s;" (pp_mexp id.name) (pp_mexp id.value)
+    | Assign asn ->
+      sprintf "%s %s %s;" (pp_mexp asn.name) (pp_asnop asn.op) (pp_mexp asn.value)
     | Declare d -> pp_decl d
     | Sexp e -> "Sexp " ^ pp_mexp e ^ ";"
   ;;
