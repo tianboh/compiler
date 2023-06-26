@@ -19,17 +19,17 @@
  * This will reduce the Intermediate Representation.
  *
  * Expression level benefit:
- * 1) logical operation && || ^ can be denoted in ternary expression, 
+ *  - logical operation && || ^ can be denoted in ternary expression, 
  *    logical operation anymore.
- * 2) <binop>= b can be simplified to a = a binop b
- * This can simplify our work in IR level
- * More details can be checked in
- * https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf Page 5-6
  *
- * Function level elaboration is trivial because we don't do anything.
+ * No operation on function level elaboration.
  *
- * In addition, we elaborate typedef to primitive data type(int, bool, void). 
+ * Elaborate typedef to primitive data type(int, bool, void). 
  * So AST datatype do not need to bother custom types.
+ *
+ * Provide elab_lvalue for assignment.
+ *
+ * Forbide elab e1 asnop e2 as e1 = e1 op e2 for possible side effect.
  *
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
@@ -55,13 +55,50 @@ let ct2pt = ref Symbol.Map.empty
  * typedef name conflict or not. *)
 let func_env = ref Symbol.Set.empty
 
+let elab_ptype = function
+  | Cst.Int -> Ast.Int
+  | Cst.Bool -> Ast.Bool
+  | Cst.Void -> Ast.Void
+  | Cst.Ctype _ -> failwith "elab_ptype should only handle primitive types"
+  | Cst.Pointer _ -> failwith "not yet"
+  | Cst.Array _ -> failwith "not yet"
+  | Cst.Struct _ -> failwith "not yet"
+;;
+
+let elab_type ctype =
+  let ptype =
+    match ctype with
+    | Cst.Int -> Cst.Int
+    | Cst.Bool -> Cst.Bool
+    | Cst.Void -> Cst.Void
+    | Cst.Ctype c -> Symbol.Map.find_exn !ct2pt c
+    | Cst.Pointer _ -> failwith "not yet"
+    | Cst.Array _ -> failwith "not yet"
+    | Cst.Struct _ -> failwith "not yet"
+  in
+  elab_ptype ptype
+;;
+
+let elab_asnop (asnop : Cst.asnop) : Ast.asnop =
+  match asnop with
+  | Asn -> Asn
+  | Plus_asn -> Plus_asn
+  | Minus_asn -> Minus_asn
+  | Times_asn -> Times_asn
+  | Div_asn -> Div_asn
+  | Mod_asn -> Mod_asn
+  | And_asn -> And_asn
+  | Hat_asn -> Hat_asn
+  | Or_asn -> Or_asn
+  | Left_shift_asn -> Left_shift_asn
+  | Right_shift_asn -> Right_shift_asn
+;;
+
 (* 
  * CST exp -> AST exp
- * Our goal is to 
  * 1) Remove unary op in AST, including -, !, and ~
  * 2) Remove logical-logical op, indicating input and output are both logical ,
  * in AST, including && and ||
- * 3) Now we only have binary and ternary op, translate them to AST exp 
  *)
 let rec elab_exp = function
   | Cst.Var var ->
@@ -75,6 +112,16 @@ let rec elab_exp = function
   | Cst.Terop terop -> elab_terop terop.cond terop.true_exp terop.false_exp
   | Cst.Fcall fcall ->
     Ast.Fcall { func_name = fcall.func_name; args = List.map fcall.args ~f:elab_mexp }
+  | Cst.Dot dot -> Ast.EDot { struct_obj = elab_mexp dot.struct_obj; field = dot.field }
+  | Cst.Arrow arrow ->
+    let struct_obj = Mark.naked (Ast.EDeref { ptr = elab_mexp arrow.struct_ptr }) in
+    Ast.EDot { struct_obj; field = arrow.field }
+  | Cst.Deref deref -> Ast.EDeref { ptr = elab_mexp deref.ptr }
+  | Cst.Nth nth -> Ast.ENth { arr = elab_mexp nth.arr; index = elab_mexp nth.index }
+  | Cst.NULL -> Ast.NULL
+  | Cst.Alloc alloc -> Ast.Alloc { t = elab_type alloc.t }
+  | Cst.Alloc_arr alloc_arr ->
+    Ast.Alloc_arr { t = elab_type alloc_arr.t; e = elab_mexp alloc_arr.e }
 
 (* CST mexp -> AST mexp *)
 and elab_mexp (cst_mexp : Cst.mexp) =
@@ -130,28 +177,30 @@ and elab_terop (cond : Cst.mexp) (true_exp : Cst.mexp) (false_exp : Cst.mexp) : 
   Ast.Terop { cond = cond_ast; true_exp = true_exp_ast; false_exp = false_exp_ast }
 ;;
 
-let elab_ptype = function
-  | Cst.Int -> Ast.Int
-  | Cst.Bool -> Ast.Bool
-  | Cst.Void -> Ast.Void
-  | Cst.Ctype _ -> failwith "elab_ptype should only handle primitive types"
-  | Cst.Pointer _ -> failwith "not yet"
-  | Cst.Array _ -> failwith "not yet"
-  | Cst.Struct _ -> failwith "not yet"
-;;
+let rec elab_lvalue = function
+  | Cst.Var var ->
+    if Symbol.Map.mem !ct2pt var then error ~msg:"exp name conflict with typename" None;
+    Ast.Ident var
+  | Cst.Const_int _ -> failwith "lvalue not accept int const"
+  | Cst.True | Cst.False -> failwith "lvalue not accept boolean const"
+  | Cst.Binop _ | Cst.Unop _ | Cst.Terop _ ->
+    failwith "lvalue not accept binop, unop, terop"
+  | Cst.Fcall _ -> failwith "lvalue not accept fcall"
+  | Cst.Dot dot ->
+    Ast.LVDot { struct_obj = elab_mlvalue dot.struct_obj; field = dot.field }
+  | Cst.Arrow arrow ->
+    let struct_obj = Mark.naked (Ast.LVDeref { ptr = elab_mlvalue arrow.struct_ptr }) in
+    Ast.LVDot { struct_obj; field = arrow.field }
+  | Cst.Deref deref -> Ast.LVDeref { ptr = elab_mlvalue deref.ptr }
+  | Cst.Nth nth -> Ast.LVNth { arr = elab_mlvalue nth.arr; index = elab_mexp nth.index }
+  | Cst.NULL -> failwith "lvalue not accept NULL"
+  | Cst.Alloc _ | Cst.Alloc_arr _ -> failwith "cannot alloc at lvalue"
 
-let elab_type ctype =
-  let ptype =
-    match ctype with
-    | Cst.Int -> Cst.Int
-    | Cst.Bool -> Cst.Bool
-    | Cst.Void -> Cst.Void
-    | Cst.Ctype c -> Symbol.Map.find_exn !ct2pt c
-    | Cst.Pointer _ -> failwith "not yet"
-    | Cst.Array _ -> failwith "not yet"
-    | Cst.Struct _ -> failwith "not yet"
-  in
-  elab_ptype ptype
+and elab_mlvalue mlvalue_cst =
+  let src_span = Mark.src_span mlvalue_cst in
+  let lvalue_cst = Mark.data mlvalue_cst in
+  let lvalue_ast = elab_lvalue lvalue_cst in
+  Mark.mark' lvalue_ast src_span
 ;;
 
 let rec elab_blk (cst : Cst.block) (acc : Ast.mstm) : Ast.mstm =
@@ -187,11 +236,11 @@ and elab_simp (simp : Cst.simp) (src_span : Mark.src_span option) (tail : Cst.ms
   match simp with
   | Cst.Declare decl -> elab_declare decl src_span tail
   | Cst.Assign asn ->
-    (match Mark.data asn.name with
-    | Cst.Var name ->
-      let asn_ast = Ast.Assign { name; value = elab_mexp asn.value } in
-      Mark.mark' asn_ast src_span, tail
-    | _ -> failwith "assign expect a symbol.")
+    let name = elab_mlvalue asn.name in
+    let value = elab_mexp asn.value in
+    let op = elab_asnop asn.op in
+    let asn_ast = Ast.Assign { name; value; op } in
+    Mark.mark' asn_ast src_span, tail
   | Cst.Sexp exp -> Mark.mark' (Ast.Sexp (elab_mexp exp)) src_span, tail
 
 and elab_declare (decl : Cst.decl) (src_span : Mark.src_span option) (tail : Cst.mstms) =

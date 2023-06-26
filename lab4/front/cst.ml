@@ -104,7 +104,7 @@ type exp =
       { struct_ptr : mexp
       ; field : Symbol.t
       }
-  | Deref of mexp
+  | Deref of { ptr : mexp }
   | Nth of
       { arr : mexp
       ; index : mexp
@@ -276,7 +276,7 @@ module Print = struct
         (List.map fcall.args ~f:(fun arg -> pp_mexp arg) |> String.concat ~sep:",")
     | Dot dot -> sprintf "%s.%s" (pp_mexp dot.struct_obj) (Symbol.name dot.field)
     | Arrow arrow -> sprintf "%s->%s" (pp_mexp arrow.struct_ptr) (Symbol.name arrow.field)
-    | Deref deref -> sprintf "*%s" (pp_mexp deref)
+    | Deref deref -> sprintf "*%s" (pp_mexp deref.ptr)
     | Nth nth -> sprintf "%s[%s]" (pp_mexp nth.arr) (pp_mexp nth.index)
     | NULL -> "NULL"
     | Alloc alloc -> sprintf "alloc(%s)" (pp_dtype alloc.t)
@@ -347,6 +347,7 @@ module Print = struct
     | h :: t -> sprintf "%s" (pp_mstm h) ^ pp_blk t
 
   and pp_param (param : param) = sprintf " %s %s" (pp_dtype param.t) (Symbol.name param.i)
+  and pp_field (field : field) = sprintf "%s %s" (pp_dtype field.t) (Symbol.name field.i)
 
   and pp_gdecl = function
     | Fdecl fdecl ->
@@ -364,8 +365,12 @@ module Print = struct
         (pp_block fdefn.blk)
     | Typedef typedef ->
       sprintf "typedef %s %s" (pp_dtype typedef.t) (Symbol.name typedef.t_var)
-    | Sdefn _ -> failwith "not yet"
-    | Sdecl _ -> failwith "not yet"
+    | Sdefn sdefn ->
+      sprintf
+        "struct %s{%s}"
+        (Symbol.name sdefn.struct_name)
+        (List.map sdefn.fields ~f:pp_field |> String.concat ~sep:"; ")
+    | Sdecl sdecl -> sprintf "struct %s;" (Symbol.name sdecl.struct_name)
 
   and pp_mstm stm = pp_stm (Mark.data stm)
   and pp_msimp msimp = pp_simp (Mark.data msimp)

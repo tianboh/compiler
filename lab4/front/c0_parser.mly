@@ -281,7 +281,7 @@ exp :
   | Alloc; L_paren; t = dtype; R_paren;
       { Cst.Alloc {t = t} }
   | Star; lv = m(exp); 
-      { Cst.Deref lv }
+      { Cst.Deref {ptr = lv} }
   | Alloc_array; L_paren; t = dtype; Comma; e = m(exp); R_paren;
       { Cst.Alloc_arr {t = t; e = e} }
   | arr = m(exp); L_bracket; e = m(exp); R_bracket; 

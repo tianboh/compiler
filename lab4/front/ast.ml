@@ -1,6 +1,8 @@
-(* L3 Compiler
- * Abstract Syntax Trees for L3
- * Provide gdecl as a higher level for statement.
+(* L4 Compiler
+ * Abstract Syntax Trees for L4
+ *  - gdecl as a higher level for statement.
+ *  - struct, pointer, array. 
+ *  - new syntax for lvalue
  *
  * Created: Alex Vaynberg
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
@@ -37,7 +39,43 @@ type binop =
   | Less_eq
   | Not_eq
 
-type exp =
+type asnop =
+  | Asn
+  | Plus_asn
+  | Minus_asn
+  | Times_asn
+  | Div_asn
+  | Mod_asn
+  | And_asn
+  | Hat_asn
+  | Or_asn
+  | Left_shift_asn
+  | Right_shift_asn
+
+type dtype =
+  | Int
+  | Bool
+  | Void
+  | NULL
+  | Pointer of dtype
+  | Array of dtype
+  | Struct of Symbol.t
+
+type lvalue =
+  | Ident of Symbol.t
+  | LVDot of
+      { struct_obj : mlvalue
+      ; field : Symbol.t
+      }
+  | LVDeref of { ptr : mlvalue }
+  | LVNth of
+      { arr : mlvalue
+      ; index : mexp
+      }
+
+and mlvalue = lvalue Mark.t
+
+and exp =
   | Var of Symbol.t
   | Const_int of Int32.t
   | True
@@ -56,36 +94,29 @@ type exp =
       { func_name : Symbol.t
       ; args : mexp list
       }
+  | EDot of
+      { struct_obj : mexp
+      ; field : Symbol.t
+      }
+  | EDeref of { ptr : mexp }
+  | ENth of
+      { arr : mexp
+      ; index : mexp
+      }
+  | NULL
+  | Alloc of { t : dtype }
+  | Alloc_arr of
+      { t : dtype
+      ; e : mexp
+      }
 
 and mexp = exp Mark.t
 
-type dtype =
-  | Int
-  | Bool
-  | Void
-
-type lvalue =
-  | Ident of Symbol.t
-  | Dot of
-      { struct_obj : lvalue
-      ; field : Symbol.t
-      }
-  | Arrow of
-      { struct_ptr : lvalue
-      ; field : Symbol.t
-      }
-  | Deref of lvalue
-  | Nth of
-      { arr : lvalue
-      ; index : mexp
-      }
-
-and mlvalue = lvalue Mark.t
-
 type stm =
   | Assign of
-      { name : Symbol.t
+      { name : mlvalue
       ; value : mexp
+      ; op : asnop
       }
   | If of
       { cond : mexp
@@ -123,6 +154,11 @@ type param =
   ; i : Symbol.t
   }
 
+type field =
+  { t : dtype
+  ; i : Symbol.t
+  }
+
 type gdecl =
   | Fdecl of
       { ret_type : dtype
@@ -139,14 +175,23 @@ type gdecl =
       { t : dtype
       ; t_var : Symbol.t
       }
+  | Sdecl of { struct_name : Symbol.t }
+  | Sdefn of
+      { struct_name : Symbol.t
+      ; fields : field list
+      }
 
 type program = gdecl list
 
 module Print = struct
-  let pp_dtype = function
+  let rec pp_dtype = function
     | Int -> "int"
     | Bool -> "bool"
     | Void -> "void"
+    | Pointer ptr -> "*" ^ pp_dtype ptr
+    | Array arr -> pp_dtype arr ^ "[]"
+    | NULL -> "NULL"
+    | Struct s -> "struct " ^ Symbol.name s
   ;;
 
   let pp_binop = function
@@ -187,23 +232,27 @@ module Print = struct
         "%s(%s)"
         (Symbol.name fcall.func_name)
         (List.map fcall.args ~f:(fun arg -> pp_mexp arg) |> String.concat ~sep:",")
+    | EDot edot -> sprintf "%s.%s" (pp_mexp edot.struct_obj) (Symbol.name edot.field)
+    | EDeref ederef -> sprintf "*%s" (pp_mexp ederef.ptr)
+    | ENth enth -> sprintf "%s[%s]" (pp_mexp enth.arr) (pp_mexp enth.index)
+    | NULL -> "NULL"
+    | Alloc alloc -> sprintf "alloc(%s)" (pp_dtype alloc.t)
+    | Alloc_arr alloc_arr ->
+      sprintf "alloc_array(%s, %s)" (pp_dtype alloc_arr.t) (pp_mexp alloc_arr.e)
 
   and pp_mexp e = pp_exp (Mark.data e)
 
   let rec pp_lvalue = function
     | Ident ident -> Symbol.name ident
-    | Dot dot -> sprintf "%s.%s" (pp_lvalue dot.struct_obj) (Symbol.name dot.field)
-    | Arrow arrow ->
-      sprintf "%s->%s" (pp_lvalue arrow.struct_ptr) (Symbol.name arrow.field)
-    | Deref deref -> sprintf "*%s" (pp_lvalue deref)
-    | Nth nth -> sprintf "%s[%s]" (pp_lvalue nth.arr) (pp_mexp nth.index)
-  ;;
+    | LVDot dot -> sprintf "%s.%s" (pp_mlvalue dot.struct_obj) (Symbol.name dot.field)
+    | LVDeref deref -> sprintf "*%s" (pp_mlvalue deref.ptr)
+    | LVNth nth -> sprintf "%s[%s]" (pp_mlvalue nth.arr) (pp_mexp nth.index)
 
-  let pp_mlvalue mlv = pp_lvalue (Mark.data mlv)
+  and pp_mlvalue mlv = pp_lvalue (Mark.data mlv)
 
   let rec pp_stm = function
     | Assign asn_ast ->
-      sprintf "Assign (%s = %s;)" (Symbol.name asn_ast.name) (pp_mexp asn_ast.value)
+      sprintf "Assign (%s = %s;)" (pp_mlvalue asn_ast.name) (pp_mexp asn_ast.value)
     | If if_ast ->
       sprintf
         "if(%s){ %s } else { %s }"
@@ -230,7 +279,8 @@ module Print = struct
   and pp_mstm stm = pp_stm (Mark.data stm) ^ "\n"
 
   (* and pp_stms stms = String.concat (List.map ~f:(fun stm -> pp_mstm stm ^ "\n") stms) *)
-  let pp_param param = sprintf "%s %s" (pp_dtype param.t) (Symbol.name param.i)
+  let pp_param (param : param) = sprintf "%s %s" (pp_dtype param.t) (Symbol.name param.i)
+  let pp_field (field : field) = sprintf "%s %s" (pp_dtype field.t) (Symbol.name field.i)
 
   let pp_gdecl = function
     | Fdecl fdecl ->
@@ -248,6 +298,12 @@ module Print = struct
         (pp_mstm fdefn.blk)
     | Typedef typedef ->
       sprintf "typedef %s %s" (pp_dtype typedef.t) (Symbol.name typedef.t_var)
+    | Sdefn sdefn ->
+      sprintf
+        "struct %s{%s}"
+        (Symbol.name sdefn.struct_name)
+        (List.map sdefn.fields ~f:pp_field |> String.concat ~sep:"; ")
+    | Sdecl sdecl -> sprintf "struct %s;" (Symbol.name sdecl.struct_name)
   ;;
 
   let pp_program program = List.map program ~f:pp_gdecl |> String.concat ~sep:"\n\n"
