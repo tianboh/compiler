@@ -1,11 +1,9 @@
 (* 
  * Controlflow analysis
  *
- * Control flow check is part of semantic analysis.
- * It will check
- * 1) Whether each AST element has return, except function
- * with void return type.
- * 2) Whether a variable is used before initialization.
+ * Control flow check is part of static semantic analysis.
+ * 1) Each AST branch has return, except function with void return.
+ * 2) Variable is initialized before use. (exp RHS)
  * 
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
@@ -48,14 +46,11 @@ let error ~msg src_span =
  * So we treat it conservatively as never return *)
 let rec _cf_ret_stm (ast : AST.mstm) : bool =
   match Mark.data ast with
-  | Assign _ -> false
   | If if_ast -> _cf_ret_stm if_ast.true_stm && _cf_ret_stm if_ast.false_stm
-  | While _ -> false
-  | Return _ -> true
-  | Nop -> false
   | Seq seq_ast -> _cf_ret_stm seq_ast.head || _cf_ret_stm seq_ast.tail
   | Declare decl_ast -> _cf_ret_stm decl_ast.tail
-  | Sexp _ | Assert _ -> false
+  | Return _ -> true
+  | Assign _ | Sexp _ | Assert _ | While _ | Nop -> false
 ;;
 
 let rec cf_ret (ast : AST.program) : unit =
@@ -68,7 +63,7 @@ let rec cf_ret (ast : AST.program) : unit =
       | Void -> ()
       | _ ->
         if not (_cf_ret_stm fdefn.blk) then error ~msg:"Some branches not return" None)
-    | Typedef _ | Fdecl _ -> ());
+    | Typedef _ | Fdecl _ | Sdecl _ | Sdefn _ -> ());
     cf_ret t
 ;;
 
@@ -76,12 +71,14 @@ let rec cf_ret (ast : AST.program) : unit =
 let rec use (exp : AST.mexp) (var : Symbol.t) : bool =
   match Mark.data exp with
   | Var var' -> phys_equal var' var
-  | Const_int _ -> false
-  | True -> false
-  | False -> false
   | Binop binop -> use binop.lhs var || use binop.rhs var
   | Terop terop -> use terop.cond var || use terop.true_exp var || use terop.false_exp var
   | Fcall fcall -> List.fold fcall.args ~init:false ~f:(fun acc arg -> acc || use arg var)
+  | EDot dot -> use dot.struct_obj var
+  | EDeref deref -> use deref.ptr var
+  | ENth nth -> use nth.arr var
+  | Alloc_arr alloc_arr -> use alloc_arr.e var
+  | Const_int _ | True | False | NULL | Alloc _ -> false
 ;;
 
 (* Check whether variable var is live in statement stm
@@ -117,14 +114,16 @@ let rec live (stm : AST.mstm) (var : Symbol.t) : bool =
 (* Check whether stm defines var *)
 and define (stm : AST.mstm) (var : Symbol.t) : bool =
   match Mark.data stm with
-  | Assign asn_ast -> if phys_equal asn_ast.name var then true else false
+  | Assign asn_ast ->
+    (match Mark.data asn_ast.name with
+    | Ident lv -> if phys_equal lv var then true else false
+    | LVDot _ | LVDeref _ | LVNth _ -> false)
   | If if_ast -> define if_ast.true_stm var && define if_ast.false_stm var
-  | While _ -> false
-  | Return _ -> true
   | Seq seq_ast -> define seq_ast.head var || define seq_ast.tail var
   | Declare decl_ast ->
     if phys_equal decl_ast.name var then false else define decl_ast.tail var
-  | Sexp _ | Assert _ | Nop -> false
+  | Return _ -> true
+  | While _ | Sexp _ | Assert _ | Nop -> false
 ;;
 
 (* This is an expression level check. It is called by
@@ -136,9 +135,6 @@ let rec cf_exp (exp : AST.mexp) (env : env) : unit =
   | Var var ->
     if not (Set.mem env.var_def var)
     then error ~msg:(sprintf "var %s is used before decl" (Symbol.name var)) loc
-  | Const_int _ -> ()
-  | True -> ()
-  | False -> ()
   | Binop binop ->
     cf_exp binop.lhs env;
     cf_exp binop.rhs env
@@ -147,6 +143,33 @@ let rec cf_exp (exp : AST.mexp) (env : env) : unit =
     cf_exp terop.true_exp env;
     cf_exp terop.false_exp env
   | Fcall fcall -> List.iter fcall.args ~f:(fun arg -> cf_exp arg env)
+  | EDot dot -> cf_exp dot.struct_obj env
+  | ENth nth -> cf_exp nth.arr env
+  | EDeref deref -> cf_exp deref.ptr env
+  | Alloc_arr alloc_arr -> cf_exp alloc_arr.e env
+  | Const_int _ | True | False | NULL | Alloc _ -> ()
+;;
+
+(* Lvalue should in correct state
+ *  - ident: declared
+ *  - struct, array, deref: defined 
+ * is_define is true when need lvalue defined
+ * is_define is false when need lvalue declared
+ *)
+let rec cf_lvalue (lvalue : AST.mlvalue) (env : env) (is_define : bool) : unit =
+  let loc = Mark.src_span lvalue in
+  match Mark.data lvalue with
+  | Ident var ->
+    (match is_define with
+    | true ->
+      if not (Set.mem env.var_def var)
+      then error ~msg:(sprintf "var %s is used before define" (Symbol.name var)) loc
+    | false ->
+      if not (Set.mem env.var_decl var)
+      then error ~msg:(sprintf "var %s is used before decl" (Symbol.name var)) loc)
+  | LVDot dot -> cf_lvalue dot.struct_obj env true
+  | LVNth nth -> cf_lvalue nth.arr env true
+  | LVDeref deref -> cf_lvalue deref.ptr env true
 ;;
 
 (* On each control flow path through the program connecting 
@@ -170,7 +193,10 @@ let rec cf_stm (ast : AST.mstm) (env : env) : env =
   match Mark.data ast with
   | Assign asn_ast ->
     cf_exp asn_ast.value env;
-    { env with var_def = Set.add env.var_def asn_ast.name }
+    cf_lvalue asn_ast.name env false;
+    (match Mark.data asn_ast.name with
+    | Ident var -> { env with var_def = Set.add env.var_def var }
+    | LVDot _ | LVDeref _ | LVNth _ -> env)
   | If if_ast ->
     cf_exp if_ast.cond env;
     let env1 = cf_stm if_ast.true_stm env in
@@ -233,5 +259,5 @@ let rec cf_init (ast : AST.program) =
       let env = { var_decl = Set.empty; var_def = Set.empty } in
       cf_fdefn fdefn.pars fdefn.blk env;
       cf_init t
-    | Fdecl _ | Typedef _ -> cf_init t)
+    | Fdecl _ | Typedef _ | Sdecl _ | Sdefn _ -> cf_init t)
 ;;

@@ -1,22 +1,19 @@
-(* L3 Compiler
+(* L4 Compiler
  * TypeChecker
  *
  * Author: Alex Vaynberg <alv@andrew.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  *
- * This type checker is part of the semantic analysis
+ * This type checker is part of the static semantic analysis
  * It checkes whether each statement and expression is valid
- * 
- * Check https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab2.pdf
- * Section 4.1 for more details.
  *
  * Statement level check
- * 1) Check the expression of statement is of the correct type. 
+ * 1) Expression of statement is of the correct type. 
  * For example, whether the expression of If.cond is Bool type.
- * 2) Check sub-statement is valid of a statement.
+ * 2) Sub-statement is valid.
  * For example, whether Seq.head and Seq.tail is valid for Seq.
- * 3) Check variable re-declaration error, and assign without declare error.
+ * 3) No variable re-declaration.
  *
  * Expression level check
  * 1) operand and operator consistency
@@ -24,11 +21,11 @@
  * Function level check
  * 1) Each function is defined before called
  * 2) Calling exp argument type and defined signature match
- * 3) Parameter conflict with local variables
+ * 3) No conflict between parameter and local variables
  * 4) No functions are defined several time
  *
  * We can summarize above checks to two cases
- * 1) Type check in statement and expression
+ * 1) Type check in statement and expression(matchness for LHS and RHS)
  * 2) Variable declaration check, including re-decl and non-decl.
  *
  * Type alias is already handled in elab, so we don't bother it here.
@@ -75,9 +72,20 @@ type func =
   ; scope : scope
   }
 
+type field =
+  { name : Symbol.t
+  ; dtype : dtype
+  }
+
+type struct' =
+  { fields : dtype Map.t
+  ; state : state
+  }
+
 type env =
   { vars : var Map.t (* variable decl/def tracker *)
   ; funcs : func Map.t (* function signature *)
+  ; structs : struct' Map.t (* struct signature *)
   }
 
 (* functions not defined during TC. Check once TC is done. *)
@@ -94,6 +102,12 @@ let type_cmp (t1 : dtype) (t2 : dtype) =
   | Int, Int -> true
   | Bool, Bool -> true
   | Void, Void -> true
+  | NULL, NULL -> true
+  | NULL, Pointer _ -> true
+  | Pointer _, NULL -> true
+  | Pointer p1, Pointer p2 -> phys_equal p1 p2
+  | Array a1, Array a2 -> phys_equal a1 a2
+  | Struct s1, Struct s2 -> phys_equal s1 s2
   | _ -> false
 ;;
 
@@ -119,14 +133,14 @@ let tc_signature (params1 : dtype list) (params2 : dtype list) func_name =
 let rec tc_exp (exp : AST.mexp) (env : env) : dtype =
   let loc = Mark.src_span exp in
   match Util.Mark.data exp with
-  | AST.Var var ->
+  | Var var ->
     (match Map.find env.vars var with
     | None -> error ~msg:(sprintf "Identifier not declared: `%s`" (Symbol.name var)) loc
     | Some var -> var.dtype)
-  | AST.Const_int _ -> Int
-  | AST.True -> Bool
-  | AST.False -> Bool
-  | AST.Binop binop ->
+  | Const_int _ -> Int
+  | True -> Bool
+  | False -> Bool
+  | Binop binop ->
     (match binop.op with
     (* Relation op: < <= > >= *)
     | AST.Less | AST.Less_eq | AST.Greater | AST.Greater_eq ->
@@ -147,16 +161,17 @@ let rec tc_exp (exp : AST.mexp) (env : env) : dtype =
       (match t1, t2 with
       | Int, Int -> Int
       | _, _ -> error ~msg:"Integer binop operands are not integer" loc))
-  | AST.Terop terop ->
+  | Terop terop ->
     let t_cond = tc_exp terop.cond env in
     let t1 = tc_exp terop.true_exp env in
     let t2 = tc_exp terop.false_exp env in
     if type_cmp t1 Void || type_cmp t2 Void then error ~msg:"exp type cannot be void" None;
     (match t_cond with
-    | Int | Void -> error ~msg:"Terop condition should be bool" loc
+    | Int | Void | NULL | Pointer _ | Array _ | Struct _ ->
+      error ~msg:"Terop condition should be bool" loc
     | Bool ->
       if type_cmp t1 t2 then t1 else error ~msg:"Terop true & false exp type mismatch" loc)
-  | AST.Fcall fcall ->
+  | Fcall fcall ->
     if Map.mem env.vars fcall.func_name || not (Map.mem env.funcs fcall.func_name)
     then error ~msg:"func and var name conflict/func not defined" None;
     let func = Map.find_exn env.funcs fcall.func_name in
@@ -166,6 +181,43 @@ let rec tc_exp (exp : AST.mexp) (env : env) : dtype =
     let input = List.map fcall.args ~f:(fun arg -> tc_exp arg env) in
     tc_signature input expected fcall.func_name;
     func.ret_type
+  | EDot edot ->
+    (match tc_exp edot.struct_obj env with
+    | Struct s ->
+      let s = Map.find_exn env.structs s in
+      Map.find_exn s.fields edot.field
+    | Int | Bool | Void | NULL | Pointer _ | Array _ -> error ~msg:"cannot dot access" loc)
+  | EDeref ederef ->
+    (match tc_exp ederef.ptr env with
+    | Pointer ptr ->
+      (match ptr with
+      | NULL -> error ~msg:"cannot dereference NULL" loc
+      | Void -> error ~msg:"cannot dereference void" loc
+      | Int | Bool | Pointer _ | Array _ | Struct _ -> ptr)
+    | Int | Bool | Void | NULL | Array _ | Struct _ -> error ~msg:"cannot deref" loc)
+  | ENth enth ->
+    (match tc_exp enth.arr env with
+    | Array arr ->
+      (match tc_exp enth.index env with
+      | Int -> arr
+      | _ -> error ~msg:"array index expect int" loc)
+    | Int | Bool | Void | NULL | Pointer _ | Struct _ ->
+      error ~msg:"cannot [] for non-array" loc)
+  | NULL -> NULL
+  | Alloc alloc ->
+    (match alloc.t with
+    | Int | Bool | Pointer _ | Array _ -> Pointer alloc.t
+    | Void | NULL -> error ~msg:"cannot alloc void/null" loc
+    | Struct s ->
+      let s' = Map.find_exn env.structs s in
+      if phys_equal s'.state Defn
+      then Pointer alloc.t
+      else error ~msg:"alloc undefined struct" loc)
+  | Alloc_arr alloc_arr ->
+    ignore (tc_exp (Mark.naked (AST.Alloc { t = alloc_arr.t })) env : dtype);
+    (match tc_exp alloc_arr.e env with
+    | Int -> Array alloc_arr.t
+    | _ -> error ~msg:"alloc_arr size expect int" loc)
 ;;
 
 (* 
@@ -201,17 +253,22 @@ let rec tc_stm (ast : AST.mstm) (env : env) (func_name : Symbol.t) : env =
 (* Check following
  * 1) Whether variable name exist in env
  * 2) If exist, then check whether variable type match exp type
- * 3) If match, update env state *)
-and tc_assign name loc exp env : env =
+ * 3) If match, update env state
+ * Notice that update field or array index or dereference does
+ * not define variable itself.
+ *)
+and tc_assign (lvalue : AST.mlvalue) loc exp env : env =
   (* Check if variable is in env before assignment. *)
-  match Map.find env.vars name with
-  | None -> error ~msg:(sprintf "Not declared: `%s`" (Symbol.name name)) loc
-  | Some var ->
+  match Mark.data lvalue with
+  | Ident name ->
     let exp_type = tc_exp exp env in
-    if (not (type_cmp exp_type var.dtype)) || type_cmp exp_type Void
+    let var = Map.find_exn env.vars name in
+    let var_type = var.dtype in
+    if (not (type_cmp exp_type var_type)) || type_cmp exp_type Void
     then error ~msg:(sprintf "var type and exp type mismatch/exp type void") loc;
     let env_vars = Map.set env.vars ~key:name ~data:{ var with state = Defn } in
     { env with vars = env_vars }
+  | LVDot _ | LVDeref _ | LVNth _ -> env
 
 and tc_return mexp env func_name =
   let func = Map.find_exn env.funcs func_name in
@@ -233,7 +290,8 @@ and tc_return mexp env func_name =
 and tc_if cond true_stm false_stm loc env func_name =
   let cond_type = tc_exp cond env in
   match cond_type with
-  | Int | Void -> error ~msg:(sprintf "If cond type is int/void") loc
+  | Int | Void | NULL | Pointer _ | Array _ | Struct _ ->
+    error ~msg:(sprintf "If cond type is should be bool") loc
   | Bool ->
     let env = tc_stm true_stm env func_name in
     tc_stm false_stm env func_name
@@ -241,7 +299,8 @@ and tc_if cond true_stm false_stm loc env func_name =
 and tc_while cond body loc env func_name =
   let cond_type = tc_exp cond env in
   match cond_type with
-  | Int | Void -> error ~msg:(sprintf "While cond type is int/void") loc
+  | Int | Void | NULL | Pointer _ | Array _ | Struct _ ->
+    error ~msg:(sprintf "While cond type should be bool") loc
   | Bool -> tc_stm body env func_name
 
 (* Declare check is tricky because we will not override old env. 
@@ -307,6 +366,38 @@ let tc_fdecl ret_type func_name (pars : param list) env scope =
     }
 ;;
 
+(* As long as sdecl is not defined, declare it. *)
+let tc_sdecl (sname : Symbol.t) (env : env) : env =
+  let s = { fields = Map.empty; state = Decl } in
+  match Map.find env.structs sname with
+  | None -> { env with structs = Map.add_exn env.structs ~key:sname ~data:s }
+  | Some s ->
+    if phys_equal s.state Defn
+    then error ~msg:"cannot decl struct after defined" None
+    else env
+;;
+
+let tc_sdefn (sname : Symbol.t) (fields : AST.field list) (env : env) : env =
+  let fields =
+    List.fold fields ~init:Map.empty ~f:(fun acc field ->
+        match field.t with
+        | Int | Bool | Pointer _ | Array _ -> Map.add_exn acc ~key:field.i ~data:field.t
+        | Void | NULL -> error ~msg:"Void/NULL cannot be struct field" None
+        | Struct s ->
+          let s' = Map.find_exn env.structs s in
+          if phys_equal s'.state Defn
+          then Map.add_exn acc ~key:field.i ~data:field.t
+          else error ~msg:"struct use a field as undefined struct" None)
+  in
+  let s = { fields; state = Defn } in
+  match Map.find env.structs sname with
+  | None -> { env with structs = Map.add_exn env.structs ~key:sname ~data:s }
+  | Some s' ->
+    (match s'.state with
+    | Defn -> error ~msg:"struct already defined" None
+    | Decl -> { env with structs = Map.set env.structs ~key:sname ~data:s })
+;;
+
 let pp_env env =
   printf "print env func\n%!";
   Map.iteri env.funcs ~f:(fun ~key:k ~data:d ->
@@ -335,7 +426,7 @@ let tc_fdefn ret_type func_name pars blk env scope =
       let funcs =
         Map.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
       in
-      { funcs; vars }
+      { env with funcs; vars }
     | Some s ->
       (match s.state, s.scope with
       | Decl, Internal ->
@@ -343,7 +434,7 @@ let tc_fdefn ret_type func_name pars blk env scope =
           Map.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
         in
         tc_redeclare env func_name pars ret_type;
-        { funcs; vars }
+        { env with funcs; vars }
       | _, _ -> error ~msg:(sprintf "%s already defined." (Symbol.name func_name)) None)
   in
   tc_stm blk env func_name
@@ -368,7 +459,7 @@ let _tc_post (env : env) =
   if not cond then error ~msg:"main not defined" None
 ;;
 
-let rec _typecheck prog env scope =
+let rec _typecheck (prog : AST.gdecl list) env scope =
   match prog with
   | [] ->
     if phys_equal scope Internal then _tc_post env;
@@ -376,13 +467,19 @@ let rec _typecheck prog env scope =
   | h :: t ->
     let env = { env with vars = Map.empty } in
     (match h with
-    | AST.Fdecl fdecl ->
+    | Fdecl fdecl ->
       let env = tc_fdecl fdecl.ret_type fdecl.func_name fdecl.pars env scope in
       _typecheck t env scope
-    | AST.Fdefn fdefn ->
+    | Fdefn fdefn ->
       let env = tc_fdefn fdefn.ret_type fdefn.func_name fdefn.pars fdefn.blk env scope in
       _typecheck t env scope
-    | AST.Typedef _ -> _typecheck t env scope)
+    | Typedef _ -> _typecheck t env scope
+    | Sdecl sdecl ->
+      let env = tc_sdecl sdecl.struct_name env in
+      _typecheck t env scope
+    | Sdefn sdefn ->
+      let env = tc_sdefn sdefn.struct_name sdefn.fields env in
+      _typecheck t env scope)
 ;;
 
 (* env
@@ -394,6 +491,7 @@ let typecheck (prog : AST.gdecl list) (env : env option) =
     | None ->
       ( { vars = Map.empty (* variable decl/def tracker *)
         ; funcs = Map.empty (* function signature *)
+        ; structs = Map.empty (* struct signature *)
         }
       , External )
     | Some s -> s, Internal
