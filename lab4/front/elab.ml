@@ -55,14 +55,14 @@ let ct2pt = ref Symbol.Map.empty
  * typedef name conflict or not. *)
 let func_env = ref Symbol.Set.empty
 
-let elab_ptype = function
+let rec elab_ptype = function
   | Cst.Int -> Ast.Int
   | Cst.Bool -> Ast.Bool
   | Cst.Void -> Ast.Void
   | Cst.Ctype _ -> failwith "elab_ptype should only handle primitive types"
-  | Cst.Pointer _ -> failwith "not yet"
-  | Cst.Array _ -> failwith "not yet"
-  | Cst.Struct _ -> failwith "not yet"
+  | Cst.Pointer ptr -> Ast.Pointer (elab_ptype ptr)
+  | Cst.Array arr -> Ast.Array (elab_ptype arr)
+  | Cst.Struct s -> Ast.Struct s
 ;;
 
 let elab_type ctype =
@@ -72,9 +72,9 @@ let elab_type ctype =
     | Cst.Bool -> Cst.Bool
     | Cst.Void -> Cst.Void
     | Cst.Ctype c -> Symbol.Map.find_exn !ct2pt c
-    | Cst.Pointer _ -> failwith "not yet"
-    | Cst.Array _ -> failwith "not yet"
-    | Cst.Struct _ -> failwith "not yet"
+    | Cst.Pointer ptr -> Cst.Pointer ptr
+    | Cst.Array arr -> Cst.Array arr
+    | Cst.Struct s -> Cst.Struct s
   in
   elab_ptype ptype
 ;;
@@ -370,9 +370,9 @@ let elab_typedef t t_var =
     | Cst.Int -> Cst.Int
     | Cst.Bool -> Cst.Bool
     | Cst.Void -> error ~msg:"dest type cannot be void" None
-    | Cst.Pointer _ -> failwith "not yet"
-    | Cst.Array _ -> failwith "not yet"
-    | Cst.Struct _ -> failwith "not yet"
+    | Cst.Pointer ptr -> Cst.Pointer ptr
+    | Cst.Array arr -> Cst.Array arr
+    | Cst.Struct s -> Cst.Struct s
   in
   if Symbol.Set.mem !func_env t_var then error None ~msg:"type name already exist";
   let env' =
@@ -382,6 +382,10 @@ let elab_typedef t t_var =
   in
   ct2pt := env';
   Ast.Typedef { t = elab_type t; t_var }
+;;
+
+let elab_fields (fields : Cst.field list) =
+  List.map fields ~f:(fun field : Ast.field -> { t = elab_type field.t; i = field.i })
 ;;
 
 let rec elab (cst : Cst.program) (acc : Ast.program) : Ast.program =
@@ -394,8 +398,14 @@ let rec elab (cst : Cst.program) (acc : Ast.program) : Ast.program =
     | Cst.Fdefn fdenf ->
       elab t (elab_fdefn fdenf.ret_type fdenf.func_name fdenf.par_type fdenf.blk :: acc)
     | Cst.Typedef typedef -> elab t (elab_typedef typedef.t typedef.t_var :: acc)
-    | Cst.Sdefn _ -> failwith "not yet"
-    | Cst.Sdecl _ -> failwith "not yet")
+    | Cst.Sdefn sdefn ->
+      let sdefn_ast =
+        Ast.Sdefn { struct_name = sdefn.struct_name; fields = elab_fields sdefn.fields }
+      in
+      elab t (sdefn_ast :: acc)
+    | Cst.Sdecl sdecl ->
+      let sdecl_ast = Ast.Sdecl { struct_name = sdecl.struct_name } in
+      elab t (sdecl_ast :: acc))
 ;;
 
 let elaborate (cst : Cst.program) : Ast.program = elab cst []
