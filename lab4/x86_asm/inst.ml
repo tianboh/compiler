@@ -12,10 +12,6 @@ module Label = Util.Label
 module Symbol = Util.Symbol
 module Size = Var.Size
 
-type scope =
-  | Internal
-  | External
-
 type operand =
   | Imm of Int32.t
   | Reg of Register.t
@@ -25,21 +21,21 @@ type instr =
   | Add of
       { src : operand
       ; dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | Sub of
       { src : operand
       ; dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | Mul of
       { src : operand
       ; dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       } (* Destination is form of EDX:EAX by default. Only one operand required. *)
   | Div of
       { src : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   (* temp := EDX:EAX / SRC;
             IF temp > FFFFFFFFH
@@ -50,28 +46,28 @@ type instr =
             FI; *)
   | Mod of
       { src : operand
-      ; size : Size.t
+      ; size : Size.primitive
       } (* Similar as above, but use edx after div.*)
   | Mov of
       { dest : operand
       ; src : operand
-      ; size : Size.t
+      ; size : Size.primitive
             (* how many bytes to move from src. size <= dest.size; size <= src.size. *)
       }
-  | Cvt of { size : Size.t } (*could be cdq, cqo, etc based on size it wants to extend. EDX:EAX := sign-extend of EAX *)
+  | Cvt of { size : Size.primitive } (*could be cdq, cqo, etc based on size it wants to extend. EDX:EAX := sign-extend of EAX *)
   | Ret
   | Pop of
       { var : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | Push of
       { var : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | Cmp of
       { lhs : operand
       ; rhs : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | LAHF (* Load: AH := flags SF ZF xx AF xx PF xx CF *)
   | SAHF (* Store AH into flags SF ZF xx AF xx PF xx CF *)
@@ -90,62 +86,62 @@ type instr =
       { (* Set byte if equal (ZF=1). size is a placeholder for dest,
          * it can only be BYTE *)
         dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | SETNE of
       { dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | SETL of
       { dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | SETLE of
       { dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | SETG of
       { dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | SETGE of
       { dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | AND of
       { (* bitwise and *)
         src : operand
       ; dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | OR of
       { (* bitwise and *)
         src : operand
       ; dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | XOR of
       { src : operand
       ; dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | SAL of
       { (* Inst size is same as dest. 
          * Immediate is 8bit, memory/register(%cl) is 16bit *)
         src : operand
       ; dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | SAR of
       { (* Inst size is same as dest. 
          * Immediate is 8bit, memory/register(%cl) is 16bit *)
         src : operand
       ; dest : operand
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | Fcall of
       { func_name : Symbol.t
-      ; scope : scope
+      ; scope : [ `Internal | `External ]
       }
   | Abort
   | Fname of string
@@ -160,18 +156,18 @@ type fdefn =
 
 type program = fdefn list
 
-let set_size (operand : operand) (size : Size.t) : operand =
+let set_size (operand : operand) (size : Size.primitive) : operand =
   match operand with
   | Reg r -> Reg { r with size }
   | Mem m -> Mem { m with size }
   | Imm i -> Imm i
 ;;
 
-let get_size (operand : operand) : Size.t =
+let get_size (operand : operand) : Size.primitive =
   match operand with
   | Reg r -> r.size
   | Mem m -> m.size
-  | Imm _ -> DWORD
+  | Imm _ -> `DWORD
 ;;
 
 let format_operand (oprd : operand) =
@@ -181,32 +177,32 @@ let format_operand (oprd : operand) =
   | Mem m -> Memory.mem_to_str m
 ;;
 
-let format_operand_size (oprd : operand) : Size.t =
+let format_operand_size (oprd : operand) : Size.primitive =
   match oprd with
-  | Imm _ -> DWORD
+  | Imm _ -> `DWORD
   | Reg r -> r.size
   | Mem m -> m.size
 ;;
 
-let format_inst (size : Size.t) =
+let format_inst (size : Size.primitive) =
   match size with
-  | BYTE -> "b"
-  | WORD -> "w"
-  | DWORD -> "l"
-  | QWORD -> "q"
-  | VOID -> ""
+  | `BYTE -> "b"
+  | `WORD -> "w"
+  | `DWORD -> "l"
+  | `QWORD -> "q"
+  | `VOID -> ""
 ;;
 
 let format_inst' (operand : operand) =
   match operand with
   | Reg r -> format_inst r.size
   | Mem m -> format_inst m.size
-  | Imm _ -> format_inst DWORD
+  | Imm _ -> format_inst `DWORD
 ;;
 
 let format_scope = function
-  | Internal -> "_c0_"
-  | External -> ""
+  | `Internal -> "_c0_"
+  | `External -> ""
 ;;
 
 (* functions that format assembly output *)
@@ -234,10 +230,10 @@ let format = function
   | Mod m -> sprintf "div %s" (format_operand m.src)
   | Cvt cvt ->
     (match cvt.size with
-    | VOID | BYTE -> failwith "nothing to extend for byte/void"
-    | WORD -> "cwd"
-    | DWORD -> "cdq"
-    | QWORD -> "cqo")
+    | `VOID | `BYTE -> failwith "nothing to extend for byte/void"
+    | `WORD -> "cwd"
+    | `DWORD -> "cdq"
+    | `QWORD -> "cqo")
   | Mov mv ->
     let src_str = format_operand mv.src in
     let dest_str = format_operand mv.dest in
@@ -248,8 +244,8 @@ let format = function
   | Ret -> "ret"
   | Push push ->
     (match push.var with
-    | Reg r -> sprintf "push %s" (format_operand (Reg { r with size = QWORD }))
-    | Mem m -> sprintf "push %s" (format_operand (Mem { m with size = QWORD }))
+    | Reg r -> sprintf "push %s" (format_operand (Reg { r with size = `QWORD }))
+    | Mem m -> sprintf "push %s" (format_operand (Mem { m with size = `QWORD }))
     | Imm i -> sprintf "push %s" (format_operand (Imm i)))
   | Pop pop -> sprintf "pop%s %s" (format_inst pop.size) (format_operand pop.var)
   | Cmp cmp ->

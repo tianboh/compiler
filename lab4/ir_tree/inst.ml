@@ -34,11 +34,6 @@ module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
 
-(* where the function is defined *)
-type scope =
-  | Internal
-  | External
-
 type binop =
   | Plus
   | Minus
@@ -82,7 +77,7 @@ and stm =
       { dest : Temp.t option
       ; func_name : Symbol.t
       ; args : exp list
-      ; scope : scope
+      ; scope : [ `Internal | `External ]
       }
   | Return of exp option
   | Jump of Label.t
@@ -119,8 +114,8 @@ module Print : PRINT = struct
   let sprintf = Printf.sprintf
 
   let pp_scope = function
-    | Internal -> "_c0_"
-    | External -> ""
+    | `Internal -> "_c0_"
+    | `External -> ""
   ;;
 
   let pp_binop = function

@@ -6,7 +6,6 @@
  * Author: Tianbo Hao<tianboh@alumni.cmu.edu>
  *)
 open Core
-open Size
 
 (* Logical register is used for register allocation.
  * RAX, EAX, AX is treated as the same. *)
@@ -92,64 +91,64 @@ module Logic = struct
     | _ -> failwith "not x86-64 register"
   ;;
 
-  let reg_to_str ?(size = DWORD) (reg : t) =
+  let reg_to_str ?(size = `DWORD) (reg : t) =
     match reg, size with
-    | RAX, BYTE -> "%al"
-    | RBX, BYTE -> "%bl"
-    | RCX, BYTE -> "%cl"
-    | RDX, BYTE -> "%dl"
-    | RSI, BYTE -> failwith "cannot access low 8-bit in %rsi"
-    | RDI, BYTE -> failwith "cannot access low 8-bit in %rdi"
-    | RBP, BYTE -> failwith "cannot access low 8-bit in %rbp"
-    | RSP, BYTE -> failwith "cannot access low 8-bit in %rsp"
-    | RAX, WORD -> "%ax"
-    | RBX, WORD -> "%bx"
-    | RCX, WORD -> "%cx"
-    | RDX, WORD -> "%dx"
-    | RSI, WORD -> "%si"
-    | RDI, WORD -> "%di"
-    | RBP, WORD -> "%bp"
-    | RSP, WORD -> "%sp"
-    | R8, WORD -> "%r8w"
-    | R9, WORD -> "%r9w"
-    | R10, WORD -> "%r10w"
-    | R11, WORD -> "%r11w"
-    | R12, WORD -> "%r12w"
-    | R13, WORD -> "%r13w"
-    | R14, WORD -> "%r14w"
-    | R15, WORD -> "%r15w"
-    | RAX, DWORD -> "%eax"
-    | RBX, DWORD -> "%ebx"
-    | RCX, DWORD -> "%ecx"
-    | RDX, DWORD -> "%edx"
-    | RSI, DWORD -> "%esi"
-    | RDI, DWORD -> "%edi"
-    | RBP, DWORD -> "%ebp"
-    | RSP, DWORD -> "%esp"
-    | R8, DWORD -> "%r8d"
-    | R9, DWORD -> "%r9d"
-    | R10, DWORD -> "%r10d"
-    | R11, DWORD -> "%r11d"
-    | R12, DWORD -> "%r12d"
-    | R13, DWORD -> "%r13d"
-    | R14, DWORD -> "%r14d"
-    | R15, DWORD -> "%r15d"
-    | RAX, QWORD -> "%rax"
-    | RBX, QWORD -> "%rbx"
-    | RCX, QWORD -> "%rcx"
-    | RDX, QWORD -> "%rdx"
-    | RSI, QWORD -> "%rsi"
-    | RDI, QWORD -> "%rdi"
-    | RBP, QWORD -> "%rbp"
-    | RSP, QWORD -> "%rsp"
-    | R8, QWORD -> "%r8"
-    | R9, QWORD -> "%r9"
-    | R10, QWORD -> "%r10"
-    | R11, QWORD -> "%r11"
-    | R12, QWORD -> "%r12"
-    | R13, QWORD -> "%r13"
-    | R14, QWORD -> "%r14"
-    | R15, QWORD -> "%r15"
+    | RAX, `BYTE -> "%al"
+    | RBX, `BYTE -> "%bl"
+    | RCX, `BYTE -> "%cl"
+    | RDX, `BYTE -> "%dl"
+    | RSI, `BYTE -> failwith "cannot access low 8-bit in %rsi"
+    | RDI, `BYTE -> failwith "cannot access low 8-bit in %rdi"
+    | RBP, `BYTE -> failwith "cannot access low 8-bit in %rbp"
+    | RSP, `BYTE -> failwith "cannot access low 8-bit in %rsp"
+    | RAX, `WORD -> "%ax"
+    | RBX, `WORD -> "%bx"
+    | RCX, `WORD -> "%cx"
+    | RDX, `WORD -> "%dx"
+    | RSI, `WORD -> "%si"
+    | RDI, `WORD -> "%di"
+    | RBP, `WORD -> "%bp"
+    | RSP, `WORD -> "%sp"
+    | R8, `WORD -> "%r8w"
+    | R9, `WORD -> "%r9w"
+    | R10, `WORD -> "%r10w"
+    | R11, `WORD -> "%r11w"
+    | R12, `WORD -> "%r12w"
+    | R13, `WORD -> "%r13w"
+    | R14, `WORD -> "%r14w"
+    | R15, `WORD -> "%r15w"
+    | RAX, `DWORD -> "%eax"
+    | RBX, `DWORD -> "%ebx"
+    | RCX, `DWORD -> "%ecx"
+    | RDX, `DWORD -> "%edx"
+    | RSI, `DWORD -> "%esi"
+    | RDI, `DWORD -> "%edi"
+    | RBP, `DWORD -> "%ebp"
+    | RSP, `DWORD -> "%esp"
+    | R8, `DWORD -> "%r8d"
+    | R9, `DWORD -> "%r9d"
+    | R10, `DWORD -> "%r10d"
+    | R11, `DWORD -> "%r11d"
+    | R12, `DWORD -> "%r12d"
+    | R13, `DWORD -> "%r13d"
+    | R14, `DWORD -> "%r14d"
+    | R15, `DWORD -> "%r15d"
+    | RAX, `QWORD -> "%rax"
+    | RBX, `QWORD -> "%rbx"
+    | RCX, `QWORD -> "%rcx"
+    | RDX, `QWORD -> "%rdx"
+    | RSI, `QWORD -> "%rsi"
+    | RDI, `QWORD -> "%rdi"
+    | RBP, `QWORD -> "%rbp"
+    | RSP, `QWORD -> "%rsp"
+    | R8, `QWORD -> "%r8"
+    | R9, `QWORD -> "%r9"
+    | R10, `QWORD -> "%r10"
+    | R11, `QWORD -> "%r11"
+    | R12, `QWORD -> "%r12"
+    | R13, `QWORD -> "%r13"
+    | R14, `QWORD -> "%r14"
+    | R15, `QWORD -> "%r15"
     | _ ->
       failwith
         (sprintf "illegal access %d with size %s" (reg_idx reg) (Size.pp_size size))
@@ -168,14 +167,14 @@ end
 module Hard = struct
   type t =
     { reg : Logic.t
-    ; size : Size.t
+    ; size : Size.primitive
     }
   [@@deriving compare, sexp, hash]
 
   let reg_to_str (reg : t) : string = Logic.reg_to_str ~size:reg.size reg.reg
   let reg_idx (reg : t) : int = Logic.reg_idx reg.reg
 
-  let idx_reg (idx : int) (size : Size.t) : t =
+  let idx_reg (idx : int) (size : Size.primitive) : t =
     let reg = Logic.idx_reg idx in
     { reg; size }
   ;;

@@ -56,10 +56,6 @@ type state =
 type dtype = AST.dtype
 type param = AST.param
 
-type scope =
-  | Internal
-  | External
-
 type var =
   { state : state
   ; dtype : dtype
@@ -69,7 +65,7 @@ type func =
   { state : state
   ; pars : param list
   ; ret_type : dtype
-  ; scope : scope
+  ; scope : [ `Internal | `External ]
   }
 
 type field =
@@ -175,7 +171,7 @@ let rec tc_exp (exp : AST.mexp) (env : env) : dtype =
     if Map.mem env.vars fcall.func_name || not (Map.mem env.funcs fcall.func_name)
     then error ~msg:"func and var name conflict/func not defined" None;
     let func = Map.find_exn env.funcs fcall.func_name in
-    if phys_equal func.scope Internal && phys_equal func.state Decl
+    if phys_equal func.scope `Internal && phys_equal func.state Decl
     then func_list := fcall.func_name :: !func_list;
     let expected = List.map func.pars ~f:(fun par -> par.t) in
     let input = List.map fcall.args ~f:(fun arg -> tc_exp arg env) in
@@ -414,7 +410,7 @@ let pp_env env =
  *)
 let tc_fdefn ret_type func_name pars blk env scope =
   tc_pars pars;
-  if phys_equal scope External
+  if phys_equal scope `External
   then error ~msg:"Cannot define function in header file" None;
   let vars =
     List.fold pars ~init:env.vars ~f:(fun acc par ->
@@ -429,7 +425,7 @@ let tc_fdefn ret_type func_name pars blk env scope =
       { env with funcs; vars }
     | Some s ->
       (match s.state, s.scope with
-      | Decl, Internal ->
+      | Decl, `Internal ->
         let funcs =
           Map.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
         in
@@ -448,7 +444,7 @@ let _tc_post (env : env) =
   let funcs = !func_list in
   List.iter funcs ~f:(fun func ->
       let f = Map.find_exn env.funcs func in
-      if phys_equal f.state Decl && phys_equal f.scope Internal
+      if phys_equal f.state Decl && phys_equal f.scope `Internal
       then error ~msg:"func not defined" None);
   let cond =
     Map.fold env.funcs ~init:false ~f:(fun ~key:fname ~data:func acc ->
@@ -462,7 +458,7 @@ let _tc_post (env : env) =
 let rec _typecheck (prog : AST.gdecl list) env scope =
   match prog with
   | [] ->
-    if phys_equal scope Internal then _tc_post env;
+    if phys_equal scope `Internal then _tc_post env;
     env
   | h :: t ->
     let env = { env with vars = Map.empty } in
@@ -493,8 +489,8 @@ let typecheck (prog : AST.gdecl list) (env : env option) =
         ; funcs = Map.empty (* function signature *)
         ; structs = Map.empty (* struct signature *)
         }
-      , External )
-    | Some s -> s, Internal
+      , `External )
+    | Some s -> s, `Internal
   in
   _typecheck prog env scope
 ;;

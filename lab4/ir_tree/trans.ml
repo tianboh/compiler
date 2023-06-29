@@ -18,15 +18,10 @@ module Mark = Util.Mark
 module Temp = Var.Temp
 module TC = Semantic.Typechecker
 
-let trans_scope = function
-  | TC.Internal -> Tree.Internal
-  | TC.External -> Tree.External
-;;
-
 let trans_tsize = function
-  | AST.Int -> Size.DWORD
-  | AST.Bool -> Size.DWORD
-  | AST.Void -> Size.VOID
+  | AST.Int -> `DWORD
+  | AST.Bool -> `DWORD
+  | AST.Void -> `VOID
 ;;
 
 (* `Pure is expression that not lead to side-effect
@@ -63,16 +58,16 @@ let gen_cond (exp : Tree.exp) : Tree.exp * Tree.binop * Tree.exp =
 (* Return statement lists that include effect(can be empty), 
  * and the pure exp without side-effect *)
 let rec trans_exp (exp_ast : AST.exp) (var_env : Temp.t S.t) (func_env : TC.func S.t)
-    : Tree.stm list * Tree.exp * Size.t
+    : Tree.stm list * Tree.exp * Size.primitive
   =
   match exp_ast with
   (* after type-checking, id must be declared; do not guard lookup *)
   | AST.Var id ->
     let t = S.find_exn var_env id in
     [], Tree.Temp t, t.size
-  | AST.Const_int c -> [], Tree.Const c, Size.DWORD
-  | AST.True -> [], Tree.Const Int32.one, Size.DWORD
-  | AST.False -> [], Tree.Const Int32.zero, Size.DWORD
+  | AST.Const_int c -> [], Tree.Const c, `DWORD
+  | AST.True -> [], Tree.Const Int32.one, `DWORD
+  | AST.False -> [], Tree.Const Int32.zero, `DWORD
   | AST.Binop binop -> trans_exp_bin (AST.Binop binop) var_env func_env
   (* 
    * CJump cond label_true, label_false
@@ -126,10 +121,10 @@ let rec trans_exp (exp_ast : AST.exp) (var_env : Temp.t S.t) (func_env : TC.func
           exp)
     in
     let func = S.find_exn func_env fcall.func_name in
-    let scope = trans_scope func.scope in
+    let scope = func.scope in
     let size = trans_tsize func.ret_type in
     (match size with
-    | VOID ->
+    | `VOID ->
       let call =
         Tree.Fcall { dest = None; args = args_exps; func_name = fcall.func_name; scope }
       in
@@ -147,7 +142,7 @@ let rec trans_exp (exp_ast : AST.exp) (var_env : Temp.t S.t) (func_env : TC.func
 and trans_mexp mexp var_env func_env = trans_exp (Mark.data mexp) var_env func_env
 
 and[@warning "-8"] trans_exp_bin (AST.Binop binop) var_env func_env
-    : Tree.stm list * Tree.exp * Size.t
+    : Tree.stm list * Tree.exp * Size.primitive
   =
   let lhs_stm, lhs_exp, lhs_size = trans_mexp binop.lhs var_env func_env in
   let rhs_stm, rhs_exp, _ = trans_mexp binop.rhs var_env func_env in
@@ -297,7 +292,8 @@ let rec trans_prog (program : AST.program) (acc : Tree.program) (func_env : TC.f
     | AST.Fdefn fdefn ->
       let fdefn_tree = trans_fdefn fdefn.func_name fdefn.pars fdefn.blk func_env in
       trans_prog t (fdefn_tree :: acc) func_env
-    | AST.Typedef _ | AST.Fdecl _ -> trans_prog t acc func_env)
+    | AST.Typedef _ | AST.Fdecl _ -> trans_prog t acc func_env
+    | _ -> failwith "")
 ;;
 
 let translate (program : AST.program) (func_env : TC.func S.t) : Tree.program =

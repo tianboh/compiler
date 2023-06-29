@@ -62,13 +62,13 @@ let trans_operand (operand : Src.operand) : Dest.operand =
   | Temp t -> Dest.Temp t
 ;;
 
-let get_size (operand : Src.operand) : Size.t =
+let get_size (operand : Src.operand) : Size.primitive =
   match operand with
   | Imm _ -> DWORD
   | Temp t -> t.size
 ;;
 
-let get_size' (operand : Dest.operand) : Size.t =
+let get_size' (operand : Dest.operand) : Size.primitive =
   match operand with
   | Imm _ -> DWORD
   | Temp t -> t.size
@@ -176,7 +176,7 @@ let gen_scope = function
   | Src.External -> Dest.External
 ;;
 
-let set_size (operand : operand) (size : Size.t) : operand =
+let set_size (operand : operand) (size : Size.primitive) : operand =
   match operand with
   | Imm i -> Imm i
   | Temp t -> Temp { t with size }
@@ -324,7 +324,7 @@ let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
   restore @ [ ret ]
 ;;
 
-let cast (src : operand) (size : Size.t) : Dest.instr list * operand =
+let cast (src : operand) (size : Size.primitive) : Dest.instr list * operand =
   let size' = get_size' src in
   if phys_equal size' size
   then [], src

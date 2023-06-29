@@ -24,11 +24,6 @@ module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
 
-(* used for function call to locate its defination. *)
-type scope =
-  | Internal
-  | External
-
 (* Notice that pure pseudo assembly does not assign register to each temp, so 
  * operand does not contain register type. Register is assigned in x86 assemb. 
  *  
@@ -68,7 +63,7 @@ type instr =
       { func_name : Symbol.t
       ; dest : Temp.t option
       ; args : operand list
-      ; scope : scope
+      ; scope : [ `Internal | `External ]
       }
   | Mov of
       { dest : operand
@@ -100,8 +95,8 @@ type program = fdefn list
 (* functions that format assembly output *)
 
 let pp_scope = function
-  | Internal -> "_c0_"
-  | External -> ""
+  | `Internal -> "_c0_"
+  | `External -> ""
 ;;
 
 let pp_binop = function

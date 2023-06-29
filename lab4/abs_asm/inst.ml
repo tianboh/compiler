@@ -18,21 +18,17 @@ module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
 
-type scope =
-  | Internal
-  | External
-
 type operand =
   | Imm of Int32.t
   | Temp of Temp.t
   | Reg of Register.t
   | Above_frame of
       { offset : int
-      ; size : Size.t
+      ; size : Size.primitive
       }
   | Below_frame of
       { offset : int
-      ; size : Size.t
+      ; size : Size.primitive
       }
 
 type line =
@@ -73,7 +69,7 @@ type instr =
         func_name : Symbol.t
       ; args : operand list
       ; line : line
-      ; scope : scope
+      ; scope : [ `Internal | `External ]
       }
   | Mov of
       { dest : operand
@@ -161,8 +157,8 @@ let pp_operand = function
 ;;
 
 let pp_scope = function
-  | Internal -> "_c0_"
-  | External -> ""
+  | `Internal -> "_c0_"
+  | `External -> ""
 ;;
 
 let pp_inst = function

@@ -1,37 +1,50 @@
 (* Size for temporary. codegen will use this info to generate suitable
  * instructions for each operand.
  * void is a placeholder for result of void function return. *)
+open Core
+
+let ( * ) = Base.Int64.( * )
+
+type primitive =
+  [ `BYTE
+  | `WORD
+  | `DWORD
+  | `QWORD
+  ]
+[@@deriving sexp, compare, hash]
 
 type t =
-  | VOID
-  | BYTE
-  | WORD
-  | DWORD
-  | QWORD
+  [ primitive
+  | `CBYTE of Int64.t
+  | `VOID
+  ]
 [@@deriving sexp, compare, hash]
 
 (* Return size of size in bit *)
 let type_size_bit = function
-  | VOID -> 0
-  | BYTE -> 8
-  | WORD -> 16
-  | DWORD -> 32
-  | QWORD -> 64
+  | `VOID -> Int64.of_int 0
+  | `BYTE -> Int64.of_int 8
+  | `WORD -> Int64.of_int 16
+  | `DWORD -> Int64.of_int 32
+  | `QWORD -> Int64.of_int 64
+  | `CBYTE i -> i * Int64.of_int 8
 ;;
 
 (* Return size of size in byte *)
 let type_size_byte = function
-  | VOID -> 0
-  | BYTE -> 1
-  | WORD -> 2
-  | DWORD -> 4
-  | QWORD -> 8
+  | `VOID -> Int64.of_int 0
+  | `BYTE -> Int64.of_int 1
+  | `WORD -> Int64.of_int 2
+  | `DWORD -> Int64.of_int 4
+  | `QWORD -> Int64.of_int 8
+  | `CBYTE i -> i
 ;;
 
 let pp_size = function
-  | VOID -> "void"
-  | BYTE -> "byte"
-  | WORD -> "word"
-  | DWORD -> "dword"
-  | QWORD -> "qword"
+  | `VOID -> "void"
+  | `BYTE -> "byte"
+  | `WORD -> "word"
+  | `DWORD -> "dword"
+  | `QWORD -> "qword"
+  | `CBYTE i -> Printf.sprintf "cbyte%Ld" i
 ;;

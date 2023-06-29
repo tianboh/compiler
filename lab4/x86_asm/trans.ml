@@ -60,11 +60,6 @@ let oprd_ps_to_x86
   | Below_frame bf -> X86_asm.Mem (Memory.below_frame Reg.RSP bf.offset bf.size)
 ;;
 
-let trans_scope = function
-  | Src.Internal -> X86_asm.Internal
-  | Src.External -> X86_asm.External
-;;
-
 let rax = Reg.RAX
 let rdx = Reg.RDX
 let rbp = Reg.RBP
@@ -74,7 +69,7 @@ let abort_label = Label.label (Some "abt")
 let shift_maximum_bit = Int32.of_int_exn 31 (* inclusive *)
 
 (* Now we provide safe instruction to avoid source and destination are both memory. *)
-let safe_mov (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.t) =
+let safe_mov (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
     [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
@@ -83,7 +78,7 @@ let safe_mov (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.t) =
   | _ -> [ Mov { dest; src; size } ]
 ;;
 
-let safe_add (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.t) =
+let safe_add (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
     [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
@@ -92,7 +87,7 @@ let safe_add (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.t) =
   | _ -> [ X86_asm.Add { dest; src; size } ]
 ;;
 
-let safe_sub (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.t) =
+let safe_sub (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
     [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
@@ -101,7 +96,7 @@ let safe_sub (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.t) =
   | _ -> [ Sub { dest; src; size } ]
 ;;
 
-let safe_and (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.t) =
+let safe_and (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
     [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
@@ -110,7 +105,7 @@ let safe_and (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.t) =
   | _ -> [ AND { dest; src; size } ]
 ;;
 
-let safe_or (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.t) =
+let safe_or (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
     [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
@@ -119,7 +114,7 @@ let safe_or (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.t) =
   | _ -> [ OR { dest; src; size } ]
 ;;
 
-let safe_xor (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.t) =
+let safe_xor (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
     [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
@@ -142,7 +137,7 @@ let shift_check (shift_bit : X86_asm.operand) (fpe_label : Label.t) =
 let safe_sal
     (dest : X86_asm.operand)
     (src : X86_asm.operand)
-    (size : Size.t)
+    (size : Size.primitive)
     (fpe_label : Label.t)
   =
   match src with
@@ -162,7 +157,7 @@ let safe_sal
 let safe_sar
     (dest : X86_asm.operand)
     (src : X86_asm.operand)
-    (size : Size.t)
+    (size : Size.primitive)
     (fpe_label : Label.t)
   =
   match src with
@@ -175,7 +170,7 @@ let safe_sar
   | Imm _ -> shift_check src fpe_label @ [ SAR { dest; src; size = BYTE } ]
 ;;
 
-let safe_ret (size : Size.t) =
+let safe_ret (size : Size.primitive) =
   (* insts = [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] *)
   [ X86_asm.Mov { dest = Reg { reg = rsp; size }; src = Reg { reg = rbp; size }; size }
   ; X86_asm.Pop { var = Reg { reg = rbp; size }; size }
@@ -187,7 +182,7 @@ let safe_ret (size : Size.t) =
 let safe_cmp
     (lhs : X86_asm.operand)
     (rhs : X86_asm.operand)
-    (size : Size.t)
+    (size : Size.primitive)
     (swap : X86_asm.operand)
   =
   match lhs, rhs with
@@ -332,7 +327,7 @@ let rec _codegen_w_reg_rev
       let inst_rev = X86_asm.Pop { var; size = QWORD } in
       _codegen_w_reg_rev (inst_rev :: res) t reg_alloc_info reg_swap
     | Src.Fcall fcall ->
-      let scope = trans_scope fcall.scope in
+      let scope = fcall.scope in
       let func_name = fcall.func_name in
       let inst = X86_asm.Fcall { func_name; scope } in
       _codegen_w_reg_rev (inst :: res) t reg_alloc_info reg_swap
