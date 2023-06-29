@@ -168,7 +168,7 @@ let compile (cmd : cmd_line_args) : unit =
   if cmd.semcheck_only then exit 0;
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
-  let ir = Ir_tree.Trans.translate ast tc_env.funcs in
+  let ir = Ir_tree.Trans.translate ast tc_env in
   let ir_ssa = List.map ir ~f:(fun ir -> Ssa.Trans.run ir) in
   say_if cmd.dump_ir (fun () ->
       List.map ir ~f:Ir_tree.Inst.Print.pp_fdefn |> String.concat ~sep:"\n");

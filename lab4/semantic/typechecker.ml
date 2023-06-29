@@ -74,7 +74,7 @@ type field =
   }
 
 type struct' =
-  { fields : dtype Map.t
+  { fields : field list
   ; state : state
   }
 
@@ -181,7 +181,8 @@ let rec tc_exp (exp : AST.mexp) (env : env) : dtype =
     (match tc_exp edot.struct_obj env with
     | Struct s ->
       let s = Map.find_exn env.structs s in
-      Map.find_exn s.fields edot.field
+      List.find_map_exn s.fields ~f:(fun field ->
+          if phys_equal field.name edot.field then Some field.dtype else None)
     | Int | Bool | Void | NULL | Pointer _ | Array _ -> error ~msg:"cannot dot access" loc)
   | EDeref ederef ->
     (match tc_exp ederef.ptr env with
@@ -364,7 +365,7 @@ let tc_fdecl ret_type func_name (pars : param list) env scope =
 
 (* As long as sdecl is not defined, declare it. *)
 let tc_sdecl (sname : Symbol.t) (env : env) : env =
-  let s = { fields = Map.empty; state = Decl } in
+  let s = { fields = []; state = Decl } in
   match Map.find env.structs sname with
   | None -> { env with structs = Map.add_exn env.structs ~key:sname ~data:s }
   | Some s ->
@@ -374,17 +375,20 @@ let tc_sdecl (sname : Symbol.t) (env : env) : env =
 ;;
 
 let tc_sdefn (sname : Symbol.t) (fields : AST.field list) (env : env) : env =
-  let fields =
-    List.fold fields ~init:Map.empty ~f:(fun acc field ->
-        match field.t with
-        | Int | Bool | Pointer _ | Array _ -> Map.add_exn acc ~key:field.i ~data:field.t
-        | Void | NULL -> error ~msg:"Void/NULL cannot be struct field" None
-        | Struct s ->
-          let s' = Map.find_exn env.structs s in
-          if phys_equal s'.state Defn
-          then Map.add_exn acc ~key:field.i ~data:field.t
-          else error ~msg:"struct use a field as undefined struct" None)
-  in
+  let fields = List.map fields ~f:(fun field -> { name = field.i; dtype = field.t }) in
+  ignore
+    (List.fold fields ~init:Set.empty ~f:(fun acc field ->
+         (match field.dtype with
+         | Int | Bool | Pointer _ | Array _ -> ()
+         | Void | NULL -> error ~msg:"Void/NULL cannot be struct field" None
+         | Struct s ->
+           let s' = Map.find_exn env.structs s in
+           if phys_equal s'.state Decl
+           then error ~msg:"struct use a field from undefined struct" None);
+         if Set.mem acc field.name
+         then error ~msg:"struct field name conflict" None
+         else Set.add acc field.name)
+      : Set.t);
   let s = { fields; state = Defn } in
   match Map.find env.structs sname with
   | None -> { env with structs = Map.add_exn env.structs ~key:sname ~data:s }
