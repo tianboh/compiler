@@ -1,28 +1,5 @@
-(* L3 Compiler
+(* L4 Compiler
  * IR Trees
- *
- * IR tree is a COMPAT version for AST. So it is robust
- * enough to support multiple back-end implemntation.
- * Compared with AST, IR tree has following feature
- *
- * Expression-level:
- * 1) Only have integer data type (AST also has boolean,
- * though both IR and AST do not have logical operation).
- * 2) Do not have ternary operator anymore.
- *
- * Statement-level:
- * 1) Use Jump and CJump to replace AST "while" and "if".
- * 2) No "declare" anymore.
- *
- * Function-level
- * We only keep track of fdefn and get rid of fdecl and typedef.
- * Also, the return type for fdefn is omitted because once
- * typecheck is done, remaining function can only return bool/int
- * as an RHS expression. Since bool and int is treated equally
- * in IR, we can safely ignore return type.
- *
- * We use Integer zero to denote false and one to denote true in IR
- * Other integer cannot be treated as a boolean in CJump.
  * 
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Alex Vaynberg <alv@andrew.cmu.edu>
@@ -30,6 +7,7 @@
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
+module Size = Var.Size
 module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
@@ -62,6 +40,13 @@ type exp =
       ; rhs : exp
       }
 
+(* field of struct, element of array *)
+type mem =
+  { base : exp
+  ; offset : exp
+  ; size : Size.primitive
+  }
+
 and stm =
   | Move of
       { dest : Temp.t
@@ -93,6 +78,14 @@ and stm =
   | Label of Label.t
   | Nop
   | Assert of exp
+  | Load of
+      { src : mem
+      ; dest : Temp.t
+      }
+  | Store of
+      { src : exp
+      ; dest : mem
+      }
 
 type fdefn =
   { func_name : Symbol.t
@@ -144,6 +137,13 @@ module Print : PRINT = struct
     | Binop binop ->
       sprintf "(%s %s %s)" (pp_exp binop.lhs) (pp_binop binop.op) (pp_exp binop.rhs)
 
+  and pp_mem mem =
+    sprintf
+      "%s[%s]_%Ld"
+      (pp_exp mem.offset)
+      (pp_exp mem.base)
+      (Size.type_size_byte mem.size)
+
   and pp_stm = function
     | Move mv -> Temp.name mv.dest ^ "  <--  " ^ pp_exp mv.src ^ "\n"
     | Effect eft ->
@@ -178,6 +178,8 @@ module Print : PRINT = struct
     | Label l -> Label.content l ^ "\n"
     | Nop -> "nop" ^ "\n"
     | Assert asrt -> sprintf "assert(%s)\n" (pp_exp asrt)
+    | Load ld -> sprintf "load %s <- %s" (Temp.name ld.dest) (pp_mem ld.src)
+    | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp_exp st.src)
 
   and pp_stms (stms : stm list) =
     List.map (fun stm -> pp_stm stm) stms |> String.concat "\n"

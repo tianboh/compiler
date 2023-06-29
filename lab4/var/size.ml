@@ -4,9 +4,11 @@
 open Core
 
 let ( * ) = Base.Int64.( * )
+let ( - ) = Base.Int64.( - )
 
 type primitive =
-  [ `BYTE
+  [ `VOID
+  | `BYTE
   | `WORD
   | `DWORD
   | `QWORD
@@ -16,7 +18,6 @@ type primitive =
 type t =
   [ primitive
   | `CBYTE of Int64.t
-  | `VOID
   ]
 [@@deriving sexp, compare, hash]
 
@@ -38,6 +39,21 @@ let type_size_byte = function
   | `DWORD -> Int64.of_int 4
   | `QWORD -> Int64.of_int 8
   | `CBYTE i -> i
+;;
+
+let byte_to_size = function
+  | 0L -> `VOID
+  | 1L -> `BYTE
+  | 2L -> `WORD
+  | 4L -> `DWORD
+  | 8L -> `QWORD
+  | i -> `CBYTE i
+;;
+
+let compare (t1 : t) (t2 : t) =
+  let s1 = type_size_byte t1 in
+  let s2 = type_size_byte t2 in
+  Int64.to_int_exn (s1 - s2)
 ;;
 
 let pp_size = function
