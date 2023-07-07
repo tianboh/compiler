@@ -76,6 +76,7 @@ type field =
 type struct' =
   { fields : field list
   ; state : state
+  ; order : int (* the earlier defined, the smaller the number *)
   }
 
 type env =
@@ -365,7 +366,7 @@ let tc_fdecl ret_type func_name (pars : param list) env scope =
 
 (* As long as sdecl is not defined, declare it. *)
 let tc_sdecl (sname : Symbol.t) (env : env) : env =
-  let s = { fields = []; state = Decl } in
+  let s = { fields = []; state = Decl; order = 0 } in
   match Map.find env.structs sname with
   | None -> { env with structs = Map.add_exn env.structs ~key:sname ~data:s }
   | Some s ->
@@ -389,7 +390,7 @@ let tc_sdefn (sname : Symbol.t) (fields : AST.field list) (env : env) : env =
          then error ~msg:"struct field name conflict" None
          else Set.add acc field.name)
       : Set.t);
-  let s = { fields; state = Defn } in
+  let s = { fields; state = Defn; order = Map.length env.structs } in
   match Map.find env.structs sname with
   | None -> { env with structs = Map.add_exn env.structs ~key:sname ~data:s }
   | Some s' ->

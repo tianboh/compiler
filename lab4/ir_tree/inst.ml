@@ -32,7 +32,11 @@ type binop =
 
 type exp =
   | Void
-  | Const of Int32.t
+  | Const of
+      { v : Int64.t
+      ; size : [ `DWORD | `QWORD ]
+      }
+  (* DWORD for int32 from source code, QWORD for address calculation*)
   | Temp of Temp.t
   | Binop of
       { lhs : exp
@@ -44,7 +48,7 @@ type exp =
 type mem =
   { base : exp
   ; offset : exp
-  ; size : Size.primitive
+  ; size : Size.t
   }
 
 and stm =
@@ -132,7 +136,7 @@ module Print : PRINT = struct
 
   let rec pp_exp = function
     | Void -> "void"
-    | Const x -> Int32.to_string x
+    | Const x -> Int64.to_string x.v
     | Temp t -> Temp.name t
     | Binop binop ->
       sprintf "(%s %s %s)" (pp_exp binop.lhs) (pp_binop binop.op) (pp_exp binop.rhs)
