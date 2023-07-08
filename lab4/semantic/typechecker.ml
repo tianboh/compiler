@@ -204,15 +204,15 @@ let rec tc_exp (exp : AST.mexp) (env : env) : dtype =
   | NULL -> NULL
   | Alloc alloc ->
     (match alloc.t with
-    | Int | Bool | Pointer _ | Array _ -> Pointer alloc.t
-    | Void | NULL -> error ~msg:"cannot alloc void/null" loc
+    | Int | Bool | Pointer _ -> Pointer alloc.t
+    | Void | NULL | Array _ ->
+      error ~msg:"cannot alloc void/null/array. For array, use alloc_array instead" loc
     | Struct s ->
       let s' = Map.find_exn env.structs s in
       if phys_equal s'.state Defn
       then Pointer alloc.t
       else error ~msg:"alloc undefined struct" loc)
   | Alloc_arr alloc_arr ->
-    ignore (tc_exp (Mark.naked (AST.Alloc { t = alloc_arr.t })) env : dtype);
     (match tc_exp alloc_arr.e env with
     | Int -> Array alloc_arr.t
     | _ -> error ~msg:"alloc_arr size expect int" loc)
