@@ -130,20 +130,20 @@ let rec get_blk_defsite blk_label (stms : Tree.stm list) defsites =
   | [] -> defsites
   | stm :: t ->
     (match stm with
-    | Tree.Move move ->
+    | Move move ->
       let defsites = get_blk_defsite_helper defsites move.dest blk_label in
       get_blk_defsite blk_label t defsites
-    | Tree.Effect eft ->
+    | Effect eft ->
       let defsites = get_blk_defsite_helper defsites eft.dest blk_label in
       get_blk_defsite blk_label t defsites
-    | Tree.Fcall fcall ->
+    | Fcall fcall ->
       (match fcall.dest with
       | None -> get_blk_defsite blk_label t defsites
       | Some dest ->
         let defsites = get_blk_defsite_helper defsites dest blk_label in
         get_blk_defsite blk_label t defsites)
-    | Tree.Return _ | Tree.Jump _ | Tree.CJump _ | Tree.Label _ | Tree.Nop | Tree.Assert _
-      -> get_blk_defsite blk_label t defsites)
+    | Return _ | Jump _ | CJump _ | Label _ | Nop | Assert _ | Load _ | Store _ ->
+      get_blk_defsite blk_label t defsites)
 ;;
 
 let rec _get_defsites blks defsites =
@@ -273,6 +273,10 @@ and rename_use (stm : Tree.stm) env : Tree.stm =
     CJump { cjp with lhs = lhs_new; rhs = rhs_new }
   | Label l -> Label l
   | Nop -> Nop
+  | Load load -> Load load
+  | Store store ->
+    let src = rename_exp store.src env in
+    Store { store with src }
 
 and rename_def_helper (dest : Temp.t) (env : env) =
   let dest_new = Temp.create dest.size in
@@ -312,6 +316,10 @@ and rename_def (stm : Tree.stm) (env : env) : Tree.stm * env =
   | CJump cjp -> CJump cjp, env
   | Label l -> Label l, env
   | Nop -> Nop, env
+  | Load load ->
+    let dest_new, env = rename_def_helper load.dest env in
+    Load { load with dest = dest_new }, env
+  | Store store -> Store store, env
 
 (* rename stm includes replace temp in use and def *)
 and rename_stm stm env : Tree.stm * env =
@@ -366,10 +374,7 @@ let cleanup_temp ori_name new_name env : env =
 let cleanup_bb (blk : ssa_block) (env : env) : env =
   let rec cleanup_body (body : Tree.stm list) env =
     match body with
-    | [] ->
-      (* printf "cleanup\n";
-      Print.pp_env env; *)
-      env
+    | [] -> env
     | h :: t ->
       (match h with
       | Move move ->
@@ -387,7 +392,12 @@ let cleanup_bb (blk : ssa_block) (env : env) : env =
           let name = Temp.Map.find_exn env.root dest in
           let env = cleanup_temp name dest env in
           cleanup_body t env)
-      | Return _ | Jump _ | CJump _ | Label _ | Nop | Assert _ -> cleanup_body t env)
+      | Load load ->
+        let name = Temp.Map.find_exn env.root load.dest in
+        let env = cleanup_temp name load.dest env in
+        cleanup_body t env
+      | Return _ | Jump _ | CJump _ | Label _ | Nop | Assert _ | Store _ ->
+        cleanup_body t env)
   in
   let rec cleanup_phi (phis : phi list) (env : env) : env =
     match phis with
@@ -554,7 +564,7 @@ let pre_process (fdefn : Tree.fdefn) : Tree.stm list * Label.t =
   let param_label = Label.label (Some (Symbol.name fdefn.func_name)) in
   let movs =
     List.map fdefn.temps ~f:(fun temp ->
-        Tree.Move { dest = temp; src = Tree.Const Int32.zero })
+        Tree.Move { dest = temp; src = Tree.Const { v = Int64.zero; size = `DWORD } })
   in
   Tree.Label param_label :: movs, param_label
 ;;
