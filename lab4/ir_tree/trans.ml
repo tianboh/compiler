@@ -214,39 +214,26 @@ let rec trans_exp (exp_ast : AST.exp) (env : env) : Tree.stm list * edest =
     seq, Pure { exp = Tree.Temp temp; dtype = Int }
   | AST.Fcall fcall ->
     (* First calculate arguments with potential side effect, then call fcall. *)
-    let res =
+    let args_stms_ls, args =
       List.fold_left fcall.args ~init:[] ~f:(fun acc arg ->
           let arg_stms, arg_exp = trans_mexp' arg env in
           (arg_stms, arg_exp) :: acc)
       |> List.rev
+      |> List.unzip
     in
-    let args_stms =
-      List.map res ~f:(fun x ->
-          let stms, _ = x in
-          stms)
-      |> List.concat
-    in
-    let args_exps =
-      List.map res ~f:(fun x ->
-          let _, exp = x in
-          exp)
-    in
-    let func = Map.find_exn env.funcs fcall.func_name in
+    let args_stms = List.concat args_stms_ls in
+    let func_name = fcall.func_name in
+    let func = Map.find_exn env.funcs func_name in
     let scope = func.scope in
     let size = sizeof_dtype' func.ret_type in
     (match size with
     | `VOID ->
-      let call =
-        Tree.Fcall { dest = None; args = args_exps; func_name = fcall.func_name; scope }
-      in
+      let call = Tree.Fcall { dest = None; args; func_name; scope } in
       let call_stms = args_stms @ [ call ] in
       call_stms, Pure { exp = Tree.Void; dtype = func.ret_type }
     | _ ->
       let dest = Temp.create size in
-      let call =
-        Tree.Fcall
-          { dest = Some dest; args = args_exps; func_name = fcall.func_name; scope }
-      in
+      let call = Tree.Fcall { dest = Some dest; args; func_name; scope } in
       let call_stms = args_stms @ [ call ] in
       call_stms, Pure { exp = Tree.Temp dest; dtype = func.ret_type })
   | AST.EDot dot ->
@@ -308,8 +295,34 @@ let rec trans_exp (exp_ast : AST.exp) (env : env) : Tree.stm list * edest =
       let mem = ({ base; offset; size = esize } : Tree.mem) in
       stms @ index_stm, Impure { loc = mem; dtype = etype })
   | AST.NULL -> [], Pure { exp = Const { v = Int64.zero; size = `QWORD }; dtype = NULL }
-  | AST.Alloc alloc -> ()
-  | AST.Alloc_arr alloc_arr -> ()
+  | AST.Alloc alloc ->
+    let size_t = sizeof_dtype alloc.t env in
+    let size_64 = Size.type_size_byte size_t in
+    let size_32 = Tree.Const { v = size_64; size = `DWORD } in
+    let nitems = Tree.Const { v = Int64.one; size = `DWORD } in
+    let ptr = Temp.create `QWORD in
+    let func_name = Symbol.Function.calloc () in
+    let args = [ nitems; size_32 ] in
+    ( [ Fcall { dest = Some ptr; func_name; args; scope = `External } ]
+    , Pure { exp = Tree.Temp ptr; dtype = Pointer alloc.t } )
+  | AST.Alloc_arr alloc_arr ->
+    let size_t = sizeof_dtype alloc_arr.t env in
+    let size_64 = Size.type_size_byte size_t in
+    let size_32 = Tree.Const { v = size_64; size = `DWORD } in
+    let stms, nitems = trans_mexp alloc_arr.e env in
+    let func_name = Symbol.Function.calloc () in
+    let ptr = Temp.create `QWORD in
+    (match nitems with
+    | Pure pure ->
+      let args = [ pure.exp; size_32 ] in
+      ( stms @ [ Fcall { dest = Some ptr; func_name; args; scope = `External } ]
+      , Pure { exp = Tree.Temp ptr; dtype = Array alloc_arr.t } )
+    | Impure mem ->
+      let nitems = Temp.create `DWORD in
+      let load = Tree.Load { src = mem.loc; dest = nitems } in
+      let args = [ Tree.Temp nitems; size_32 ] in
+      ( stms @ [ load; Fcall { dest = Some ptr; func_name; args; scope = `External } ]
+      , Pure { exp = Tree.Temp ptr; dtype = Array alloc_arr.t } ))
 
 and trans_mexp mexp env : Tree.stm list * edest = trans_exp (Mark.data mexp) env
 
