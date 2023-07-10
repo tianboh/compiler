@@ -420,6 +420,30 @@ let rec trans_lvalue (lvalue : AST.lvalue) (stms : Tree.stm list) (env : env)
       stms @ stms', Heap { loc = { base; offset; size }; dtype = etype })
 ;;
 
+let trans_asnop (lhs : ldest) (op : AST.asnop) (rhs : Tree.exp) : Tree.stm list * Tree.exp
+  =
+  let stm, lhs =
+    match lhs with
+    | Stack var -> [], Tree.Temp var.temp
+    | Heap mem ->
+      let t = Temp.create (sizeof_edest' (Impure { loc = mem.loc; dtype = mem.dtype })) in
+      let stm = [ Tree.Load { src = mem.loc; dest = t } ] in
+      stm, Tree.Temp t
+  in
+  match op with
+  | Asn -> stm, rhs
+  | Plus_asn -> stm, Tree.Binop { lhs; rhs; op = Plus }
+  | Minus_asn -> stm, Tree.Binop { lhs; rhs; op = Minus }
+  | Times_asn -> stm, Tree.Binop { lhs; rhs; op = Times }
+  | Div_asn -> stm, Tree.Binop { lhs; rhs; op = Divided_by }
+  | Mod_asn -> stm, Tree.Binop { lhs; rhs; op = Modulo }
+  | And_asn -> stm, Tree.Binop { lhs; rhs; op = And }
+  | Hat_asn -> stm, Tree.Binop { lhs; rhs; op = Xor }
+  | Or_asn -> stm, Tree.Binop { lhs; rhs; op = Or }
+  | Left_shift_asn -> stm, Tree.Binop { lhs; rhs; op = Left_shift }
+  | Right_shift_asn -> stm, Tree.Binop { lhs; rhs; op = Right_shift }
+;;
+
 (* env.vars keep trakcs from variable name to temporary. Two things keep in mind
  * 1) variable name can be the same in different scope (scope has no intersection).
  * So env.vars will update in different context. 
@@ -431,13 +455,13 @@ let rec trans_stm_rev (ast : AST.mstm) (acc : Tree.stm list) (env : env)
   match Mark.data ast with
   | AST.Assign asn_ast ->
     let dest_stms, dest = trans_lvalue (Mark.data asn_ast.name) [] env in
+    let v_stms, v_exp = trans_mexp' asn_ast.value env in
+    let elab_stm, exp = trans_asnop dest asn_ast.op v_exp in
     (match dest with
     | Stack var ->
-      let v_stms, v_exp = trans_mexp' asn_ast.value env in
-      (Tree.Move { dest = var.temp; src = v_exp } :: List.rev v_stms) @ acc, env
+      (Tree.Move { dest = var.temp; src = exp } :: List.rev v_stms) @ acc, env
     | Heap mem ->
-      let src_stms, src_exp = trans_mexp' asn_ast.value env in
-      ( (Tree.Store { dest = mem.loc; src = src_exp } :: List.rev src_stms)
+      ( ((Tree.Store { dest = mem.loc; src = exp } :: elab_stm) @ List.rev v_stms)
         @ List.rev dest_stms
         @ acc
       , env ))
