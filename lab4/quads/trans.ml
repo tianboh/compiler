@@ -7,38 +7,33 @@ module Memory = Var.Memory
 module Label = Util.Label
 module Size = Var.Size
 
-let munch_op = function
-  | Tree.Plus -> Quads.Plus
-  | Tree.Minus -> Quads.Minus
-  | Tree.Times -> Quads.Times
-  | Tree.Divided_by -> Quads.Divided_by
-  | Tree.Modulo -> Quads.Modulo
-  | Tree.And -> Quads.And
-  | Tree.Or -> Quads.Or
-  | Tree.Xor -> Quads.Xor
-  | Tree.Right_shift -> Quads.Right_shift
-  | Tree.Left_shift -> Quads.Left_shift
-  | Tree.Equal_eq -> Quads.Equal_eq
-  | Tree.Greater -> Quads.Greater
-  | Tree.Greater_eq -> Quads.Greater_eq
-  | Tree.Less -> Quads.Less
-  | Tree.Less_eq -> Quads.Less_eq
-  | Tree.Not_eq -> Quads.Not_eq
-;;
-
-let munch_scope = function
-  | Tree.Internal -> Quads.Internal
-  | Tree.External -> Quads.External
+let munch_op : Tree.binop -> Quads.bin_op = function
+  | Plus -> Plus
+  | Minus -> Minus
+  | Times -> Times
+  | Divided_by -> Divided_by
+  | Modulo -> Modulo
+  | And -> And
+  | Or -> Or
+  | Xor -> Xor
+  | Right_shift -> Right_shift
+  | Left_shift -> Left_shift
+  | Equal_eq -> Equal_eq
+  | Greater -> Greater
+  | Greater_eq -> Greater_eq
+  | Less -> Less
+  | Less_eq -> Less_eq
+  | Not_eq -> Not_eq
 ;;
 
 (* get Tree.exp size *)
-let rec get_esize = function
-  | Tree.Void -> failwith "void doesn't have esize"
-  | Tree.Const _ -> Size.DWORD
-  | Tree.Temp t -> t.size
-  | Tree.Binop binop ->
+let rec sizeof_exp : Tree.exp -> Size.primitive = function
+  | Void -> failwith "void doesn't have esize"
+  | Const _ -> `DWORD
+  | Temp t -> t.size
+  | Binop binop ->
     (match binop.op with
-    | Equal_eq | Greater | Greater_eq | Less | Less_eq | Not_eq -> Size.DWORD
+    | Equal_eq | Greater | Greater_eq | Less | Less_eq | Not_eq -> `DWORD
     | Plus
     | Minus
     | Times
@@ -48,7 +43,7 @@ let rec get_esize = function
     | Or
     | Xor
     | Right_shift
-    | Left_shift -> get_esize binop.lhs)
+    | Left_shift -> sizeof_exp binop.lhs)
 ;;
 
 (* munch_exp_acc dest exp rev_acc
@@ -71,10 +66,10 @@ let rec munch_exp_acc (dest : Quads.operand) (exp : Tree.exp) (rev_acc : Quads.i
     : Quads.instr list
   =
   match exp with
-  | Tree.Void -> rev_acc
-  | Tree.Const i -> Quads.Mov { dest; src = Quads.Imm i } :: rev_acc
-  | Tree.Temp t -> Quads.Mov { dest; src = Quads.Temp t } :: rev_acc
-  | Tree.Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
+  | Void -> rev_acc
+  | Const i -> Mov { dest; src = Quads.Imm { v = i.v; size = i.size } } :: rev_acc
+  | Temp t -> Mov { dest; src = Quads.Temp t } :: rev_acc
+  | Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
 
 (* munch_binop_acc dest (binop, e1, e2) rev_acc
 *
@@ -91,8 +86,8 @@ and munch_binop_acc
   =
   let op = munch_op binop in
   (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
-  let t1 = Temp.create Size.DWORD in
-  let t2 = Temp.create Size.DWORD in
+  let t1 = Temp.create `DWORD in
+  let t2 = Temp.create `DWORD in
   let rev_acc' =
     rev_acc |> munch_exp_acc (Quads.Temp t1) e1 |> munch_exp_acc (Quads.Temp t2) e2
   in
@@ -107,7 +102,7 @@ and munch_exp : Quads.operand -> Tree.exp -> Quads.instr list =
    * reverse the list before returning. *)
   List.rev (munch_exp_acc dest exp [])
 
-and munch_stm_rev (stm : Tree.stm) =
+and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
   (* Return a reversed Quads.instr list. *)
   match stm with
   | Tree.Move mv -> munch_exp_acc (Quads.Temp mv.dest) mv.src []
@@ -115,16 +110,16 @@ and munch_stm_rev (stm : Tree.stm) =
     (match e with
     | None -> [ Quads.Ret { var = None } ]
     | Some e ->
-      let size = get_esize e in
+      let size = sizeof_exp e in
       let t = Temp.create size in
       let inst = munch_exp_acc (Quads.Temp t) e [] in
       Quads.Ret { var = Some (Quads.Temp t) } :: inst)
   | Jump jmp -> [ Quads.Jump { target = jmp } ]
   | Tree.CJump cjmp ->
-    let lhs_size = get_esize cjmp.lhs in
+    let lhs_size = sizeof_exp cjmp.lhs in
     let lhs = Quads.Temp (Temp.create lhs_size) in
     let op = munch_op cjmp.op in
-    let rhs_size = get_esize cjmp.rhs in
+    let rhs_size = sizeof_exp cjmp.rhs in
     let rhs = Quads.Temp (Temp.create rhs_size) in
     let lhs_inst_rev = munch_exp_acc lhs cjmp.lhs [] in
     let rhs_inst_rev = munch_exp_acc rhs cjmp.rhs [] in
@@ -135,35 +130,53 @@ and munch_stm_rev (stm : Tree.stm) =
   | Tree.Label l -> [ Quads.Label l ]
   | Tree.Nop -> []
   | Tree.Effect eft ->
-    let lhs_size = get_esize eft.lhs in
+    let lhs_size = sizeof_exp eft.lhs in
     let lhs = Quads.Temp (Temp.create lhs_size) in
     let op = munch_op eft.op in
-    let rhs_size = get_esize eft.rhs in
+    let rhs_size = sizeof_exp eft.rhs in
     let rhs = Quads.Temp (Temp.create rhs_size) in
     let lhs_inst_rev = munch_exp_acc lhs eft.lhs [] in
     let rhs_inst_rev = munch_exp_acc rhs eft.rhs [] in
     (Quads.Binop { lhs; op; rhs; dest = Quads.Temp eft.dest } :: rhs_inst_rev)
     @ lhs_inst_rev
   | Tree.Assert asrt ->
-    let size = get_esize asrt in
+    let size = sizeof_exp asrt in
     let t = Temp.create size in
     let inst = munch_exp_acc (Quads.Temp t) asrt [] in
     Quads.Assert (Quads.Temp t) :: inst
   | Tree.Fcall fcall ->
-    let res =
+    let args, args_stms_rev =
       List.map fcall.args ~f:(fun arg ->
-          let s = get_esize arg in
+          let s = sizeof_exp arg in
           let t = Quads.Temp (Temp.create s) in
           let e = munch_exp_acc t arg [] in
           t, e)
+      |> List.unzip
     in
-    let args, args_stms_rev = List.unzip res in
     let args_stms_rev = List.concat args_stms_rev in
-    let scope = munch_scope fcall.scope in
     let call =
-      Quads.Fcall { func_name = fcall.func_name; args; dest = fcall.dest; scope }
+      Quads.Fcall
+        { func_name = fcall.func_name; args; dest = fcall.dest; scope = fcall.scope }
     in
     call :: args_stms_rev
+  | Tree.Load load ->
+    let base = Quads.Temp (Temp.create `QWORD) in
+    let base_instr = munch_exp_acc base load.src.base [] in
+    let offset = Quads.Temp (Temp.create `QWORD) in
+    let offset_instr = munch_exp_acc offset load.src.offset [] in
+    let mem = ({ base; offset; size = load.src.size } : Quads.mem) in
+    let load = Quads.Load { src = mem; dest = load.dest } in
+    (load :: offset_instr) @ base_instr
+  | Tree.Store store ->
+    let base = Quads.Temp (Temp.create `QWORD) in
+    let base_instr = munch_exp_acc base store.dest.base [] in
+    let offset = Quads.Temp (Temp.create `QWORD) in
+    let offset_instr = munch_exp_acc offset store.dest.offset [] in
+    let mem = ({ base; offset; size = store.dest.size } : Quads.mem) in
+    let src = Quads.Temp (Temp.create (sizeof_exp store.src)) in
+    let src_instr = munch_exp_acc src store.src [] in
+    let store = Quads.Store { src; dest = mem } in
+    ((store :: src_instr) @ offset_instr) @ base_instr
 
 and munch_stms_rev stms res =
   match stms with

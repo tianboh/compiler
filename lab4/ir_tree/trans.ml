@@ -112,7 +112,19 @@ let rec sizeof_exp (exp : Tree.exp) : Size.primitive =
   | Void -> `VOID
   | Const c -> (c.size :> Size.primitive)
   | Temp t -> t.size
-  | Binop bin -> sizeof_exp bin.lhs
+  | Binop binop ->
+    (match binop.op with
+    | Equal_eq | Greater | Greater_eq | Less | Less_eq | Not_eq -> `DWORD
+    | Plus
+    | Minus
+    | Times
+    | Divided_by
+    | Modulo
+    | And
+    | Or
+    | Xor
+    | Right_shift
+    | Left_shift -> sizeof_exp binop.lhs)
 ;;
 
 let sizeof_edest (dest : edest) : Size.t =
