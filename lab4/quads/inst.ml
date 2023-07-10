@@ -1,38 +1,32 @@
-(* L3 Compiler
- * Assembly language
- * Created: Kaustuv Chaudhuri <kaustuv+@andrew.cmu.edu>
- * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
+(* L4 Compiler
+ * Quad
+ *
+ * Author: Kaustuv Chaudhuri <kaustuv+@andrew.cmu.edu>
  * Modified By: Alex Vaynberg <alv@andrew.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
- *
- * Pseudo assembly code feature
- * 1) 3-operand format instructions and arbitrarily many temps.
- * These temps will be mapped to registers eventually.
- * 2) Compared with IR, pseudo assembly code is more low-level
- * because there is no statement anymore. In fact, IR statement
- * is more of instruction and IR exp is more of operand.
- * 3) Also, the operand for instruction is not nested anymore.
- * For example, IR level support:
- *   type exp = | binop {op; lhs : exp; rhs : exp}
- * However, in pseudo code assembly, operand of binop can only 
- * be of Imm, Temp or reg.
+ * Modified: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
 open Core
 module Register = Var.X86_reg.Logic
 module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
+module Size = Var.Size
 
-(* Notice that pure pseudo assembly does not assign register to each temp, so 
- * operand does not contain register type. Register is assigned in x86 assemb. 
- *  
- * However, when we use gen_pseudo_x86 function, the operand will contain x86 
- * register because of some conventions.
- *)
 type operand =
-  | Imm of Int32.t
+  | Imm of
+      { v : Int64.t
+      ; size : [ `DWORD | `QWORD ]
+      }
   | Temp of Temp.t
+
+type mem =
+  { (* Heap memory *)
+    base : operand
+  ; offset : operand
+  ; size : Size.t
+  }
 
 type bin_op =
   | Plus
@@ -80,6 +74,14 @@ type instr =
       }
   | Assert of operand
   | Ret of { var : operand option }
+  | Load of
+      { src : mem
+      ; dest : Temp.t
+      }
+  | Store of
+      { src : operand
+      ; dest : mem
+      }
   | Label of Label.t
   | Directive of string
   | Comment of string
@@ -118,9 +120,17 @@ let pp_binop = function
   | Not_eq -> "!="
 ;;
 
-let pp_operand = function
-  | Imm n -> "$" ^ Int32.to_string n
+let pp_operand : operand -> string = function
+  | Imm n -> "$" ^ Int64.to_string n.v
   | Temp t -> Temp.name t
+;;
+
+let pp_memory mem =
+  sprintf
+    "%s(%s)_%Ld"
+    (pp_operand (mem.offset :> operand))
+    (pp_operand (mem.base :> operand))
+    (Size.type_size_byte mem.size)
 ;;
 
 let pp_inst = function
@@ -164,6 +174,8 @@ let pp_inst = function
         (Symbol.name call.func_name)
         (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", "))
   | Assert asrt -> sprintf "assert %s" (pp_operand asrt)
+  | Load load -> sprintf "load %s <- %s" (Temp.name load.dest) (pp_memory load.src)
+  | Store store -> sprintf "store %s <- %s" (pp_memory store.dest) (pp_operand store.src)
 ;;
 
 let pp_fdefn (fdefn : fdefn) =
