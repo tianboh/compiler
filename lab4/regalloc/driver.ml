@@ -254,20 +254,10 @@ let seo adj prog =
   List.rev seo_rev
 ;;
 
-(* 
- * ESP(6) and EBP(7) are used to store stack pointer and base pointer respectively, 
- * we should not assign these two registers for general purpose use like register allocation. 
- * We also preserver r15(15) as a swap register, and do not assign it for register allocation.
- *)
-let special_use = function
-  | 6 | 7 | 15 -> true
-  | _ -> false
-;;
-
 (* find minimum available register with neighbor nbr *)
 let find_min_available (nbr : Int.Set.t) (black_set : Int.Set.t) : int =
   let rec helper (idx : int) (nbr : Int.Set.t) =
-    if special_use idx || Set.mem black_set idx
+    if Register.special_use (Register.reg_idx idx) || Set.mem black_set idx
     then helper (idx + 1) nbr
     else if Set.mem nbr idx
     then helper (idx + 1) nbr

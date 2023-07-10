@@ -1,25 +1,24 @@
-(* L3 Compiler
+(* L4 abstract assembly
  *
  * This is the immediate layer before regalloc.
- * Based on IR inst, this module provides extra
- * 1) register type for operand
- * 2) above_frame and below_frame for memory access
- * 3) def-use info for each instruction.
  *
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
 
 open Core
-
-(* open Var.Size *)
 module Size = Var.Size
 module Register = Var.X86_reg.Hard
 module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
 
+type imm =
+  { v : Int64.t
+  ; size : [ `DWORD | `QWORD ]
+  }
+
 type operand =
-  | Imm of Int32.t
+  | Imm of imm
   | Temp of Temp.t
   | Reg of Register.t
   | Above_frame of
@@ -30,6 +29,13 @@ type operand =
       { offset : int
       ; size : Size.primitive
       }
+
+type mem =
+  { base : Register.t
+  ; index : Register.t option
+  ; disp : Int64.t
+  ; scale : Size.primitive
+  }
 
 type line =
   { uses : operand list
@@ -106,6 +112,18 @@ type instr =
       { var : operand
       ; line : line
       }
+  | Load of
+      { src : mem
+      ; dest : Temp.t
+      ; size : Size.primitive
+      ; line : line
+      }
+  | Store of
+      { src : operand
+      ; dest : mem
+      ; size : Size.primitive
+      ; line : line
+      }
   | Directive of string
   | Comment of string
 
@@ -149,7 +167,7 @@ let pp_binop = function
 ;;
 
 let pp_operand = function
-  | Imm n -> "$" ^ Int32.to_string n
+  | Imm n -> "$" ^ Int64.to_string n.v
   | Temp t -> Temp.name t
   | Reg r -> Register.reg_to_str r
   | Above_frame af -> sprintf "%d(%%rbp)" af.offset
@@ -159,6 +177,19 @@ let pp_operand = function
 let pp_scope = function
   | `Internal -> "_c0_"
   | `External -> ""
+;;
+
+let pp_memory mem =
+  let base, index = mem.base, mem.index in
+  let disp, scale = mem.disp, mem.scale in
+  sprintf
+    "%s(%s, %s, %Ld)"
+    (Int64.to_string disp)
+    (Register.reg_to_str base)
+    (match index with
+    | Some idx -> Register.reg_to_str idx
+    | None -> "")
+    (Size.type_size_byte (scale :> Size.t))
 ;;
 
 let pp_inst = function
@@ -192,6 +223,8 @@ let pp_inst = function
       (List.map fcall.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
   | Push push -> sprintf "push %s" (pp_operand push.var)
   | Pop pop -> sprintf "pop %s " (pp_operand pop.var)
+  | Load load -> sprintf "load %s <- %s" (Temp.name load.dest) (pp_memory load.src)
+  | Store store -> sprintf "store %s <- %s" (pp_memory store.dest) (pp_operand store.src)
 ;;
 
 let rec pp_insts (program : instr list) res =

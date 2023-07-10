@@ -155,10 +155,19 @@ module Logic = struct
   ;;
 
   let swap = R15
-  let base_pointer = RBP
   let callee_saved = [ RBX; R12; R13; R14; R15 ]
   let caller_saved = [ R10; R11 ]
   let parameters = [ RDI; RSI; RDX; RCX; R8; R9 ]
+  let heap_base = R10
+  let heap_index = R9
+
+  (* ESP(6) and EBP(7) are used to store stack pointer and base pointer respectively, 
+   * we should not assign these two registers for general purpose use like register allocation. 
+   * R15(15) is swap register, and do not assign it for register allocation. *)
+  let special_use = function
+    | RBP | RSP | R15 -> true
+    | _ -> false
+  ;;
 end
 
 (* Hard register is logical register attached with size information
