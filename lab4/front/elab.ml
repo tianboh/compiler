@@ -334,27 +334,33 @@ and elab_control ctl (src_span : Mark.src_span option) =
 
 let elab_param (param : Cst.param) : Ast.param = { t = elab_type param.t; i = param.i }
 
-let elab_fdecl ret_type func_name (par_type : Cst.param list) =
+let[@warning "-8"] elab_fdecl (Cst.Fdecl fdecl) =
+  let ret_type = elab_type fdecl.ret_type in
+  let func_name, par_type = fdecl.func_name, fdecl.par_type in
+  let scope = fdecl.scope in
   func_env := Symbol.Set.add !func_env func_name;
   if Symbol.Map.mem !ct2pt func_name
   then error None ~msg:"decl func name conflict with typename";
   List.iter par_type ~f:(fun par ->
       if Symbol.Map.mem !ct2pt par.i
       then error ~msg:"decl func par conflict with type name" None);
-  let ret_type = elab_type ret_type in
-  Ast.Fdecl { ret_type; func_name; pars = List.map par_type ~f:elab_param }
+  Ast.Fdecl { ret_type; func_name; scope; pars = List.map par_type ~f:elab_param }
 ;;
 
-let elab_fdefn (ret_type : Cst.dtype) (func_name : Symbol.t) par_type blk =
+let[@warning "-8"] elab_fdefn (Cst.Fdefn fdenf) =
+  let ret_type = elab_type fdenf.ret_type in
+  let func_name, par_type, blk = fdenf.func_name, fdenf.par_type, fdenf.blk in
+  let scope = fdenf.scope in
   func_env := Symbol.Set.add !func_env func_name;
   if Symbol.Map.mem !ct2pt func_name
   then error None ~msg:"defn func name conflict with typename"
   else
     Ast.Fdefn
-      { ret_type = elab_type ret_type
+      { ret_type
       ; func_name
       ; pars = List.map par_type ~f:elab_param
       ; blk = elab_blk blk (Mark.naked Ast.Nop)
+      ; scope
       }
 ;;
 
@@ -393,10 +399,8 @@ let rec elab (cst : Cst.program) (acc : Ast.program) : Ast.program =
   | [] -> List.rev acc
   | h :: t ->
     (match h with
-    | Cst.Fdecl fdecl ->
-      elab t (elab_fdecl fdecl.ret_type fdecl.func_name fdecl.par_type :: acc)
-    | Cst.Fdefn fdenf ->
-      elab t (elab_fdefn fdenf.ret_type fdenf.func_name fdenf.par_type fdenf.blk :: acc)
+    | Cst.Fdecl fdecl -> elab t (elab_fdecl (Cst.Fdecl fdecl) :: acc)
+    | Cst.Fdefn fdenf -> elab t (elab_fdefn (Cst.Fdefn fdenf) :: acc)
     | Cst.Typedef typedef -> elab t (elab_typedef typedef.t typedef.t_var :: acc)
     | Cst.Sdefn sdefn ->
       let sdefn_ast =

@@ -351,17 +351,17 @@ let tc_pars (pars : param list) =
  * the declarations must be compatible. Types should be the
  * same, but parameter name are not required to be the same.
  *)
-let tc_fdecl ret_type func_name (pars : param list) env scope =
+let[@warning "-8"] tc_fdecl (AST.Fdecl fdecl) env =
+  let ret_type, func_name, pars = fdecl.ret_type, fdecl.func_name, fdecl.pars in
   tc_pars pars;
   if Map.mem env.funcs func_name
   then (
     tc_redeclare env func_name pars ret_type;
     env)
-  else
-    { env with
-      funcs =
-        Map.add_exn env.funcs ~key:func_name ~data:{ state = Decl; pars; ret_type; scope }
-    }
+  else (
+    let func = { state = Decl; pars; ret_type; scope = fdecl.scope } in
+    let funcs = Map.add_exn env.funcs ~key:func_name ~data:func in
+    { env with funcs })
 ;;
 
 (* As long as sdecl is not defined, declare it. *)
@@ -413,7 +413,10 @@ let pp_env env =
  * 3) Each function can only be define in source file, not header file.
  * 4) functions declared in header file cannot be defined in source files again.
  *)
-let tc_fdefn ret_type func_name pars blk env scope =
+let[@warning "-8"] tc_fdefn (AST.Fdefn fdefn) env =
+  let ret_type, func_name, pars, blk, scope =
+    fdefn.ret_type, fdefn.func_name, fdefn.pars, fdefn.blk, fdefn.scope
+  in
   tc_pars pars;
   if phys_equal scope `External
   then error ~msg:"Cannot define function in header file" None;
@@ -424,16 +427,14 @@ let tc_fdefn ret_type func_name pars blk env scope =
   let env =
     match Map.find env.funcs func_name with
     | None ->
-      let funcs =
-        Map.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
-      in
+      let func = { state = Defn; pars; ret_type; scope } in
+      let funcs = Map.set env.funcs ~key:func_name ~data:func in
       { env with funcs; vars }
     | Some s ->
       (match s.state, s.scope with
       | Decl, `Internal ->
-        let funcs =
-          Map.set env.funcs ~key:func_name ~data:{ state = Defn; pars; ret_type; scope }
-        in
+        let func = { state = Defn; pars; ret_type; scope } in
+        let funcs = Map.set env.funcs ~key:func_name ~data:func in
         tc_redeclare env func_name pars ret_type;
         { env with funcs; vars }
       | _, _ -> error ~msg:(sprintf "%s already defined." (Symbol.name func_name)) None)
@@ -460,42 +461,35 @@ let _tc_post (env : env) =
   if not cond then error ~msg:"main not defined" None
 ;;
 
-let rec _typecheck (prog : AST.gdecl list) env scope =
+let rec _typecheck (prog : AST.gdecl list) env =
   match prog with
   | [] ->
-    if phys_equal scope `Internal then _tc_post env;
+    _tc_post env;
     env
   | h :: t ->
     let env = { env with vars = Map.empty } in
     (match h with
     | Fdecl fdecl ->
-      let env = tc_fdecl fdecl.ret_type fdecl.func_name fdecl.pars env scope in
-      _typecheck t env scope
+      let env = tc_fdecl (Fdecl fdecl) env in
+      _typecheck t env
     | Fdefn fdefn ->
-      let env = tc_fdefn fdefn.ret_type fdefn.func_name fdefn.pars fdefn.blk env scope in
-      _typecheck t env scope
-    | Typedef _ -> _typecheck t env scope
+      let env = tc_fdefn (Fdefn fdefn) env in
+      _typecheck t env
+    | Typedef _ -> _typecheck t env
     | Sdecl sdecl ->
       let env = tc_sdecl sdecl.struct_name env in
-      _typecheck t env scope
+      _typecheck t env
     | Sdefn sdefn ->
       let env = tc_sdefn sdefn.struct_name sdefn.fields env in
-      _typecheck t env scope)
+      _typecheck t env)
 ;;
 
-(* env
- * | None: typecheck header file
- * | Some env: typecheck source file based on environment from header file. *)
-let typecheck (prog : AST.gdecl list) (env : env option) =
-  let env, scope =
-    match env with
-    | None ->
-      ( { vars = Map.empty (* variable decl/def tracker *)
-        ; funcs = Map.empty (* function signature *)
-        ; structs = Map.empty (* struct signature *)
-        }
-      , `External )
-    | Some s -> s, `Internal
+let typecheck (prog : AST.gdecl list) =
+  let env =
+    { vars = Map.empty (* variable decl/def tracker *)
+    ; funcs = Map.empty (* function signature *)
+    ; structs = Map.empty (* struct signature *)
+    }
   in
-  _typecheck prog env scope
+  _typecheck prog env
 ;;

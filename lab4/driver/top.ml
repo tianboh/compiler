@@ -144,27 +144,20 @@ let say_if (v : bool) (f : unit -> string) = if v then prerr_endline (f ())
 
 (* The main driver for the compiler: runs each phase. *)
 let compile (cmd : cmd_line_args) : unit =
-  let tc_env =
+  let cst =
     match cmd.header_file with
-    | Some header ->
-      let cst = Parse.parse header in
-      let ast = Elab.elaborate cst in
-      Some (Typechecker.typecheck ast None)
-    | None -> None
+    | Some header -> Parse.parse header true @ Parse.parse cmd.filename false
+    | None -> Parse.parse cmd.filename false
   in
   say_if cmd.verbose (fun () -> "Parsing... " ^ cmd.filename);
   if cmd.dump_parsing then ignore (Parsing.set_trace true : bool);
-  let cst = Parse.parse cmd.filename in
   say_if cmd.dump_cst (fun () -> CST.Print.pp_program cst);
   let ast = Elab.elaborate cst in
-  let ast =
-    AST.Fdecl { ret_type = AST.Int; func_name = Symbol.symbol "main"; pars = [] } :: ast
-  in
+  let func_name, ret_type = Symbol.symbol "main", AST.Int in
+  let ast = AST.Fdecl { ret_type; func_name; pars = []; scope = `Internal } :: ast in
   say_if cmd.dump_ast (fun () -> AST.Print.pp_program ast);
   say_if cmd.verbose (fun () -> "Semantic analysis...");
-  let tc_env = Typechecker.typecheck ast tc_env in
-  Controlflow.cf_ret ast;
-  Controlflow.cf_init ast;
+  let tc_env = Semantic.Driver.run ast in
   if cmd.semcheck_only then exit 0;
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");

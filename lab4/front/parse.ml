@@ -25,7 +25,8 @@ let initialize_lexbuf (filename : string) : Lexing.lexbuf -> unit =
     lexbuf.lex_curr_p <- pos
 ;;
 
-let parse (filename : string) : Cst.program =
+let parse (filename : string) (is_header : bool) : Cst.program =
+  if is_header then Env.is_header := true else Env.is_header := false;
   try
     let cst =
       In_channel.with_file filename ~f:(fun chan ->
