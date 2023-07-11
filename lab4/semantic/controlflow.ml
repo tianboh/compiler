@@ -60,7 +60,7 @@ let rec cf_ret (ast : AST.program) : unit =
     (match h with
     | Fdefn fdefn ->
       (match fdefn.ret_type with
-      | Void -> ()
+      | `Void -> ()
       | _ ->
         if not (_cf_ret_stm fdefn.blk) then error ~msg:"Some branches not return" None)
     | Typedef _ | Fdecl _ | Sdecl _ | Sdefn _ -> ());

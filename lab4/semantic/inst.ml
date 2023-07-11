@@ -13,45 +13,48 @@ module Symbol = Util.Symbol
 
 type binop =
   (* II *)
-  | Plus
-  | Minus
-  | Times
-  | Divided_by
-  | Modulo
-  | And
-  | Or
-  | Hat
-  | Right_shift
-  | Left_shift
-  (* IB *)
-  | Equal_eq
-  | Greater
-  | Greater_eq
-  | Less
-  | Less_eq
-  | Not_eq
+  [ `Plus
+  | `Minus
+  | `Times
+  | `Divided_by
+  | `Modulo
+  | `And
+  | `Or
+  | `Hat
+  | `Right_shift
+  | `Left_shift
+  | (* IB *)
+    `Equal_eq
+  | `Greater
+  | `Greater_eq
+  | `Less
+  | `Less_eq
+  | `Not_eq
+  ]
 
 type asnop =
-  | Asn
-  | Plus_asn
-  | Minus_asn
-  | Times_asn
-  | Div_asn
-  | Mod_asn
-  | And_asn
-  | Hat_asn
-  | Or_asn
-  | Left_shift_asn
-  | Right_shift_asn
+  [ `Asn
+  | `Plus_asn
+  | `Minus_asn
+  | `Times_asn
+  | `Div_asn
+  | `Mod_asn
+  | `And_asn
+  | `Hat_asn
+  | `Or_asn
+  | `Left_shift_asn
+  | `Right_shift_asn
+  ]
 
 type dtype =
-  | Int
-  | Bool
-  | Void
-  | NULL
-  | Pointer of dtype
-  | Array of dtype
-  | Struct of Symbol.t
+  [ `Int
+  | `Bool
+  | `Void
+  | `NULL
+  | `Pointer of dtype
+  | `Array of dtype
+  | `Struct of Symbol.t
+  ]
 
 type 'a typed =
   { dtype : dtype
@@ -139,69 +142,51 @@ type stm =
   | Sexp of texp
   | Assert of texp
 
-type param =
-  { t : dtype
-  ; i : Symbol.t
-  }
+type param = Symbol.t typed
 
 type field =
   { t : dtype
   ; i : Symbol.t
   }
 
-type gdecl =
-  | Fdecl of
-      { ret_type : dtype
-      ; func_name : Symbol.t
-      ; pars : param list
-      }
-  | Fdefn of
-      { ret_type : dtype
-      ; func_name : Symbol.t
-      ; pars : param list
-      ; blk : stm
-      }
-  | Typedef of
-      { t : dtype
-      ; t_var : Symbol.t
-      }
-  | Sdecl of { struct_name : Symbol.t }
-  | Sdefn of
-      { struct_name : Symbol.t
-      ; fields : field list
-      }
+type fdefn =
+  { ret_type : dtype
+  ; func_name : Symbol.t
+  ; pars : param list
+  ; blk : stm
+  }
 
-type program = gdecl list
+type program = fdefn list
 
 module Print = struct
   let rec pp_dtype = function
-    | Int -> "int"
-    | Bool -> "bool"
-    | Void -> "void"
-    | Pointer ptr -> "*" ^ pp_dtype ptr
-    | Array arr -> pp_dtype arr ^ "[]"
-    | NULL -> "NULL"
-    | Struct s -> "struct " ^ Symbol.name s
+    | `Int -> "int"
+    | `Bool -> "bool"
+    | `Void -> "void"
+    | `Pointer ptr -> "*" ^ pp_dtype ptr
+    | `Array arr -> pp_dtype arr ^ "[]"
+    | `NULL -> "NULL"
+    | `Struct s -> "struct " ^ Symbol.name s
   ;;
 
   let pp_binop = function
-    | Plus -> "+"
-    | Minus -> "-"
-    | Times -> "*"
-    | Divided_by -> "/"
-    | Modulo -> "%"
-    | And -> "&"
-    | Or -> "|"
-    | Hat -> "^"
-    | Right_shift -> ">>"
-    | Left_shift -> "<<"
+    | `Plus -> "+"
+    | `Minus -> "-"
+    | `Times -> "*"
+    | `Divided_by -> "/"
+    | `Modulo -> "%"
+    | `And -> "&"
+    | `Or -> "|"
+    | `Hat -> "^"
+    | `Right_shift -> ">>"
+    | `Left_shift -> "<<"
     (* IB *)
-    | Equal_eq -> "=="
-    | Greater -> ">"
-    | Greater_eq -> ">="
-    | Less -> "<"
-    | Less_eq -> "<="
-    | Not_eq -> "!="
+    | `Equal_eq -> "=="
+    | `Greater -> ">"
+    | `Greater_eq -> ">="
+    | `Less -> "<"
+    | `Less_eq -> "<="
+    | `Not_eq -> "!="
   ;;
 
   let rec pp_exp = function
@@ -267,32 +252,20 @@ module Print = struct
     | Assert e -> sprintf "assert(%s)" (pp_texp e)
   ;;
 
-  let pp_param (param : param) = sprintf "%s %s" (pp_dtype param.t) (Symbol.name param.i)
-  let pp_field (field : field) = sprintf "%s %s" (pp_dtype field.t) (Symbol.name field.i)
-
-  let pp_gdecl = function
-    | Fdecl fdecl ->
-      sprintf
-        "%s %s(%s);"
-        (pp_dtype fdecl.ret_type)
-        (Symbol.name fdecl.func_name)
-        (List.map fdecl.pars ~f:pp_param |> String.concat ~sep:",")
-    | Fdefn fdefn ->
-      sprintf
-        "%s %s(%s)%s"
-        (pp_dtype fdefn.ret_type)
-        (Symbol.name fdefn.func_name)
-        (List.map fdefn.pars ~f:pp_param |> String.concat ~sep:",")
-        (pp_stm fdefn.blk)
-    | Typedef typedef ->
-      sprintf "typedef %s %s" (pp_dtype typedef.t) (Symbol.name typedef.t_var)
-    | Sdefn sdefn ->
-      sprintf
-        "struct %s{%s}"
-        (Symbol.name sdefn.struct_name)
-        (List.map sdefn.fields ~f:pp_field |> String.concat ~sep:"; ")
-    | Sdecl sdecl -> sprintf "struct %s;" (Symbol.name sdecl.struct_name)
+  let pp_param (param : param) =
+    sprintf "%s %s" (pp_dtype param.dtype) (Symbol.name param.data)
   ;;
 
-  let pp_program program = List.map program ~f:pp_gdecl |> String.concat ~sep:"\n\n"
+  let pp_field (field : field) = sprintf "%s %s" (pp_dtype field.t) (Symbol.name field.i)
+
+  let pp_fdefn fdefn =
+    sprintf
+      "%s %s(%s)%s"
+      (pp_dtype fdefn.ret_type)
+      (Symbol.name fdefn.func_name)
+      (List.map fdefn.pars ~f:pp_param |> String.concat ~sep:",")
+      (pp_stm fdefn.blk)
+  ;;
+
+  let pp_program program = List.map program ~f:pp_fdefn |> String.concat ~sep:"\n\n"
 end

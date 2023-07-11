@@ -181,19 +181,19 @@ m(x) :
 
 dtype : 
   | Int;
-      { Cst.Int }
+      { `Int }
   | Bool;
-      { Cst.Bool }
+      { `Bool }
   | Void;
-      { Cst.Void }
+      { `Void }
   | ident = TIdent;
-      { Cst.Ctype ident }
+      { `Ctype ident }
   | t = dtype; Star;
-      { Cst.Pointer t }
+      { `Pointer t }
   | t = dtype; L_bracket; R_bracket
-      { Cst.Array t }
+      { `Array t }
   | Struct; var = VIdent;
-      { Cst.Struct var }
+      { `Struct var }
       
 
 decl :

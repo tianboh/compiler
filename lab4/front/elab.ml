@@ -56,42 +56,42 @@ let ct2pt = ref Symbol.Map.empty
 let func_env = ref Symbol.Set.empty
 
 let rec elab_ptype = function
-  | Cst.Int -> Ast.Int
-  | Cst.Bool -> Ast.Bool
-  | Cst.Void -> Ast.Void
-  | Cst.Ctype _ -> failwith "elab_ptype should only handle primitive types"
-  | Cst.Pointer ptr -> Ast.Pointer (elab_ptype ptr)
-  | Cst.Array arr -> Ast.Array (elab_ptype arr)
-  | Cst.Struct s -> Ast.Struct s
+  | `Int -> `Int
+  | `Bool -> `Bool
+  | `Void -> `Void
+  | `Ctype _ -> failwith "elab_ptype should only handle primitive types"
+  | `Pointer ptr -> `Pointer (elab_ptype ptr)
+  | `Array arr -> `Array (elab_ptype arr)
+  | `Struct s -> `Struct s
 ;;
 
-let elab_type ctype =
+let elab_type (ctype : Cst.dtype) : Ast.dtype =
   let ptype =
     match ctype with
-    | Cst.Int -> Cst.Int
-    | Cst.Bool -> Cst.Bool
-    | Cst.Void -> Cst.Void
-    | Cst.Ctype c -> Symbol.Map.find_exn !ct2pt c
-    | Cst.Pointer ptr -> Cst.Pointer ptr
-    | Cst.Array arr -> Cst.Array arr
-    | Cst.Struct s -> Cst.Struct s
+    | `Int -> `Int
+    | `Bool -> `Bool
+    | `Void -> `Void
+    | `Ctype c -> Symbol.Map.find_exn !ct2pt c
+    | `Pointer ptr -> `Pointer ptr
+    | `Array arr -> `Array arr
+    | `Struct s -> `Struct s
   in
   elab_ptype ptype
 ;;
 
 let elab_asnop (asnop : Cst.asnop) : Ast.asnop =
   match asnop with
-  | Asn -> Asn
-  | Plus_asn -> Plus_asn
-  | Minus_asn -> Minus_asn
-  | Times_asn -> Times_asn
-  | Div_asn -> Div_asn
-  | Mod_asn -> Mod_asn
-  | And_asn -> And_asn
-  | Hat_asn -> Hat_asn
-  | Or_asn -> Or_asn
-  | Left_shift_asn -> Left_shift_asn
-  | Right_shift_asn -> Right_shift_asn
+  | Asn -> `Asn
+  | Plus_asn -> `Plus_asn
+  | Minus_asn -> `Minus_asn
+  | Times_asn -> `Times_asn
+  | Div_asn -> `Div_asn
+  | Mod_asn -> `Mod_asn
+  | And_asn -> `And_asn
+  | Hat_asn -> `Hat_asn
+  | Or_asn -> `Or_asn
+  | Left_shift_asn -> `Left_shift_asn
+  | Right_shift_asn -> `Right_shift_asn
 ;;
 
 (* 
@@ -140,35 +140,35 @@ and elab_binop (binop : Cst.binop) (lhs : Cst.mexp) (rhs : Cst.mexp) : Ast.exp =
   | Cst.Or_or ->
     Ast.Terop { cond = lhs_ast; true_exp = Mark.naked Ast.True; false_exp = rhs_ast }
   (* Rest is only type transformation. *)
-  | Cst.Plus -> Ast.Binop { op = Ast.Plus; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Minus -> Ast.Binop { op = Ast.Minus; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Times -> Ast.Binop { op = Ast.Times; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Divided_by -> Ast.Binop { op = Ast.Divided_by; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Modulo -> Ast.Binop { op = Ast.Modulo; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.And -> Ast.Binop { op = Ast.And; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Or -> Ast.Binop { op = Ast.Or; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Hat -> Ast.Binop { op = Ast.Hat; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Right_shift -> Ast.Binop { op = Ast.Right_shift; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Left_shift -> Ast.Binop { op = Ast.Left_shift; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Equal_eq -> Ast.Binop { op = Ast.Equal_eq; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Greater -> Ast.Binop { op = Ast.Greater; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Greater_eq -> Ast.Binop { op = Ast.Greater_eq; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Less -> Ast.Binop { op = Ast.Less; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Less_eq -> Ast.Binop { op = Ast.Less_eq; lhs = lhs_ast; rhs = rhs_ast }
-  | Cst.Not_eq -> Ast.Binop { op = Ast.Not_eq; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Plus -> Ast.Binop { op = `Plus; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Minus -> Ast.Binop { op = `Minus; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Times -> Ast.Binop { op = `Times; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Divided_by -> Ast.Binop { op = `Divided_by; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Modulo -> Ast.Binop { op = `Modulo; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.And -> Ast.Binop { op = `And; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Or -> Ast.Binop { op = `Or; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Hat -> Ast.Binop { op = `Hat; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Right_shift -> Ast.Binop { op = `Right_shift; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Left_shift -> Ast.Binop { op = `Left_shift; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Equal_eq -> Ast.Binop { op = `Equal_eq; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Greater -> Ast.Binop { op = `Greater; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Greater_eq -> Ast.Binop { op = `Greater_eq; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Less -> Ast.Binop { op = `Less; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Less_eq -> Ast.Binop { op = `Less_eq; lhs = lhs_ast; rhs = rhs_ast }
+  | Cst.Not_eq -> Ast.Binop { op = `Not_eq; lhs = lhs_ast; rhs = rhs_ast }
 
 and elab_unop (unop : Cst.unop) (operand : Cst.mexp) : Ast.exp =
   let operand_ast = elab_mexp operand in
   match unop with
   | Cst.Negative ->
     let lhs = Mark.naked (Ast.Const_int Int32.zero) in
-    Ast.Binop { op = Ast.Minus; lhs; rhs = operand_ast }
+    Ast.Binop { op = `Minus; lhs; rhs = operand_ast }
   | Cst.Excalmation_mark ->
-    Ast.Binop { op = Ast.Equal_eq; lhs = operand_ast; rhs = Mark.naked Ast.False }
+    Ast.Binop { op = `Equal_eq; lhs = operand_ast; rhs = Mark.naked Ast.False }
   | Cst.Dash_mark ->
     (* -1 is 1111 1111 in 2's complement representation *)
     let lhs = Mark.naked (Ast.Const_int Int32.minus_one) in
-    Ast.Binop { op = Ast.Hat; lhs; rhs = operand_ast }
+    Ast.Binop { op = `Hat; lhs; rhs = operand_ast }
 
 and elab_terop (cond : Cst.mexp) (true_exp : Cst.mexp) (false_exp : Cst.mexp) : Ast.exp =
   let cond_ast = elab_mexp cond in
@@ -372,13 +372,13 @@ let elab_typedef t t_var =
   let env' = !ct2pt in
   let dest_type =
     match t with
-    | Cst.Ctype s -> Symbol.Map.find_exn env' s
-    | Cst.Int -> Cst.Int
-    | Cst.Bool -> Cst.Bool
-    | Cst.Void -> error ~msg:"dest type cannot be void" None
-    | Cst.Pointer ptr -> Cst.Pointer ptr
-    | Cst.Array arr -> Cst.Array arr
-    | Cst.Struct s -> Cst.Struct s
+    | `Ctype s -> Symbol.Map.find_exn env' s
+    | `Int -> `Int
+    | `Bool -> `Bool
+    | `Void -> error ~msg:"dest type cannot be void" None
+    | `Pointer ptr -> `Pointer ptr
+    | `Array arr -> `Array arr
+    | `Struct s -> `Struct s
   in
   if Symbol.Set.mem !func_env t_var then error None ~msg:"type name already exist";
   let env' =

@@ -21,45 +21,48 @@ module Symbol = Util.Symbol
 
 type binop =
   (* II *)
-  | Plus
-  | Minus
-  | Times
-  | Divided_by
-  | Modulo
-  | And
-  | Or
-  | Hat
-  | Right_shift
-  | Left_shift
-  (* IB *)
-  | Equal_eq
-  | Greater
-  | Greater_eq
-  | Less
-  | Less_eq
-  | Not_eq
+  [ `Plus
+  | `Minus
+  | `Times
+  | `Divided_by
+  | `Modulo
+  | `And
+  | `Or
+  | `Hat
+  | `Right_shift
+  | `Left_shift
+  | (* IB *)
+    `Equal_eq
+  | `Greater
+  | `Greater_eq
+  | `Less
+  | `Less_eq
+  | `Not_eq
+  ]
 
 type asnop =
-  | Asn
-  | Plus_asn
-  | Minus_asn
-  | Times_asn
-  | Div_asn
-  | Mod_asn
-  | And_asn
-  | Hat_asn
-  | Or_asn
-  | Left_shift_asn
-  | Right_shift_asn
+  [ `Asn
+  | `Plus_asn
+  | `Minus_asn
+  | `Times_asn
+  | `Div_asn
+  | `Mod_asn
+  | `And_asn
+  | `Hat_asn
+  | `Or_asn
+  | `Left_shift_asn
+  | `Right_shift_asn
+  ]
 
 type dtype =
-  | Int
-  | Bool
-  | Void
-  | NULL
-  | Pointer of dtype
-  | Array of dtype
-  | Struct of Symbol.t
+  [ `Int
+  | `Bool
+  | `Void
+  | `NULL
+  | `Pointer of dtype
+  | `Array of dtype
+  | `Struct of Symbol.t
+  ]
 
 type lvalue =
   | Ident of Symbol.t
@@ -187,33 +190,33 @@ type program = gdecl list
 
 module Print = struct
   let rec pp_dtype = function
-    | Int -> "int"
-    | Bool -> "bool"
-    | Void -> "void"
-    | Pointer ptr -> "*" ^ pp_dtype ptr
-    | Array arr -> pp_dtype arr ^ "[]"
-    | NULL -> "NULL"
-    | Struct s -> "struct " ^ Symbol.name s
+    | `Int -> "int"
+    | `Bool -> "bool"
+    | `Void -> "void"
+    | `Pointer ptr -> "*" ^ pp_dtype ptr
+    | `Array arr -> pp_dtype arr ^ "[]"
+    | `NULL -> "NULL"
+    | `Struct s -> "struct " ^ Symbol.name s
   ;;
 
   let pp_binop = function
-    | Plus -> "+"
-    | Minus -> "-"
-    | Times -> "*"
-    | Divided_by -> "/"
-    | Modulo -> "%"
-    | And -> "&"
-    | Or -> "|"
-    | Hat -> "^"
-    | Right_shift -> ">>"
-    | Left_shift -> "<<"
+    | `Plus -> "+"
+    | `Minus -> "-"
+    | `Times -> "*"
+    | `Divided_by -> "/"
+    | `Modulo -> "%"
+    | `And -> "&"
+    | `Or -> "|"
+    | `Hat -> "^"
+    | `Right_shift -> ">>"
+    | `Left_shift -> "<<"
     (* IB *)
-    | Equal_eq -> "=="
-    | Greater -> ">"
-    | Greater_eq -> ">="
-    | Less -> "<"
-    | Less_eq -> "<="
-    | Not_eq -> "!="
+    | `Equal_eq -> "=="
+    | `Greater -> ">"
+    | `Greater_eq -> ">="
+    | `Less -> "<"
+    | `Less_eq -> "<="
+    | `Not_eq -> "!="
   ;;
 
   let rec pp_exp = function

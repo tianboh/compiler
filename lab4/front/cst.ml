@@ -119,13 +119,14 @@ type exp =
 and mexp = exp Mark.t
 
 and dtype =
-  | Int
-  | Bool
-  | Ctype of Symbol.t (* for custom type alias *)
-  | Void
-  | Pointer of dtype
-  | Array of dtype
-  | Struct of Symbol.t
+  [ `Int
+  | `Bool
+  | `Ctype of Symbol.t (* for custom type alias *)
+  | `Void
+  | `Pointer of dtype
+  | `Array of dtype
+  | `Struct of Symbol.t
+  ]
 
 type decl =
   | New_var of
@@ -290,13 +291,13 @@ module Print = struct
   and pp_mexp e = pp_exp (Mark.data e)
 
   and pp_dtype = function
-    | Int -> "int"
-    | Bool -> "bool"
-    | Void -> "void"
-    | Ctype ident -> Symbol.name ident
-    | Pointer p -> "*" ^ pp_dtype p
-    | Array arr -> pp_dtype arr ^ "[]"
-    | Struct s -> sprintf "struct %s" (Symbol.name s)
+    | `Int -> "int"
+    | `Bool -> "bool"
+    | `Void -> "void"
+    | `Ctype ident -> Symbol.name ident
+    | `Pointer p -> "*" ^ pp_dtype p
+    | `Array arr -> pp_dtype arr ^ "[]"
+    | `Struct s -> sprintf "struct %s" (Symbol.name s)
   ;;
 
   let pp_decl = function
