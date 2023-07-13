@@ -40,6 +40,26 @@ let name : t -> string = fun x -> x.name
 
 include Comparable.Make (T)
 
-module Function = struct
-  let calloc () = symbol "calloc"
+let c0_prefix =
+  match Sys.getenv "UNAME" with
+  | Some "Darwin" -> "__c0_"
+  | _ -> "_c0_"
+;;
+
+module Fname = struct
+  (* This module stores assembly function provided by GNU C library. 
+   * Though the signature is C level, assembly version is implemented as well. *)
+
+  (* void *calloc (size_t count, size_t eltsize)
+   * <stdlib.h>
+   * Allocate a block of count * eltsize bytes using malloc, and set its contents to
+   * zero. See Section 3.2.3.5 [Allocating Cleared Space], page 49 *)
+  let calloc = symbol "calloc"
+
+  (* int raise (int signum)
+   * <signal.h>
+   * The raise function sends the signal signum to the calling process. 
+   * It returns zero if successful and a nonzero value if it fails. 
+   * About the only reason for failure would be if the value of signum is invalid. *)
+  let raise = symbol "raise"
 end

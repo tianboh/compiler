@@ -36,3 +36,9 @@ let name : t -> string = fun x -> "_" ^ x.name ^ "_" ^ Int.to_string x.unique_id
 let content t = name t ^ ":"
 
 include Comparable.Make (T)
+
+module Handler = struct
+  let sigfpe = label (Some "sigfpe")
+  let sigabrt = label (Some "sigabrt")
+  let sigusr2 = label (Some "sigusr2")
+end

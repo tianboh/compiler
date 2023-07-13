@@ -7,12 +7,6 @@ module Memory = Var.Memory
 module Symbol = Util.Symbol
 module Temp = Var.Temp
 
-let c0_main =
-  match Sys.getenv "UNAME" with
-  | Some "Darwin" -> "__c0_main"
-  | _ -> "_c0_main"
-;;
-
 let dump_ps file_name (program : Asm_ps.program) =
   Out_channel.with_file file_name ~f:(fun out ->
       let output_instr instr = Out_channel.fprintf out "\t%s\n" (Asm_ps.pp_inst instr) in

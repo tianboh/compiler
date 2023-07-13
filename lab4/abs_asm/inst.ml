@@ -175,7 +175,7 @@ let pp_operand = function
 ;;
 
 let pp_scope = function
-  | `Internal -> "_c0_"
+  | `Internal -> Symbol.c0_prefix
   | `External -> ""
 ;;
 

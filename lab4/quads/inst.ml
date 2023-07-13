@@ -97,7 +97,7 @@ type program = fdefn list
 (* functions that format assembly output *)
 
 let pp_scope = function
-  | `Internal -> "_c0_"
+  | `Internal -> Symbol.c0_prefix
   | `External -> ""
 ;;
 

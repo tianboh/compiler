@@ -201,7 +201,7 @@ let format_inst' (operand : operand) =
 ;;
 
 let format_scope = function
-  | `Internal -> "_c0_"
+  | `Internal -> Symbol.c0_prefix
   | `External -> ""
 ;;
 

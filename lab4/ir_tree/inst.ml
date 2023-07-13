@@ -47,8 +47,9 @@ type exp =
 (* field of struct, element of array 
  * Never access large type directly. *)
 type mem =
-  { base : exp
-  ; offset : exp option
+  { disp : Int64.t (* used by array *)
+  ; base : exp
+  ; offset : exp option (* used by array and struct *)
   ; size : Size.primitive
   }
 
@@ -112,7 +113,7 @@ module Print : PRINT = struct
   let sprintf = Printf.sprintf
 
   let pp_scope = function
-    | `Internal -> "_c0_"
+    | `Internal -> Symbol.c0_prefix
     | `External -> ""
   ;;
 
