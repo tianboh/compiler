@@ -44,11 +44,12 @@ type exp =
       ; rhs : exp
       }
 
-(* field of struct, element of array *)
+(* field of struct, element of array 
+ * Never access large type directly. *)
 type mem =
   { base : exp
-  ; offset : exp
-  ; size : Size.t
+  ; offset : exp option
+  ; size : Size.primitive
   }
 
 and stm =
@@ -142,11 +143,12 @@ module Print : PRINT = struct
       sprintf "(%s %s %s)" (pp_exp binop.lhs) (pp_binop binop.op) (pp_exp binop.rhs)
 
   and pp_mem mem =
-    sprintf
-      "%s[%s]_%Ld"
-      (pp_exp mem.offset)
-      (pp_exp mem.base)
-      (Size.type_size_byte mem.size)
+    let offset =
+      match mem.offset with
+      | Some offset -> pp_exp offset
+      | None -> ""
+    in
+    sprintf "%s[%s]_%Ld" offset (pp_exp mem.base) (Size.type_size_byte mem.size)
 
   and pp_stm = function
     | Move mv -> Temp.name mv.dest ^ "  <--  " ^ pp_exp mv.src ^ "\n"

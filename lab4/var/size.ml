@@ -56,6 +56,12 @@ let compare (t1 : t) (t2 : t) =
   Int64.to_int_exn (s1 - s2)
 ;;
 
+let is_primitive (t : t) : bool =
+  match t with
+  | `CBYTE _ -> false
+  | _ -> true
+;;
+
 let pp_size = function
   | `VOID -> "void"
   | `BYTE -> "byte"

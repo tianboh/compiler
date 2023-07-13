@@ -61,60 +61,63 @@ type 'a typed =
   ; data : 'a
   }
 
-type lvalue =
-  | Ident of Symbol.t
-  | LVDot of
-      { struct_obj : tlvalue
-      ; field : Symbol.t
-      }
-  | LVDeref of { ptr : tlvalue }
-  | LVNth of
-      { arr : tlvalue
-      ; index : texp
-      }
+type exp =
+  [ `Var of Symbol.t
+  | `Const_int of Int32.t
+  | `True
+  | `False
+  | `Binop of binexp
+  | `Terop of terexp
+  | `Fcall of fcall
+  | `Dot of dot
+  | `Deref of deref
+  | `Nth of nth
+  | `NULL
+  | `Alloc of alloc
+  | `Alloc_arr of alloc_arr
+  ]
 
-and tlvalue = lvalue typed
+and binexp =
+  { op : binop
+  ; lhs : texp
+  ; rhs : texp
+  }
 
-and exp =
-  | Var of Symbol.t
-  | Const_int of Int32.t
-  | True
-  | False
-  | Binop of
-      { op : binop
-      ; lhs : texp
-      ; rhs : texp
-      }
-  | Terop of
-      { cond : texp
-      ; true_exp : texp
-      ; false_exp : texp
-      }
-  | Fcall of
-      { func_name : Symbol.t
-      ; args : texp list
-      }
-  | EDot of
-      { struct_obj : texp
-      ; field : Symbol.t
-      }
-  | EDeref of { ptr : texp }
-  | ENth of
-      { arr : texp
-      ; index : texp
-      }
-  | NULL
-  | Alloc of { t : dtype }
-  | Alloc_arr of
-      { t : dtype
-      ; e : texp
-      }
+and terexp =
+  { cond : texp
+  ; true_exp : texp
+  ; false_exp : texp
+  }
+
+and fcall =
+  { func_name : Symbol.t
+  ; args : texp list
+  }
+
+and dot =
+  { struct_obj : texp
+  ; field : Symbol.t
+  }
+
+and deref = { ptr : texp }
+
+and alloc = { dtype : dtype }
+
+and alloc_arr =
+  { etype : dtype
+  ; nitems : texp
+  }
+
+and nth =
+  { arr : texp
+  ; index : texp
+  }
 
 and texp = exp typed
 
 type stm =
   | Assign of
-      { name : tlvalue
+      { name : texp
       ; value : texp
       ; op : asnop
       }
@@ -189,45 +192,37 @@ module Print = struct
     | `Not_eq -> "!="
   ;;
 
-  let rec pp_exp = function
-    | Var id -> Symbol.name id
-    | Const_int c -> Int32.to_string c
-    | True -> "true"
-    | False -> "false"
-    | Binop binop ->
+  let rec pp_exp : exp -> string = function
+    | `Var id -> Symbol.name id
+    | `Const_int c -> Int32.to_string c
+    | `True -> "true"
+    | `False -> "false"
+    | `Binop binop ->
       sprintf "(%s %s %s)" (pp_texp binop.lhs) (pp_binop binop.op) (pp_texp binop.rhs)
-    | Terop terop ->
+    | `Terop terop ->
       sprintf
         "(%s ? %s : %s)"
         (pp_texp terop.cond)
         (pp_texp terop.true_exp)
         (pp_texp terop.false_exp)
-    | Fcall fcall ->
+    | `Fcall (fcall : fcall) ->
       sprintf
         "%s(%s)"
         (Symbol.name fcall.func_name)
         (List.map fcall.args ~f:(fun arg -> pp_texp arg) |> String.concat ~sep:",")
-    | EDot edot -> sprintf "%s.%s" (pp_texp edot.struct_obj) (Symbol.name edot.field)
-    | EDeref ederef -> sprintf "*%s" (pp_texp ederef.ptr)
-    | ENth enth -> sprintf "%s[%s]" (pp_texp enth.arr) (pp_texp enth.index)
-    | NULL -> "NULL"
-    | Alloc alloc -> sprintf "alloc(%s)" (pp_dtype alloc.t)
-    | Alloc_arr alloc_arr ->
-      sprintf "alloc_array(%s, %s)" (pp_dtype alloc_arr.t) (pp_texp alloc_arr.e)
+    | `Dot dot -> sprintf "%s.%s" (pp_texp dot.struct_obj) (Symbol.name dot.field)
+    | `Deref deref -> sprintf "*%s" (pp_texp deref.ptr)
+    | `Nth nth -> sprintf "%s[%s]" (pp_texp nth.arr) (pp_texp nth.index)
+    | `NULL -> "NULL"
+    | `Alloc alloc -> sprintf "alloc(%s)" (pp_dtype alloc.dtype)
+    | `Alloc_arr (alloc_arr : alloc_arr) ->
+      sprintf "alloc_array(%s, %s)" (pp_dtype alloc_arr.etype) (pp_texp alloc_arr.nitems)
 
   and pp_texp e = pp_exp e.data
 
-  let rec pp_lvalue = function
-    | Ident ident -> Symbol.name ident
-    | LVDot dot -> sprintf "%s.%s" (pp_tlvalue dot.struct_obj) (Symbol.name dot.field)
-    | LVDeref deref -> sprintf "*%s" (pp_tlvalue deref.ptr)
-    | LVNth nth -> sprintf "%s[%s]" (pp_tlvalue nth.arr) (pp_texp nth.index)
-
-  and pp_tlvalue tlv = pp_lvalue tlv.data
-
   let rec pp_stm = function
     | Assign asn_ast ->
-      sprintf "Assign (%s = %s;)" (pp_tlvalue asn_ast.name) (pp_texp asn_ast.value)
+      sprintf "Assign (%s = %s;)" (pp_texp asn_ast.name) (pp_texp asn_ast.value)
     | If if_ast ->
       sprintf
         "if(%s){ %s } else { %s }"

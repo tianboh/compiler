@@ -141,7 +141,7 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
     | None -> error ~msg:(sprintf "Identifier not declared: `%s`" (Symbol.name var)) loc
     | Some var' ->
       let dtype = var'.dtype in
-      { data = TST.Var var; dtype }
+      { data = `Var var; dtype }
   in
   let[@warning "-8"] tc_binop (AST.Binop binop) : TST.texp =
     match binop.op with
@@ -149,21 +149,21 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
     | `Less | `Less_eq | `Greater | `Greater_eq ->
       let lhs, rhs = tc_exp binop.lhs env, tc_exp binop.rhs env in
       (match lhs.dtype, rhs.dtype with
-      | `Int, `Int -> { data = TST.Binop { op = binop.op; lhs; rhs }; dtype = `Bool }
+      | `Int, `Int -> { data = `Binop { op = binop.op; lhs; rhs }; dtype = `Bool }
       | _, _ -> error ~msg:"Relation operand should be integer." loc)
     (* Polyeq op: ==, != *)
     | `Equal_eq | `Not_eq ->
       let lhs = tc_exp binop.lhs env in
       let rhs = tc_exp binop.rhs env in
       if type_cmp lhs.dtype rhs.dtype && not (type_cmp lhs.dtype `Void)
-      then { data = TST.Binop { op = binop.op; lhs; rhs }; dtype = `Bool }
+      then { data = `Binop { op = binop.op; lhs; rhs }; dtype = `Bool }
       else error ~msg:"Polyeq operands type mismatch" loc
     (* Rest are int operation *)
     | _ ->
       let lhs = tc_exp binop.lhs env in
       let rhs = tc_exp binop.rhs env in
       (match lhs.dtype, rhs.dtype with
-      | `Int, `Int -> { data = TST.Binop { op = binop.op; lhs; rhs }; dtype = `Int }
+      | `Int, `Int -> { data = `Binop { op = binop.op; lhs; rhs }; dtype = `Int }
       | _, _ -> error ~msg:"Integer binop operands are not integer" loc)
   in
   let[@warning "-8"] tc_terop (AST.Terop terop) : TST.texp =
@@ -177,7 +177,7 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
       error ~msg:"Terop condition should be bool" loc
     | `Bool ->
       if type_cmp true_exp.dtype false_exp.dtype
-      then { data = TST.Terop { cond; true_exp; false_exp }; dtype = true_exp.dtype }
+      then { data = `Terop { cond; true_exp; false_exp }; dtype = true_exp.dtype }
       else error ~msg:"Terop true & false exp type mismatch" loc
   in
   let[@warning "-8"] tc_fcall (AST.Fcall fcall) : TST.texp =
@@ -191,7 +191,7 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
     let args = List.map fcall.args ~f:(fun arg -> tc_exp arg env) in
     let args_dtype = args |> List.map ~f:(fun arg -> arg.dtype) in
     tc_signature (args_dtype :> TST.dtype list) (expected :> AST.dtype list) func_name;
-    { data = TST.Fcall { func_name; args }; dtype = func.ret_type }
+    { data = `Fcall { func_name; args }; dtype = func.ret_type }
   in
   let[@warning "-8"] tc_edot (AST.EDot edot) : TST.texp =
     let struct_obj = tc_exp edot.struct_obj env in
@@ -199,7 +199,7 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
     | `Struct s ->
       let s = Map.find_exn env.structs s in
       let dtype = dtype_of_field s edot.field in
-      { data = TST.EDot { struct_obj; field = edot.field }; dtype }
+      { data = `Dot { struct_obj; field = edot.field }; dtype }
     | `Int | `Bool | `Void | `NULL | `Pointer _ | `Array _ ->
       error ~msg:"cannot dot access" loc
   in
@@ -211,7 +211,7 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
       | `NULL -> error ~msg:"cannot dereference NULL" loc
       | `Void -> error ~msg:"cannot dereference void" loc
       | `Int | `Bool | `Pointer _ | `Array _ | `Struct _ ->
-        { data = TST.EDeref { ptr = tderef }; dtype = ptr })
+        { data = `Deref { ptr = tderef }; dtype = ptr })
     | `Int | `Bool | `Void | `NULL | `Array _ | `Struct _ -> error ~msg:"cannot deref" loc
   in
   let[@warning "-8"] tc_enth (AST.ENth enth) : TST.texp =
@@ -220,7 +220,7 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
     | `Array arr ->
       let tidx = tc_exp enth.index env in
       (match tidx.dtype with
-      | `Int -> { data = TST.ENth { arr = tarr; index = tidx }; dtype = arr }
+      | `Int -> { data = `Nth { arr = tarr; index = tidx }; dtype = arr }
       | _ -> error ~msg:"array index expect int" loc)
     | `Int | `Bool | `Void | `NULL | `Pointer _ | `Struct _ ->
       error ~msg:"cannot [] for non-array" loc
@@ -228,33 +228,34 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
   let[@warning "-8"] tc_alloc (AST.Alloc alloc) : TST.texp =
     match alloc.t with
     | `Int | `Bool | `Pointer _ ->
-      { data = TST.Alloc { t = alloc.t }; dtype = `Pointer alloc.t }
+      { data = `Alloc { dtype = alloc.t }; dtype = `Pointer alloc.t }
     | `Void | `NULL | `Array _ ->
       error ~msg:"cannot alloc void/null/array. For array, use alloc_array instead" loc
     | `Struct s ->
       let s' = Map.find_exn env.structs s in
       if phys_equal s'.state Defn
-      then { data = TST.Alloc { t = alloc.t }; dtype = `Pointer alloc.t }
+      then { data = `Alloc { dtype = alloc.t }; dtype = `Pointer alloc.t }
       else error ~msg:"alloc undefined struct" loc
   in
   let[@warning "-8"] tc_alloc_arr (AST.Alloc_arr alloc_arr) : TST.texp =
-    let e = tc_exp alloc_arr.e env in
-    match e.dtype with
-    | `Int -> { data = TST.Alloc_arr { t = alloc_arr.t; e }; dtype = `Array alloc_arr.t }
+    let nitems = tc_exp alloc_arr.e env in
+    match nitems.dtype with
+    | `Int ->
+      { data = `Alloc_arr { etype = alloc_arr.t; nitems }; dtype = `Array alloc_arr.t }
     | _ -> error ~msg:"alloc_arr size expect int" loc
   in
   match Util.Mark.data exp with
   | Var var -> tc_var (Var var)
-  | Const_int i -> { data = TST.Const_int i; dtype = `Int }
-  | True -> { data = TST.True; dtype = `Bool }
-  | False -> { data = TST.False; dtype = `Bool }
+  | Const_int i -> { data = `Const_int i; dtype = `Int }
+  | True -> { data = `True; dtype = `Bool }
+  | False -> { data = `False; dtype = `Bool }
   | Binop binop -> tc_binop (Binop binop)
   | Terop terop -> tc_terop (Terop terop)
   | Fcall fcall -> tc_fcall (Fcall fcall)
   | EDot edot -> tc_edot (EDot edot)
   | EDeref ederef -> tc_ederef (EDeref ederef)
   | ENth enth -> tc_enth (ENth enth)
-  | NULL -> { data = TST.NULL; dtype = `NULL }
+  | NULL -> { data = `NULL; dtype = `NULL }
   | Alloc alloc -> tc_alloc (Alloc alloc)
   | Alloc_arr alloc_arr -> tc_alloc_arr (Alloc_arr alloc_arr)
 ;;
@@ -292,12 +293,12 @@ let rec tc_stm (ast : AST.mstm) (env : env) (func_name : Symbol.t) : TST.stm * e
     then TST.Assert tasrt, env
     else error ~msg:"assert exp type expect bool" loc
 
-and trans_lvalue (lv : AST.lvalue) (env : env) : TST.tlvalue =
+and trans_lvalue (lv : AST.lvalue) (env : env) : TST.texp =
   match lv with
   | Ident name ->
     let var = Map.find_exn env.vars name in
     let dtype = var.dtype in
-    { data = TST.Ident name; dtype }
+    { data = `Var name; dtype }
   | LVDot lvdot ->
     let struct_obj = trans_lvalue (Mark.data lvdot.struct_obj) env in
     let stype = struct_obj.dtype in
@@ -305,18 +306,18 @@ and trans_lvalue (lv : AST.lvalue) (env : env) : TST.tlvalue =
     | `Struct sname ->
       let s = Map.find_exn env.structs sname in
       let dtype = dtype_of_field s lvdot.field in
-      { data = LVDot { struct_obj; field = lvdot.field }; dtype }
+      { data = `Dot { struct_obj; field = lvdot.field }; dtype }
     | _ -> failwith "dot access expect a struct type")
   | LVDeref lvderef ->
     let tptr = trans_lvalue (Mark.data lvderef.ptr) env in
     (match tptr.dtype with
-    | `Pointer ptr -> { data = TST.LVDeref { ptr = tptr }; dtype = ptr }
+    | `Pointer ptr -> { data = `Deref { ptr = tptr }; dtype = ptr }
     | _ -> failwith "deref expect a pointer")
   | LVNth lvnth ->
     let tarr = trans_lvalue (Mark.data lvnth.arr) env in
     let index = tc_exp lvnth.index env in
     (match tarr.dtype with
-    | `Array arr -> { data = TST.LVNth { arr = tarr; index }; dtype = arr }
+    | `Array arr -> { data = `Nth { arr = tarr; index }; dtype = arr }
     | _ -> failwith "array access expect array type")
 
 (* Check following
