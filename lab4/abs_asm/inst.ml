@@ -32,9 +32,8 @@ type operand =
 
 type mem =
   { base : Register.t
-  ; index : Register.t option
-  ; disp : Int64.t
-  ; scale : Size.primitive
+  ; offset : Register.t option
+  ; size : Size.primitive
   }
 
 type line =
@@ -180,16 +179,15 @@ let pp_scope = function
 ;;
 
 let pp_memory mem =
-  let base, index = mem.base, mem.index in
-  let disp, scale = mem.disp, mem.scale in
+  let base, offset = mem.base, mem.offset in
+  let size = mem.size in
   sprintf
-    "%s(%s, %s, %Ld)"
-    (Int64.to_string disp)
+    "(%s, %s, %Ld)"
     (Register.reg_to_str base)
-    (match index with
-    | Some idx -> Register.reg_to_str idx
+    (match offset with
+    | Some r -> Register.reg_to_str r
     | None -> "")
-    (Size.type_size_byte (scale :> Size.t))
+    (Size.type_size_byte size)
 ;;
 
 let pp_inst = function
