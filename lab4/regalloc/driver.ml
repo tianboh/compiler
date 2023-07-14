@@ -199,6 +199,12 @@ module Lazy = struct
       | Pop pop ->
         let res = IG.Vertex.Set.union res (trans_operand pop.var) in
         collect_vertex t res
+      | Load load ->
+        let res = IG.Vertex.Set.union res (trans_operand (Abs_asm.Temp load.dest)) in
+        collect_vertex t res
+      | Store store ->
+        let res = IG.Vertex.Set.union res (trans_operand store.src) in
+        collect_vertex t res
       | Jump _ | Label _ | Directive _ | Comment _ -> collect_vertex t res)
   ;;
 
@@ -208,7 +214,7 @@ module Lazy = struct
     List.map vertex_list ~f:(fun vtx ->
         let dest =
           match vtx with
-          | IG.Vertex.T.Reg r -> Reg { reg = r; size = QWORD }
+          | IG.Vertex.T.Reg r -> Reg { reg = r; size = `QWORD }
           | IG.Vertex.T.Temp t ->
             let idx = t.id in
             Mem (Memory.create idx Register.RBP t.size)
@@ -257,7 +263,7 @@ let seo adj prog =
 (* find minimum available register with neighbor nbr *)
 let find_min_available (nbr : Int.Set.t) (black_set : Int.Set.t) : int =
   let rec helper (idx : int) (nbr : Int.Set.t) =
-    if Register.special_use (Register.reg_idx idx) || Set.mem black_set idx
+    if Register.special_use (Register.idx_reg idx) || Set.mem black_set idx
     then helper (idx + 1) nbr
     else if Set.mem nbr idx
     then helper (idx + 1) nbr

@@ -35,7 +35,7 @@ let gen_VertexSet (l : string list) =
    only need to assign temp to registers.
 *)
 let transform_str_to_temp (line : Inst_reg_info.line) : Program.line =
-  { defines = gen_VertexSet [ line.define ]
+  { defs = gen_VertexSet [ line.define ]
   ; uses = gen_VertexSet line.uses
   ; live_out = gen_VertexSet line.live_out
   ; move = line.move
@@ -52,7 +52,7 @@ let transform_vertex_to_json (vertex : (IG.Vertex.t * Driver.dest) option) =
   | None -> None
   | Some (vtx, dest) ->
     (match dest with
-    | Reg reg -> Some (IG.Print.pp_vertex vtx, Register.reg_to_str ~size:DWORD reg.reg)
+    | Reg reg -> Some (IG.Print.pp_vertex vtx, Register.reg_to_str ~size:`DWORD reg.reg)
     | Mem m -> Some (IG.Print.pp_vertex vtx, Memory.mem_to_str m))
 ;;
 

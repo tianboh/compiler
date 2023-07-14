@@ -18,21 +18,21 @@ module Memory = Var.Memory
 
 type line =
   { uses : IG.Vertex.Set.t
-  ; defines : IG.Vertex.Set.t
+  ; defs : IG.Vertex.Set.t
   ; live_out : IG.Vertex.Set.t
   ; move : bool
   ; line_number : int
   }
 
 (* Return all the temporary/register in line.defines *)
-let get_defs line = line.defines
+let get_defs line = line.defs
 let get_uses line = line.uses
 
 type temps_info = line list
 
 let empty_line line_num live_out =
   { uses = IG.Vertex.Set.empty
-  ; defines = IG.Vertex.Set.empty
+  ; defs = IG.Vertex.Set.empty
   ; live_out
   ; move = false
   ; line_number = line_num
@@ -60,7 +60,7 @@ let print_VertexSet (ts : IG.Vertex.Set.t) =
 
 let print_line (line : line) =
   printf "{def: ";
-  print_VertexSet line.defines;
+  print_VertexSet line.defs;
   printf "\nuses: ";
   print_VertexSet line.uses;
   printf "\nlive_out: ";
@@ -83,116 +83,55 @@ let rec gen_forward
     (line_num : int)
     live_out_map
   =
+  let helper (line : Abs_asm.line) lo (move : bool) inst_info h line_num =
+    let line_empty = empty_line line_num lo in
+    let defs = gen_VertexSet line.defines in
+    let uses = gen_VertexSet line.uses in
+    let live_out = IG.Vertex.Set.union lo uses in
+    let line = { line_empty with defs; uses; live_out; move } in
+    Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+    inst_info
+  in
   match inst_list with
   | [] -> inst_info
   | h :: t ->
     let live_out = Int.Map.find_exn live_out_map line_num in
-    let line = empty_line line_num live_out in
     (match h with
     | Abs_asm.Binop binop ->
-      let def = gen_VertexSet binop.line.defines in
-      let uses = gen_VertexSet binop.line.uses in
-      let line =
-        { line with
-          defines = def
-        ; uses
-        ; live_out = IG.Vertex.Set.union line.live_out uses
-        }
-      in
-      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      let inst_info = helper binop.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Mov mov ->
-      let def = gen_VertexSet mov.line.defines in
-      let uses = gen_VertexSet mov.line.uses in
-      let line =
-        { line with
-          defines = def
-        ; uses
-        ; move = true
-        ; live_out = IG.Vertex.Set.union line.live_out uses
-        }
-      in
-      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      let inst_info = helper mov.line live_out true inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.CJump cjp ->
-      let defines = gen_VertexSet cjp.line.defines in
-      let uses = gen_VertexSet cjp.line.uses in
-      let line =
-        { line with defines; uses; live_out = IG.Vertex.Set.union line.live_out uses }
-      in
-      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      let inst_info = helper cjp.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Jump jp ->
-      let defines = gen_VertexSet jp.line.defines in
-      let uses = gen_VertexSet jp.line.uses in
-      let line =
-        { line with defines; uses; live_out = IG.Vertex.Set.union line.live_out uses }
-      in
-      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      let inst_info = helper jp.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Ret ret ->
-      let defines = gen_VertexSet ret.line.defines in
-      let uses = gen_VertexSet ret.line.uses in
-      let line =
-        { line with defines; uses; live_out = IG.Vertex.Set.union line.live_out uses }
-      in
-      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      let inst_info = helper ret.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Label _ ->
-      let defines = IG.Vertex.Set.empty in
-      let uses = IG.Vertex.Set.empty in
-      let line =
-        { line with defines; uses; live_out = IG.Vertex.Set.union line.live_out uses }
-      in
-      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+    | Abs_asm.Label label ->
+      let inst_info = helper label.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Fcall fcall ->
-      let def = gen_VertexSet fcall.line.defines in
-      let uses = gen_VertexSet fcall.line.uses in
-      let line =
-        { line with
-          defines = def
-        ; uses
-        ; live_out = IG.Vertex.Set.union line.live_out uses
-        }
-      in
-      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      let inst_info = helper fcall.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Pop pop ->
-      let uses = gen_VertexSet pop.line.uses in
-      let line =
-        { line with
-          defines = gen_VertexSet pop.line.defines
-        ; uses
-        ; move = false
-        ; live_out = IG.Vertex.Set.union line.live_out uses
-        }
-      in
-      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      let inst_info = helper pop.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Push push ->
-      let uses = gen_VertexSet push.line.uses in
-      let line =
-        { line with
-          defines = gen_VertexSet push.line.defines
-        ; uses
-        ; move = false
-        ; live_out = IG.Vertex.Set.union line.live_out uses
-        }
-      in
-      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      let inst_info = helper push.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Assert asrt ->
-      let uses = gen_VertexSet asrt.line.uses in
-      let line =
-        { line with
-          defines = gen_VertexSet asrt.line.defines
-        ; uses
-        ; move = false
-        ; live_out = IG.Vertex.Set.union line.live_out uses
-        }
-      in
-      Hashtbl.set inst_info ~key:line_num ~data:(line, h);
+      let inst_info = helper asrt.line live_out false inst_info h line_num in
+      gen_forward t inst_info (line_num + 1) live_out_map
+    | Abs_asm.Load load ->
+      let inst_info = helper load.line live_out false inst_info h line_num in
+      gen_forward t inst_info (line_num + 1) live_out_map
+    | Abs_asm.Store store ->
+      let inst_info = helper store.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Directive _ | Abs_asm.Comment _ ->
       gen_forward t inst_info line_num live_out_map)

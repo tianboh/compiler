@@ -51,88 +51,75 @@ let rec gen_succ (inst_list : Abs_asm.instr list) (line_no : int) map =
     | Abs_asm.Label l ->
       let map = Label.Map.set map ~key:l.label ~data:line_no in
       gen_succ t (line_no + 1) map
-    | Jump _ | CJump _ | Ret _ | Mov _ | Binop _ | Assert _ | Fcall _ | Push _ | Pop _ ->
-      gen_succ t (line_no + 1) map
+    | Jump _
+    | CJump _
+    | Ret _
+    | Mov _
+    | Binop _
+    | Assert _
+    | Fcall _
+    | Push _
+    | Pop _
+    | Store _
+    | Load _ -> gen_succ t (line_no + 1) map
     | Directive _ | Comment _ -> gen_succ t line_no map)
 ;;
 
-let[@warning "-8"] _gen_df_info_helper (line_no : int) (line : Abs_asm.line) =
+let[@warning "-8"] _gen_df_info_helper (line_number : int) (line : Abs_asm.line) =
   let uses = line.uses in
   let defs = line.defines in
   let gen = Int.Set.of_list (Abs_asm.to_int_list uses) in
   let kill = Int.Set.of_list (Abs_asm.to_int_list defs) in
   let kill = Int.Set.diff kill gen in
-  let succ = [ line_no + 1 ] in
+  let succ = [ line_number + 1 ] in
   let is_label = false in
-  ({ gen = Int.Set.to_list gen
-   ; kill = Int.Set.to_list kill
-   ; succ
-   ; is_label
-   ; line_number = line_no
-   }
+  ({ gen = Int.Set.to_list gen; kill = Int.Set.to_list kill; succ; is_label; line_number }
     : Dfana_info.line)
 ;;
 
-let[@warning "-8"] _gen_df_info_cjump line_no (Abs_asm.CJump cjump) label_map =
+let[@warning "-8"] _gen_df_info_cjump line_number (Abs_asm.CJump cjump) label_map
+    : Dfana_info.line
+  =
   let uses = cjump.line.uses in
   let gen = Int.Set.of_list (Abs_asm.to_int_list uses) in
   let target_true_no = Label.Map.find_exn label_map cjump.target_true in
   let target_false_no = Label.Map.find_exn label_map cjump.target_false in
-  ({ gen = Int.Set.to_list gen
-   ; kill = []
-   ; succ = [ target_true_no; target_false_no ]
-   ; is_label = false
-   ; line_number = line_no
-   }
-    : Dfana_info.line)
+  let gen = Int.Set.to_list gen in
+  let succ = [ target_true_no; target_false_no ] in
+  { gen; kill = []; succ; is_label = false; line_number }
 ;;
 
-let rec _gen_df_info_rev (inst_list : Abs_asm.instr list) line_no label_map res =
+let rec _gen_df_info_rev (inst_list : Abs_asm.instr list) line_number label_map res =
   match inst_list with
   | [] -> res
   | h :: t ->
     let line =
       match h with
-      | Binop binop -> Some (_gen_df_info_helper line_no binop.line)
-      | Mov mov -> Some (_gen_df_info_helper line_no mov.line)
-      | Push push -> Some (_gen_df_info_helper line_no push.line)
-      | Pop pop -> Some (_gen_df_info_helper line_no pop.line)
-      | Assert asrt -> Some (_gen_df_info_helper line_no asrt.line)
-      | Fcall fcall -> Some (_gen_df_info_helper line_no fcall.line)
+      | Binop binop -> Some (_gen_df_info_helper line_number binop.line)
+      | Mov mov -> Some (_gen_df_info_helper line_number mov.line)
+      | Push push -> Some (_gen_df_info_helper line_number push.line)
+      | Pop pop -> Some (_gen_df_info_helper line_number pop.line)
+      | Assert asrt -> Some (_gen_df_info_helper line_number asrt.line)
+      | Fcall fcall -> Some (_gen_df_info_helper line_number fcall.line)
+      | Load load -> Some (_gen_df_info_helper line_number load.line)
+      | Store store -> Some (_gen_df_info_helper line_number store.line)
       | Jump jp ->
-        let target_line_no = Label.Map.find_exn label_map jp.target in
-        Some
-          ({ gen = []
-           ; kill = []
-           ; succ = [ target_line_no ]
-           ; is_label = false
-           ; line_number = line_no
-           }
-            : Dfana_info.line)
-      | CJump cjp -> Some (_gen_df_info_cjump line_no (CJump cjp) label_map)
+        let succ = [ Label.Map.find_exn label_map jp.target ] in
+        Some { gen = []; kill = []; succ; is_label = false; line_number }
+      | CJump cjp -> Some (_gen_df_info_cjump line_number (CJump cjp) label_map)
       | Ret ret ->
-        Some
-          ({ gen = Abs_asm.to_int_list ret.line.uses
-           ; kill = Abs_asm.to_int_list ret.line.defines
-           ; succ = []
-           ; is_label = false
-           ; line_number = line_no
-           }
-            : Dfana_info.line)
+        let gen, kill =
+          Abs_asm.to_int_list ret.line.uses, Abs_asm.to_int_list ret.line.defines
+        in
+        Some { gen; kill; succ = []; is_label = false; line_number }
       | Label _ ->
-        Some
-          ({ gen = []
-           ; kill = []
-           ; succ = [ line_no + 1 ]
-           ; is_label = true
-           ; line_number = line_no
-           }
-            : Dfana_info.line)
+        let succ = [ line_number + 1 ] in
+        Some { gen = []; kill = []; succ; is_label = true; line_number }
       | Directive _ | Comment _ -> None
     in
-    (match line with
-    | None -> _gen_df_info_rev t line_no label_map res
-    | Some line_s -> _gen_df_info_rev t (line_no + 1) label_map (line_s :: res))
+    (match (line : Dfana_info.line option) with
+    | None -> _gen_df_info_rev t line_number label_map res
+    | Some line_s -> _gen_df_info_rev t (line_number + 1) label_map (line_s :: res))
 ;;
 
 (* Generate information for each instruction. Info includes
@@ -144,26 +131,9 @@ let gen_df_info (inst_list : Abs_asm.instr list) : Dfana_info.line list =
   List.rev res_rev
 ;;
 
-let rec gen_temp (inst_list : Abs_asm.instr list) line_no map =
-  match inst_list with
-  | [] -> map
-  | h :: t ->
-    (match h with
-    | Binop binop ->
-      let map = Int.Map.set map ~key:line_no ~data:binop.dest in
-      gen_temp t (line_no + 1) map
-    | Mov mov ->
-      let map = Int.Map.set map ~key:line_no ~data:mov.dest in
-      gen_temp t (line_no + 1) map
-    | Jump _ | CJump _ | Ret _ | Label _ | Assert _ | Fcall _ | Push _ | Pop _ ->
-      gen_temp t (line_no + 1) map
-    | Directive _ | Comment _ -> gen_temp t line_no map)
-;;
-
 (* Transform liveness information from int to temp. 
- * lo_int is the dataflow analysis result.
- * tmp_map is map from line_number to temporary/register *)
-let rec trans_liveness (lo_int : (int list * int list * int) list) tmp_map res =
+ * lo_int is the dataflow analysis result. *)
+let rec trans_liveness (lo_int : (int list * int list * int) list) res =
   match lo_int with
   | [] -> res
   | h :: t ->
@@ -175,14 +145,13 @@ let rec trans_liveness (lo_int : (int list * int list * int) list) tmp_map res =
           else IG.Vertex.Set.add acc (IG.Vertex.T.Reg (Register.idx_reg x)))
     in
     let res = Int.Map.set res ~key:line_no ~data:liveout in
-    trans_liveness t tmp_map res
+    trans_liveness t res
 ;;
 
 let gen_liveness (inst_list : Abs_asm.instr list) =
   let df_info = gen_df_info inst_list in
   (* print_df_info df_info; *)
   let lo_int = Dfana.dfana df_info Args.Df_analysis.Backward_may in
-  let tmp_map = gen_temp inst_list 0 Int.Map.empty in
   (* print_liveout lo_int; *)
-  trans_liveness lo_int tmp_map Int.Map.empty
+  trans_liveness lo_int Int.Map.empty
 ;;
