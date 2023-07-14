@@ -94,16 +94,15 @@ and munch_binop_acc
   Quads.Binop { op; dest; lhs = Quads.Temp t1; rhs = Quads.Temp t2 } :: rev_acc'
 
 (* munch_exp dest exp
- * Generates instructions for dest <-- exp.
- *)
+ * Generates instructions for dest <-- exp. *)
 and munch_exp : Quads.operand -> Tree.exp -> Quads.instr list =
  fun dest exp ->
   (* Since munch_exp_acc returns the reversed accumulator, we must
    * reverse the list before returning. *)
   List.rev (munch_exp_acc dest exp [])
 
+(* Return a reversed Quads.instr list. *)
 and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
-  (* Return a reversed Quads.instr list. *)
   match stm with
   | Tree.Move mv -> munch_exp_acc (Quads.Temp mv.dest) mv.src []
   | Tree.Return e ->
@@ -160,18 +159,44 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
     in
     call :: args_stms_rev
   | Tree.Load load ->
+    let base_exp =
+      if phys_equal load.src.disp 0L
+      then load.src.base
+      else (
+        let lhs = Tree.Const { v = load.src.disp; size = `QWORD } in
+        Tree.Binop { lhs; rhs = load.src.base; op = Plus })
+    in
     let base = Quads.Temp (Temp.create `QWORD) in
-    let base_instr = munch_exp_acc base load.src.base [] in
-    let offset = Quads.Temp (Temp.create `QWORD) in
-    let offset_instr = munch_exp_acc offset load.src.offset [] in
+    let base_instr = munch_exp_acc base base_exp [] in
+    let offset, offset_instr =
+      match load.src.offset with
+      | Some exp ->
+        let offset = Quads.Temp (Temp.create `QWORD) in
+        let offset_instr = munch_exp_acc offset exp [] in
+        Some offset, offset_instr
+      | None -> None, []
+    in
     let mem = ({ base; offset; size = load.src.size } : Quads.mem) in
     let load = Quads.Load { src = mem; dest = load.dest } in
     (load :: offset_instr) @ base_instr
   | Tree.Store store ->
+    let base_exp =
+      if phys_equal store.dest.disp 0L
+      then store.dest.base
+      else (
+        let lhs = Tree.Const { v = store.dest.disp; size = `QWORD } in
+        Tree.Binop { lhs; rhs = store.dest.base; op = Plus })
+    in
     let base = Quads.Temp (Temp.create `QWORD) in
-    let base_instr = munch_exp_acc base store.dest.base [] in
-    let offset = Quads.Temp (Temp.create `QWORD) in
-    let offset_instr = munch_exp_acc offset store.dest.offset [] in
+    let base_instr = munch_exp_acc base base_exp [] in
+    let offset, offset_instr =
+      match store.dest.offset with
+      | Some exp ->
+        let offset = Quads.Temp (Temp.create `QWORD) in
+        let offset_instr = munch_exp_acc offset exp [] in
+        Some offset, offset_instr
+      | None -> None, []
+    in
     let mem = ({ base; offset; size = store.dest.size } : Quads.mem) in
     let src = Quads.Temp (Temp.create (sizeof_exp store.src)) in
     let src_instr = munch_exp_acc src store.src [] in

@@ -24,8 +24,8 @@ type operand =
 type mem =
   { (* Heap memory *)
     base : operand
-  ; offset : operand
-  ; size : Size.t
+  ; offset : operand option
+  ; size : Size.primitive
   }
 
 type bin_op =
@@ -126,11 +126,12 @@ let pp_operand : operand -> string = function
 ;;
 
 let pp_memory mem =
-  sprintf
-    "%s(%s)_%Ld"
-    (pp_operand (mem.offset :> operand))
-    (pp_operand (mem.base :> operand))
-    (Size.type_size_byte mem.size)
+  let offset =
+    match mem.offset with
+    | Some offset -> pp_operand offset
+    | None -> ""
+  in
+  sprintf "%s(%s)_%Ld" offset (pp_operand mem.base) (Size.type_size_byte mem.size)
 ;;
 
 let pp_inst = function
