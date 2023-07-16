@@ -13,7 +13,10 @@ module Symbol = Util.Symbol
 module Size = Var.Size
 
 type operand =
-  | Imm of Int32.t
+  | Imm of
+      { v : Int64.t
+      ; size : [ `DWORD | `QWORD ]
+      }
   | Reg of Register.t
   | Mem of Memory.t
 
@@ -172,14 +175,14 @@ let get_size (operand : operand) : Size.primitive =
 
 let format_operand (oprd : operand) =
   match oprd with
-  | Imm n -> "$" ^ Int32.to_string n
+  | Imm n -> "$" ^ Int64.to_string n.v
   | Reg r -> Register.reg_to_str r
   | Mem m -> Memory.mem_to_str m
 ;;
 
 let format_operand_size (oprd : operand) : Size.primitive =
   match oprd with
-  | Imm _ -> `DWORD
+  | Imm i -> (i.size :> Size.primitive)
   | Reg r -> r.size
   | Mem m -> m.size
 ;;
@@ -238,7 +241,7 @@ let format = function
     let src_str = format_operand mv.src in
     let dest_str = format_operand mv.dest in
     let src_size, dest_size = get_size mv.src, get_size mv.dest in
-    if Size.compare src_size dest_size < 0
+    if Size.compare (src_size :> Size.t) (dest_size :> Size.t) < 0
     then sprintf "mov%s %s, %s" (format_inst src_size) src_str dest_str
     else sprintf "mov%s %s, %s" (format_inst dest_size) src_str dest_str
   | Ret -> "ret"

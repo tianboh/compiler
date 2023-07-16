@@ -153,15 +153,15 @@ let compile (cmd : cmd_line_args) : unit =
   if cmd.dump_parsing then ignore (Parsing.set_trace true : bool);
   say_if cmd.dump_cst (fun () -> CST.Print.pp_program cst);
   let ast = Elab.elaborate cst in
-  let func_name, ret_type = Symbol.symbol "main", AST.Int in
+  let func_name, ret_type = Symbol.symbol "main", `Int in
   let ast = AST.Fdecl { ret_type; func_name; pars = []; scope = `Internal } :: ast in
   say_if cmd.dump_ast (fun () -> AST.Print.pp_program ast);
   say_if cmd.verbose (fun () -> "Semantic analysis...");
-  let tc_env = Semantic.Driver.run ast in
+  let tst, tc_env = Semantic.Driver.run ast in
   if cmd.semcheck_only then exit 0;
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
-  let ir = Ir_tree.Trans.translate ast tc_env in
+  let ir = Ir_tree.Trans.translate tst tc_env false in
   let ir_ssa = List.map ir ~f:(fun ir -> Ssa.Trans.run ir) in
   say_if cmd.dump_ir (fun () ->
       List.map ir ~f:Ir_tree.Inst.Print.pp_fdefn |> String.concat ~sep:"\n");

@@ -150,6 +150,7 @@ let[@warning "-8"] gen_asrt (Src.Assert asrt) =
 ;;
 
 let param_map base idx size : Dest.operand =
+  let open Base.Int64 in
   match idx with
   | 0 -> Dest.Reg { reg = RDI; size }
   | 1 -> Dest.Reg { reg = RSI; size }
@@ -157,9 +158,7 @@ let param_map base idx size : Dest.operand =
   | 3 -> Dest.Reg { reg = RCX; size }
   | 4 -> Dest.Reg { reg = R8; size }
   | 5 -> Dest.Reg { reg = R9; size }
-  | _ ->
-    Dest.Above_frame
-      { offset = base + (Size.type_size_byte `QWORD |> Int64.to_int_exn); size = `QWORD }
+  | _ -> Dest.Above_frame { offset = base + Size.type_size_byte `QWORD; size = `QWORD }
 ;;
 
 let set_size (operand : operand) (size : Size.primitive) : operand =
@@ -199,16 +198,16 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
         let reg, size = t in
         Dest.Reg { reg; size })
   in
-  let base = ref 0 in
+  let base = ref 0L in
   let uses =
     List.mapi fcall.args ~f:(fun idx arg ->
         let size = get_size arg in
         let op = param_map !base idx size in
-        base := if idx < 6 then 0 else !base + Int64.to_int_exn (Size.type_size_byte size);
+        base := if idx < 6 then 0L else Base.Int64.( + ) !base (Size.type_size_byte size);
         op)
   in
   let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
-  base := 0;
+  base := 0L;
   let params =
     List.mapi fcall.args ~f:(fun idx arg ->
         let src = trans_operand arg in
@@ -397,7 +396,7 @@ let cast (src : operand) (size : Size.primitive) : Dest.instr list * operand =
 (* Generate assigning parameter passing code. Parameters are passed through
  * registers(first 6 parameters) or memories(rest parameters)  during function call. *)
 let gen_pars (pars : Temp.t list) : Dest.instr list =
-  let base = ref 0 in
+  let base = ref 0L in
   List.mapi pars ~f:(fun idx par ->
       if idx < 6
       then (
@@ -413,7 +412,7 @@ let gen_pars (pars : Temp.t list) : Dest.instr list =
         let cast_size, src' = cast src exp_size in
         let dest = trans_operand (Src.Temp par) in
         let line = { defines = [ dest ]; uses = [ src' ]; live_out = []; move = true } in
-        base := !base + (Size.type_size_byte `QWORD |> Int64.to_int_exn);
+        base := Base.Int64.( + ) !base (Size.type_size_byte `QWORD);
         cast_size @ [ Mov { dest; src = src'; line } ]))
   |> List.concat
 ;;

@@ -22,11 +22,11 @@ type operand =
   | Temp of Temp.t
   | Reg of Register.t
   | Above_frame of
-      { offset : int
+      { offset : Int64.t
       ; size : Size.primitive
       }
   | Below_frame of
-      { offset : int
+      { offset : Int64.t
       ; size : Size.primitive
       }
 
@@ -169,8 +169,8 @@ let pp_operand = function
   | Imm n -> "$" ^ Int64.to_string n.v
   | Temp t -> Temp.name t
   | Reg r -> Register.reg_to_str r
-  | Above_frame af -> sprintf "%d(%%rbp)" af.offset
-  | Below_frame bf -> sprintf "-%d(%%rbp)" bf.offset
+  | Above_frame af -> sprintf "%Ld(%%rbp)" af.offset
+  | Below_frame bf -> sprintf "-%Ld(%%rbp)" bf.offset
 ;;
 
 let pp_scope = function
