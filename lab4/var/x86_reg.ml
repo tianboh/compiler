@@ -50,7 +50,8 @@ module Logic = struct
     | R15 -> 15
   ;;
 
-  let idx_reg = function
+  let idx_reg idx =
+    match idx with
     | 0 -> RAX
     | 1 -> RBX
     | 2 -> RCX
@@ -67,7 +68,7 @@ module Logic = struct
     | 13 -> R13
     | 14 -> R14
     | 15 -> R15
-    | _ -> failwith "invalid index for reg"
+    | _ -> failwith (sprintf "invalid index for reg %d" idx)
   ;;
 
   let str_to_reg (str : string) =
@@ -166,6 +167,11 @@ module Logic = struct
    * R15(15) is swap register, and do not assign it for register allocation. *)
   let special_use = function
     | RBP | RSP | R15 -> true
+    | _ -> false
+  ;;
+
+  let special_use' = function
+    | 6 | 7 | 15 -> true
     | _ -> false
   ;;
 end

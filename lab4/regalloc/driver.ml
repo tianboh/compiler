@@ -263,14 +263,14 @@ let seo adj prog =
 
 (* find minimum available register with neighbor nbr *)
 let find_min_available (nbr : Int.Set.t) (black_set : Int.Set.t) : int =
-  let rec helper (idx : int) (nbr : Int.Set.t) =
-    if Register.special_use (Register.idx_reg idx) || Set.mem black_set idx
-    then helper (idx + 1) nbr
+  let rec helper (idx : int) =
+    if Register.special_use' idx || Set.mem black_set idx
+    then helper (idx + 1)
     else if Set.mem nbr idx
-    then helper (idx + 1) nbr
+    then helper (idx + 1)
     else idx
   in
-  helper 0 nbr
+  helper 0
 ;;
 
 (* Allocate register for vertex. Neighbors may be of register or 
