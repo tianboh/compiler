@@ -67,7 +67,7 @@ type func =
   { state : state
   ; pars : param list
   ; ret_type : dtype
-  ; scope : [ `Internal | `External ]
+  ; scope : [ `C0 | `External ]
   }
 
 type field =
@@ -185,7 +185,7 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
     if Map.mem env.vars func_name || not (Map.mem env.funcs func_name)
     then error ~msg:"func and var name conflict/func not defined" None;
     let func = Map.find_exn env.funcs func_name in
-    if phys_equal func.scope `Internal && phys_equal func.state Decl
+    if phys_equal func.scope `C0 && phys_equal func.state Decl
     then func_list := func_name :: !func_list;
     let expected = List.map func.pars ~f:(fun par -> par.t) in
     let args = List.map fcall.args ~f:(fun arg -> tc_exp arg env) in
@@ -508,7 +508,7 @@ let[@warning "-8"] tc_fdefn (AST.Fdefn fdefn) env : TST.fdefn * env =
       { env with funcs; vars }
     | Some s ->
       (match s.state, s.scope with
-      | Decl, `Internal ->
+      | Decl, `C0 ->
         let func = { state = Defn; pars; ret_type; scope } in
         let funcs = Map.set env.funcs ~key:func_name ~data:func in
         tc_redeclare env func_name pars ret_type;
@@ -530,7 +530,7 @@ let _tc_post (env : env) =
   let funcs = !func_list in
   List.iter funcs ~f:(fun func ->
       let f = Map.find_exn env.funcs func in
-      if phys_equal f.state Decl && phys_equal f.scope `Internal
+      if phys_equal f.state Decl && phys_equal f.scope `C0
       then error ~msg:"func not defined" None);
   let cond =
     Map.fold env.funcs ~init:false ~f:(fun ~key:fname ~data:func acc ->

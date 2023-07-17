@@ -401,7 +401,8 @@ let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) opti
   let size = `QWORD in
   let rbp = X86_asm.Reg { reg = rbp; size } in
   let rsp = X86_asm.Reg { reg = rsp; size } in
-  [ X86_asm.Fname fdefn.func_name
+  let scope = (fdefn.scope :> [ `C0 | `Internal | `External ]) in
+  [ X86_asm.Fname { name = fdefn.func_name; scope }
   ; X86_asm.Push { var = rbp; size }
   ; X86_asm.Mov { dest = rbp; src = rsp; size }
   ; X86_asm.Sub { src = X86_asm.Imm { v = mem_cnt; size }; dest = rsp; size }

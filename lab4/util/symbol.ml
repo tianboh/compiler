@@ -46,6 +46,17 @@ let c0_prefix =
   | _ -> "_c0_"
 ;;
 
+(* There are three types of functions.
+ * 1) C0 function. Generate from source file
+ * 2) External. Declared in header file
+ * 3) Internal. Compiler provided.
+ * .globl provide C0 type function for linker. *)
+let pp_scope = function
+  | `C0 -> c0_prefix
+  | `External -> ""
+  | `Internal -> "_"
+;;
+
 module Fname = struct
   (* This module stores assembly function provided by GNU C library. 
    * Though the signature is C level, assembly version is implemented as well. *)

@@ -144,10 +144,13 @@ type instr =
       }
   | Fcall of
       { func_name : Symbol.t
-      ; scope : [ `Internal | `External ]
+      ; scope : [ `C0 | `External | `Internal ]
       }
   | Abort
-  | Fname of string
+  | Fname of
+      { name : string
+      ; scope : [ `C0 | `External | `Internal ]
+      }
   | GDB of string
   | Directive of string
   | Comment of string
@@ -204,8 +207,9 @@ let format_inst' (operand : operand) =
 ;;
 
 let format_scope = function
-  | `Internal -> Symbol.c0_prefix
+  | `C0 -> Symbol.c0_prefix
   | `External -> ""
+  | `Internal -> "_"
 ;;
 
 (* functions that format assembly output *)
@@ -305,7 +309,7 @@ let format = function
       (format_operand sal.dest)
   | Fcall fcall ->
     sprintf "call %s%s" (format_scope fcall.scope) (Symbol.name fcall.func_name)
-  | Fname fname -> sprintf "%s:" fname
+  | Fname fname -> sprintf "%s%s:" (Symbol.pp_scope fname.scope) fname.name
   | Abort -> sprintf "call abort"
   | GDB gdb -> sprintf "%s" gdb
   | Directive dir -> sprintf "%s" dir

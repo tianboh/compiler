@@ -597,7 +597,7 @@ let post_process
         blk.body)
     |> List.concat
   in
-  { func_name = fdefn.func_name; temps; body }
+  { func_name = fdefn.func_name; temps; body; scope = fdefn.scope }
 ;;
 
 (* df: dominance frontier.

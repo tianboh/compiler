@@ -125,11 +125,11 @@ gdecl :
   | ret_type = dtype; func_name = VIdent; pars = param_list; Semicolon;
       { if !Env.is_header 
         then Cst.Fdecl {ret_type = ret_type; func_name; par_type = pars; scope=`External}
-        else Cst.Fdecl {ret_type = ret_type; func_name; par_type = pars; scope=`Internal} }
+        else Cst.Fdecl {ret_type = ret_type; func_name; par_type = pars; scope=`C0} }
   | ret_type = dtype; func_name = VIdent; pars = param_list; blk = block;
       { if !Env.is_header 
         then Cst.Fdefn {ret_type = ret_type; func_name; par_type = pars; blk = blk; scope=`External} 
-        else Cst.Fdefn {ret_type = ret_type; func_name; par_type = pars; blk = blk; scope=`Internal} }
+        else Cst.Fdefn {ret_type = ret_type; func_name; par_type = pars; blk = blk; scope=`C0} }
   | Typedef; t = dtype; var = midrule(var = VIdent {Env.add var; var}); Semicolon
       { Cst.Typedef {t = t; t_var = var} }
   | Struct; var = VIdent; Semicolon

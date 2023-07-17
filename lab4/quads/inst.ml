@@ -57,7 +57,7 @@ type instr =
       { func_name : Symbol.t
       ; dest : Temp.t option
       ; args : operand list
-      ; scope : [ `Internal | `External ]
+      ; scope : [ `C0 | `External | `Internal ]
       }
   | Mov of
       { dest : operand
@@ -90,16 +90,12 @@ type fdefn =
   { func_name : Symbol.t
   ; body : instr list
   ; pars : Temp.t list
+  ; scope : [ `Internal | `C0 ]
   }
 
 type program = fdefn list
 
 (* functions that format assembly output *)
-
-let pp_scope = function
-  | `Internal -> Symbol.c0_prefix
-  | `External -> ""
-;;
 
 let pp_binop = function
   | Plus -> "+"
@@ -164,14 +160,14 @@ let pp_inst = function
     | None ->
       sprintf
         "%s%s(%s)"
-        (pp_scope call.scope)
+        (Symbol.pp_scope call.scope)
         (Symbol.name call.func_name)
         (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
     | Some dest ->
       sprintf
         "%s <- %s%s(%s)"
         (Temp.name dest)
-        (pp_scope call.scope)
+        (Symbol.pp_scope call.scope)
         (Symbol.name call.func_name)
         (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", "))
   | Assert asrt -> sprintf "assert %s" (pp_operand asrt)

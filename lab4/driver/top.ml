@@ -154,7 +154,7 @@ let compile (cmd : cmd_line_args) : unit =
   say_if cmd.dump_cst (fun () -> CST.Print.pp_program cst);
   let ast = Elab.elaborate cst in
   let func_name, ret_type = Symbol.symbol "main", `Int in
-  let ast = AST.Fdecl { ret_type; func_name; pars = []; scope = `Internal } :: ast in
+  let ast = AST.Fdecl { ret_type; func_name; pars = []; scope = `C0 } :: ast in
   say_if cmd.dump_ast (fun () -> AST.Print.pp_program ast);
   say_if cmd.verbose (fun () -> "Semantic analysis...");
   let tst, tc_env = Semantic.Driver.run ast in
@@ -195,7 +195,11 @@ let compile (cmd : cmd_line_args) : unit =
           let instrs = X86_asm.Trans.gen fdefn reg_alloc_info in
           fdefn.func_name, instrs)
     in
-    let fnames, instrs = List.unzip progs in
+    let _, instrs = List.unzip progs in
+    let fnames =
+      List.filter assem_x86_conv ~f:(fun fdefn -> phys_equal fdefn.scope `C0)
+      |> List.map ~f:(fun f -> f.func_name, f.scope)
+    in
     let instrs =
       List.concat instrs @ X86_asm.Trans.fpe_handler @ X86_asm.Trans.abort_handler
     in

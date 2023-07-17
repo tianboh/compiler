@@ -68,7 +68,7 @@ and stm =
       { dest : Temp.t option
       ; func_name : Symbol.t
       ; args : exp list
-      ; scope : [ `Internal | `External ]
+      ; scope : [ `C0 | `External | `Internal ]
       }
   | Return of exp option
   | Jump of Label.t
@@ -97,6 +97,7 @@ type fdefn =
   { func_name : Symbol.t
   ; temps : Temp.t list
   ; body : stm list
+  ; scope : [ `Internal | `C0 ]
   }
 
 type program = fdefn list
@@ -111,11 +112,6 @@ end
 
 module Print : PRINT = struct
   let sprintf = Printf.sprintf
-
-  let pp_scope = function
-    | `Internal -> Symbol.c0_prefix
-    | `External -> ""
-  ;;
 
   let pp_binop = function
     | Plus -> "+"
@@ -161,7 +157,7 @@ module Print : PRINT = struct
         (pp_binop eft.op)
         (pp_exp eft.rhs)
     | Fcall c ->
-      let scope = pp_scope c.scope in
+      let scope = Symbol.pp_scope c.scope in
       let func_name = Symbol.name c.func_name in
       let args = List.map (fun arg -> pp_exp arg) c.args |> String.concat ", " in
       (match c.dest with

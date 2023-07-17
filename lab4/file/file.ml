@@ -38,6 +38,13 @@ let dump_ps file_name (program : Asm_ps.program) =
 ;;
 
 let dump_asm_x86 file_name fnames instrs =
+  let fnames =
+    List.filter_map fnames ~f:(fun t ->
+        let name, scope = t in
+        match scope with
+        | `C0 -> Some (Symbol.pp_scope scope ^ name)
+        | _ -> None)
+  in
   (* header *)
   Out_channel.with_file file_name ~f:(fun out ->
       let output_instr instr = Out_channel.fprintf out "\t%s\n" (Asm_x86.format instr) in

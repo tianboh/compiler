@@ -145,7 +145,7 @@ let c0_raise (temp : Temp.t) : Tree.fdefn =
         }
     ]
   in
-  { func_name = Symbol.Fname.raise; temps = [ temp ]; body }
+  { func_name = Symbol.Fname.raise; temps = [ temp ]; body; scope = `Internal }
 ;;
 
 (* Check whether base is 0 *)
@@ -264,7 +264,7 @@ let rec _trans_exp (exp_tst : TST.texp) (env : env) : Tree.stm list * Tree.exp =
     let args_stms = List.concat args_stms_ls in
     let func_name = fcall.func_name in
     let func = Map.find_exn env.funcs func_name in
-    let scope = func.scope in
+    let scope = (func.scope :> [ `C0 | `Internal | `External ]) in
     let size = sizeof_dtype' func.ret_type in
     match size with
     | `VOID ->
@@ -626,7 +626,7 @@ let trans_fdefn func_name (pars : TST.param list) blk (env : env) (need_check : 
         let var = Map.find_exn env.vars par.data in
         var.temp)
   in
-  { func_name; temps; body }
+  { func_name; temps; body; scope = `C0 }
 ;;
 
 let rec trans_prog

@@ -167,14 +167,14 @@ type gdecl =
       { ret_type : dtype
       ; func_name : Symbol.t
       ; pars : param list
-      ; scope : [ `External | `Internal ]
+      ; scope : [ `External | `C0 ]
       }
   | Fdefn of
       { ret_type : dtype
       ; func_name : Symbol.t
       ; pars : param list
       ; blk : mstm
-      ; scope : [ `External | `Internal ]
+      ; scope : [ `External | `C0 ]
       }
   | Typedef of
       { t : dtype

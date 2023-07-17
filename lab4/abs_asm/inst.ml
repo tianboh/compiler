@@ -74,7 +74,7 @@ type instr =
         func_name : Symbol.t
       ; args : operand list
       ; line : line
-      ; scope : [ `Internal | `External ]
+      ; scope : [ `C0 | `External | `Internal ]
       }
   | Mov of
       { dest : operand
@@ -134,6 +134,7 @@ type section =
 type fdefn =
   { func_name : string
   ; body : instr list
+  ; scope : [ `Internal | `C0 ]
   }
 
 type program = fdefn list
@@ -171,11 +172,6 @@ let pp_operand = function
   | Reg r -> Register.reg_to_str r
   | Above_frame af -> sprintf "%Ld(%%rbp)" af.offset
   | Below_frame bf -> sprintf "-%Ld(%%rbp)" bf.offset
-;;
-
-let pp_scope = function
-  | `Internal -> Symbol.c0_prefix
-  | `External -> ""
 ;;
 
 let pp_memory mem =
@@ -216,7 +212,7 @@ let pp_inst = function
   | Fcall fcall ->
     sprintf
       "fcall %s%s(%s)"
-      (pp_scope fcall.scope)
+      (Symbol.pp_scope fcall.scope)
       (Symbol.name fcall.func_name)
       (List.map fcall.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
   | Push push -> sprintf "push %s" (pp_operand push.var)

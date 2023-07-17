@@ -214,7 +214,7 @@ and munch_stms_rev stms res =
 let gen_fdefn (fdefn : Tree.fdefn) : Quads.fdefn =
   let body = munch_stms_rev fdefn.body [] |> List.rev in
   let pars = fdefn.temps in
-  { func_name = fdefn.func_name; body; pars }
+  { func_name = fdefn.func_name; body; pars; scope = fdefn.scope }
 ;;
 
 (* To codegen a series of statements, just concatenate the results of

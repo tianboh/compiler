@@ -196,7 +196,7 @@ and gdecl =
         ret_type : dtype
       ; func_name : Symbol.t
       ; par_type : param list
-      ; scope : [ `Internal | `External ]
+      ; scope : [ `C0 | `External ]
       }
   | Fdefn of
       { (* Internal indicate c0 function, external indicate c function *)
@@ -204,7 +204,7 @@ and gdecl =
       ; func_name : Symbol.t
       ; par_type : param list
       ; blk : block
-      ; scope : [ `Internal | `External ]
+      ; scope : [ `C0 | `External ]
       }
   | Typedef of
       { t : dtype
