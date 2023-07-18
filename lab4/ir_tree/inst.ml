@@ -189,7 +189,7 @@ module Print : PRINT = struct
   ;;
 
   let pp_fdefn fdefn =
-    let func_name = Symbol.name fdefn.func_name in
+    let func_name = Symbol.pp_scope fdefn.scope ^ Symbol.name fdefn.func_name in
     let pars_str =
       List.map (fun temp -> Temp.name temp) fdefn.temps |> String.concat ", "
     in

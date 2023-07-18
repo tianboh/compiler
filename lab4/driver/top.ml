@@ -146,7 +146,10 @@ let say_if (v : bool) (f : unit -> string) = if v then prerr_endline (f ())
 let compile (cmd : cmd_line_args) : unit =
   let cst =
     match cmd.header_file with
-    | Some header -> Parse.parse header true @ Parse.parse cmd.filename false
+    | Some header ->
+      let cst_header = Parse.parse header true in
+      let cst_src = Parse.parse cmd.filename false in
+      cst_header @ cst_src
     | None -> Parse.parse cmd.filename false
   in
   say_if cmd.verbose (fun () -> "Parsing... " ^ cmd.filename);

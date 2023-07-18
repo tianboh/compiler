@@ -234,7 +234,8 @@ let rec pp_program (program : fdefn list) res =
   match program with
   | [] -> res
   | h :: t ->
-    let fdefn_str = h.func_name ^ ":\n" ^ pp_insts h.body "" ^ "\n" in
+    let func_name = Symbol.pp_scope h.scope ^ h.func_name in
+    let fdefn_str = func_name ^ ":\n" ^ pp_insts h.body "" ^ "\n" in
     let res = res ^ fdefn_str in
     pp_program t res
 ;;

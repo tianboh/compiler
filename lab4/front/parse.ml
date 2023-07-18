@@ -1,4 +1,4 @@
-(* L3 Compiler
+(* L4 Compiler
  * Parsing
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>

@@ -182,7 +182,7 @@ let pp_fdefn (fdefn : fdefn) =
   let body_str =
     List.map fdefn.body ~f:(fun inst -> pp_inst inst) |> String.concat ~sep:"\n"
   in
-  let func_name = Symbol.name fdefn.func_name in
+  let func_name = Symbol.pp_scope fdefn.scope ^ Symbol.name fdefn.func_name in
   sprintf "%s(%s)\n%s" func_name pars_str body_str
 ;;
 

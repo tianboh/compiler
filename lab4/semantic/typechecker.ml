@@ -374,7 +374,9 @@ and tc_while cond body loc env func_name =
   match cond.dtype with
   | `Int | `Void | `NULL | `Pointer _ | `Array _ | `Struct _ ->
     error ~msg:(sprintf "While cond type should be bool") loc
-  | `Bool -> tc_stm body env func_name
+  | `Bool ->
+    let body, _ = tc_stm body env func_name in
+    TST.While { cond; body }, env
 
 (* Declare check is tricky because we will not override old env. 
  * Instead, we will return it once we check the tail.
