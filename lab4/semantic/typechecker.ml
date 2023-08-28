@@ -2,10 +2,6 @@
  * TypeChecker, also generate Type Syntax Tree(TST).
  * TST is just an AST with annotated type for each exp.
  *
- * Author: Alex Vaynberg <alv@andrew.cmu.edu>
- * Modified: Frank Pfenning <fp@cs.cmu.edu>
- * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
- *
  * This type checker is part of the static semantic analysis
  * It checkes whether each statement and expression is valid
  *
@@ -31,6 +27,9 @@
  *
  * Type alias is already handled in elab, so we don't bother it here.
  *
+ * Author: Alex Vaynberg <alv@andrew.cmu.edu>
+ * Modified: Frank Pfenning <fp@cs.cmu.edu>
+ * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  * Modified: Anand Subramanian <asubrama@andrew.cmu.edu> Fall 2010
  * Now distinguishes between declarations and definition(initialization)
  * Modified: Maxime Serrano <mserrano@andrew.cmu.edu> Fall 2014
@@ -113,6 +112,15 @@ let type_cmp t1 t2 =
   | `Array a1, `Array a2 -> phys_equal a1 a2
   | `Struct s1, `Struct s2 -> phys_equal s1 s2
   | _ -> false
+;;
+
+(* Check match between variable and assign operator. 
+ * For now, only check assign with operation, like +=, -=, |=, >>= etc.
+ * These assign operator should only deal with integer. *)
+let op_cmp (dtype : Inst.dtype) (op : AST.asnop) : bool =
+  match op with
+  | `Asn -> true
+  | _ -> if phys_equal dtype `Int then true else false
 ;;
 
 (* Check whether element in params1 and params2 has same dtype respectively *)
@@ -323,7 +331,8 @@ and trans_lvalue (lv : AST.lvalue) (env : env) : TST.texp =
 (* Check following
  * 1) Whether variable name exist in env
  * 2) If exist, then check whether variable type match exp type
- * 3) If match, update env state
+ * 3) Check match between asnop and var type
+ * 4) If all match, update env state
  * Notice that update field or array index or dereference does
  * not define variable itself.
  *)
@@ -336,6 +345,7 @@ and[@warning "-8"] tc_assign (AST.Assign asn_ast) (env : env) loc : TST.stm * en
   let val_type = value.dtype in
   if (not (type_cmp val_type var_type)) || type_cmp val_type `Void
   then error ~msg:(sprintf "var type and exp type mismatch/exp type void") loc;
+  if not (op_cmp var_type asn_ast.op) then error ~msg:"operand and operator mismatch" None;
   match Mark.data asn_ast.name with
   | Ident ident ->
     let env_vars = Map.set env.vars ~key:ident ~data:{ dtype = val_type; state = Defn } in
