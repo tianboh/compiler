@@ -3,6 +3,4 @@ _build
 bin/c0c
 .ocamlformat
 .vscode/
-c0c
-bin/
-lab3/bin/c0c
+lab*/bin/c0c
