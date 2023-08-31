@@ -170,6 +170,38 @@ let set_size (operand : operand) (size : Size.primitive) : operand =
   | Below_frame i -> Below_frame { i with size }
 ;;
 
+(* alignment for %RSP. %RSP is multiple of 16 when calling function *)
+let gen_align rsp =
+  let line =
+    ({ defines = [ rsp ]; uses = [ rsp ]; live_out = []; move = false } : Dest.line)
+  in
+  let rhs = Dest.Imm { v = 8L; size = `QWORD } in
+  Dest.Binop { op = Dest.Minus; dest = rsp; lhs = rsp; rhs; line }
+;;
+
+let gen_release (rsp : operand) (num_par : int) (align_size : int) =
+  let line =
+    ({ defines = [ rsp ]; uses = [ rsp ]; live_out = []; move = false } : Dest.line)
+  in
+  let rhs =
+    Dest.Imm { v = Int64.of_int (((num_par - 6) * 8) + align_size); size = `QWORD }
+  in
+  Dest.Binop { op = Dest.Plus; dest = rsp; lhs = rsp; rhs; line }
+;;
+
+let gen_fret dest =
+  let ret_size = get_size' dest in
+  let ret_line =
+    ({ defines = [ dest ]
+     ; uses = [ Dest.Reg { reg = rax; size = ret_size } ]
+     ; live_out = []
+     ; move = true
+     }
+      : Dest.line)
+  in
+  Dest.Mov { dest; src = Dest.Reg { reg = rax; size = ret_size }; line = ret_line }
+;;
+
 (* Generate x86 instr with function call convention *)
 let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
   let func_name = fcall.func_name in
@@ -229,37 +261,20 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
   in
   let rsp = Dest.Reg { reg = RSP; size = `QWORD } in
   let fcall = Dest.Fcall { func_name; args; line; scope = fcall.scope } in
-  let align_line =
-    ({ defines = [ rsp ]; uses = [ rsp ]; live_out = []; move = false } : Dest.line)
-  in
-  let align =
-    Dest.Binop
-      { op = Dest.Minus
-      ; dest = rsp
-      ; lhs = rsp
-      ; rhs = Dest.Imm { v = 8L; size = `QWORD }
-      ; line = align_line
-      }
-  in
+  let align = gen_align rsp in
   let num_par = List.length params in
-  let fcall = fcall :: params in
-  let fcall = if num_par > 6 && num_par % 2 = 1 then fcall @ [ align ] else fcall in
-  match dest with
-  | None -> fcall
-  | Some dest ->
-    let ret_size = get_size' dest in
-    let ret_line =
-      ({ defines = [ dest ]
-       ; uses = [ Dest.Reg { reg = rax; size = ret_size } ]
-       ; live_out = []
-       ; move = true
-       }
-        : Dest.line)
-    in
-    let ret =
-      Dest.Mov { dest; src = Dest.Reg { reg = rax; size = ret_size }; line = ret_line }
-    in
-    ret :: fcall
+  let need_align = num_par > 6 && num_par % 2 = 1 in
+  let insts = if need_align then (fcall :: params) @ [ align ] else fcall :: params in
+  let insts =
+    match dest with
+    | None -> insts
+    | Some dest ->
+      let ret = gen_fret dest in
+      ret :: insts
+  in
+  let align_size = if need_align then 8 else 0 in
+  let release = gen_release rsp num_par align_size in
+  if num_par > 6 then release :: insts else insts
 ;;
 
 (* Move from source operand to destination register *)
