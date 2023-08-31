@@ -32,7 +32,7 @@ include T
 
 let counter = ref 0L
 let bias = ref 0L
-let get_allocated_count = !counter
+let get_allocated_count () = !counter
 
 let reset () =
   counter := 0L;

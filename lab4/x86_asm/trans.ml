@@ -50,8 +50,7 @@ let trans_operand (operand : Src.operand) (reg_alloc_info : Regalloc.dest IG.Ver
     | Regalloc.Mem m -> X86_asm.Mem m)
   | Imm i -> X86_asm.Imm { v = i.v; size = i.size }
   | Reg r -> X86_asm.Reg r
-  (* af + 1 because rsp always point to the next available memory. 
-   * The latest available memory is rsp + 8. Remember that caller push parameter and callee
+  (* The latest available memory is rsp + 8. Remember that caller push parameter and callee
    * push rbp, mov rsp to rbp so in order to access parameters in callee function, 
    * we need to skip the pushed rbp, which is 1. *)
   | Above_frame af ->
@@ -243,35 +242,36 @@ let gen_x86_inst_bin
   =
   let rax = X86_asm.Reg { reg = rax; size = `DWORD } in
   let swap = X86_asm.Reg { reg = swap; size = `DWORD } in
+  let size = Inst.get_size dest in
   match op with
-  | Plus -> safe_mov dest lhs `DWORD @ safe_add dest rhs `DWORD
-  | Minus -> safe_mov dest lhs `DWORD @ safe_sub dest rhs `DWORD
+  | Plus -> safe_mov dest lhs size @ safe_add dest rhs size
+  | Minus -> safe_mov dest lhs size @ safe_sub dest rhs size
   | Times ->
-    [ X86_asm.Mov { dest = rax; src = lhs; size = `DWORD }
-    ; X86_asm.Mul { src = rhs; dest = rax; size = `DWORD }
-    ; X86_asm.Mov { dest; src = rax; size = `DWORD }
+    [ X86_asm.Mov { dest = rax; src = lhs; size }
+    ; X86_asm.Mul { src = rhs; dest = rax; size }
+    ; X86_asm.Mov { dest; src = rax; size }
     ]
   | Divided_by ->
     (* Notice that lhs and rhs may be allocated on rdx. 
      * So we use reg_swap to avoid override in the rdx <- 0. *)
-    [ X86_asm.Mov { dest = rax; src = lhs; size = `DWORD }
-    ; X86_asm.Mov { dest = swap; src = rhs; size = `DWORD }
-    ; X86_asm.Cvt { size = `DWORD }
-    ; X86_asm.Div { src = swap; size = `DWORD }
-    ; X86_asm.Mov { dest; src = rax; size = `DWORD }
+    [ X86_asm.Mov { dest = rax; src = lhs; size }
+    ; X86_asm.Mov { dest = swap; src = rhs; size }
+    ; X86_asm.Cvt { size }
+    ; X86_asm.Div { src = swap; size }
+    ; X86_asm.Mov { dest; src = rax; size }
     ]
   | Modulo ->
-    [ X86_asm.Mov { dest = rax; src = lhs; size = `DWORD }
-    ; X86_asm.Mov { dest = swap; src = rhs; size = `DWORD }
-    ; X86_asm.Cvt { size = `DWORD }
-    ; X86_asm.Div { src = swap; size = `DWORD }
-    ; X86_asm.Mov { dest; src = Reg { reg = rdx; size = `DWORD }; size = `DWORD }
+    [ X86_asm.Mov { dest = rax; src = lhs; size }
+    ; X86_asm.Mov { dest = swap; src = rhs; size }
+    ; X86_asm.Cvt { size }
+    ; X86_asm.Div { src = swap; size }
+    ; X86_asm.Mov { dest; src = Reg { reg = rdx; size }; size }
     ]
-  | And -> safe_mov dest lhs `DWORD @ safe_and dest rhs `DWORD
-  | Or -> safe_mov dest lhs `DWORD @ safe_or dest rhs `DWORD
-  | Xor -> safe_mov dest lhs `DWORD @ safe_xor dest rhs `DWORD
-  | Right_shift -> safe_mov dest lhs `DWORD @ safe_sar dest rhs `DWORD fpe_label
-  | Left_shift -> safe_mov dest lhs `DWORD @ safe_sal dest rhs `DWORD fpe_label
+  | And -> safe_mov dest lhs size @ safe_and dest rhs size
+  | Or -> safe_mov dest lhs size @ safe_or dest rhs size
+  | Xor -> safe_mov dest lhs size @ safe_xor dest rhs size
+  | Right_shift -> safe_mov dest lhs size @ safe_sar dest rhs size fpe_label
+  | Left_shift -> safe_mov dest lhs size @ safe_sal dest rhs size fpe_label
   | Less | Less_eq | Greater | Greater_eq | Equal_eq | Not_eq ->
     gen_x86_relop_bin op dest lhs rhs swap
 ;;
@@ -385,6 +385,7 @@ let abort_handler = [ X86_asm.Label abort_label; X86_asm.Abort ]
 let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) option list)
     : X86_asm.instr list
   =
+  let open Base.Int64 in
   let reg_alloc =
     List.fold reg_alloc_info ~init:IG.Vertex.Map.empty ~f:(fun acc x ->
         match x with
@@ -394,9 +395,9 @@ let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) opti
           | temp, reg -> IG.Vertex.Map.set acc ~key:temp ~data:reg))
   in
   let reg_swap = Reg.R15 in
-  let res_rev = _codegen_w_reg_rev [] fdefn.body reg_alloc reg_swap in
-  let res = List.rev res_rev in
-  let mem_cnt = Base.Int64.( * ) 8L Memory.get_allocated_count in
+  let res = _codegen_w_reg_rev [] fdefn.body reg_alloc reg_swap |> List.rev in
+  let mem_cnt = 8L * Memory.get_allocated_count () in
+  let mem_cnt = if mem_cnt % 16L = 0L then mem_cnt else mem_cnt + 8L in
   (* store rbp and rsp at the beginning of each function *)
   let size = `QWORD in
   let rbp = X86_asm.Reg { reg = rbp; size } in

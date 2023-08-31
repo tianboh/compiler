@@ -227,9 +227,25 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
           let push = Dest.Push { var = src; line } in
           push))
   in
+  let rsp = Dest.Reg { reg = RSP; size = `QWORD } in
   let fcall = Dest.Fcall { func_name; args; line; scope = fcall.scope } in
+  let align_line =
+    ({ defines = [ rsp ]; uses = [ rsp ]; live_out = []; move = false } : Dest.line)
+  in
+  let align =
+    Dest.Binop
+      { op = Dest.Minus
+      ; dest = rsp
+      ; lhs = rsp
+      ; rhs = Dest.Imm { v = 8L; size = `QWORD }
+      ; line = align_line
+      }
+  in
+  let num_par = List.length params in
+  let fcall = fcall :: params in
+  let fcall = if num_par > 6 && num_par % 2 = 1 then fcall @ [ align ] else fcall in
   match dest with
-  | None -> fcall :: params
+  | None -> fcall
   | Some dest ->
     let ret_size = get_size' dest in
     let ret_line =
@@ -243,7 +259,7 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
     let ret =
       Dest.Mov { dest; src = Dest.Reg { reg = rax; size = ret_size }; line = ret_line }
     in
-    ret :: fcall :: params
+    ret :: fcall
 ;;
 
 (* Move from source operand to destination register *)
