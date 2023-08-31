@@ -439,9 +439,15 @@ let tc_pars (pars : param list) =
  * 2) Function may be declared multiple times, in which case 
  * the declarations must be compatible. Types should be the
  * same, but parameter name are not required to be the same.
+ * 3) Cannot declare int main() in header
  *)
 let[@warning "-8"] tc_fdecl (AST.Fdecl fdecl) env =
   let ret_type, func_name, pars = fdecl.ret_type, fdecl.func_name, fdecl.pars in
+  if phys_equal fdecl.scope `External
+     && phys_equal func_name (Symbol.symbol "main")
+     && List.length pars = 0
+     && phys_equal ret_type `Int
+  then error ~msg:"int main() cannot be declared in header" None;
   tc_pars pars;
   if Map.mem env.funcs func_name
   then (
@@ -536,7 +542,7 @@ let[@warning "-8"] tc_fdefn (AST.Fdefn fdefn) env : TST.fdefn * env =
 
 (* Check after all gdecls are processed
  * 1) functions used in program are defined 
- * 2) provide main function defination 
+ * 2) provide correct main function defination 
  *)
 let _tc_post (env : env) =
   let funcs = !func_list in
