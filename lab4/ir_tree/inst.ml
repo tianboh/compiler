@@ -148,10 +148,10 @@ module Print : PRINT = struct
     sprintf "%s[%s]_%Ld" offset (pp_exp mem.base) (Size.type_size_byte mem.size)
 
   and pp_stm = function
-    | Move mv -> Temp.name mv.dest ^ "  <--  " ^ pp_exp mv.src ^ "\n"
+    | Move mv -> Temp.name mv.dest ^ "  <--  " ^ pp_exp mv.src
     | Effect eft ->
       sprintf
-        "effect %s <- %s %s %s\n"
+        "effect %s <- %s %s %s"
         (Temp.name eft.dest)
         (pp_exp eft.lhs)
         (pp_binop eft.op)
@@ -169,18 +169,18 @@ module Print : PRINT = struct
       (match e with
       | None -> "return\n"
       | Some e -> "return " ^ pp_exp e ^ "\n")
-    | Jump j -> "jump " ^ Label.name j ^ "\n"
+    | Jump j -> "jump " ^ Label.name j
     | CJump cj ->
       sprintf
-        "cjump(%s %s %s) target_true:%s, target_false %s \n"
+        "cjump(%s %s %s) target_true:%s, target_false %s "
         (pp_exp cj.lhs)
         (pp_binop cj.op)
         (pp_exp cj.rhs)
         (Label.name cj.target_true)
         (Label.name cj.target_false)
-    | Label l -> Label.content l ^ "\n"
-    | Nop -> "nop" ^ "\n"
-    | Assert asrt -> sprintf "assert(%s)\n" (pp_exp asrt)
+    | Label l -> Label.content l
+    | Nop -> "nop"
+    | Assert asrt -> sprintf "assert(%s)" (pp_exp asrt)
     | Load ld -> sprintf "load %s <- %s" (Temp.name ld.dest) (pp_mem ld.src)
     | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp_exp st.src)
 

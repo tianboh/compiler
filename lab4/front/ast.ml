@@ -271,17 +271,26 @@ module Print = struct
       | Some ret -> sprintf "return %s" (pp_mexp ret)
       | None -> sprintf "return")
     | Nop -> ""
-    | Seq seq_ast -> sprintf "%s %s" (pp_mstm seq_ast.head) (pp_mstm seq_ast.tail)
+    | Seq seq_ast -> sprintf "%s\n%s" (pp_mstm seq_ast.head) (pp_mstm seq_ast.tail)
     | Declare decl_ast ->
-      sprintf
-        "decl{%s %s; %s}"
-        (pp_dtype decl_ast.t)
-        (Symbol.name decl_ast.name)
-        (pp_mstm decl_ast.tail)
+      (match decl_ast.value with
+      | None ->
+        sprintf
+          "decl{%s %s; %s}"
+          (pp_dtype decl_ast.t)
+          (Symbol.name decl_ast.name)
+          (pp_mstm decl_ast.tail)
+      | Some v ->
+        sprintf
+          "decl{%s %s = %s; %s}"
+          (pp_dtype decl_ast.t)
+          (Symbol.name decl_ast.name)
+          (pp_mexp v)
+          (pp_mstm decl_ast.tail))
     | Sexp sexp -> "Sexp " ^ pp_mexp sexp ^ ";"
     | Assert e -> sprintf "assert(%s)" (pp_mexp e)
 
-  and pp_mstm stm = pp_stm (Mark.data stm) ^ "\n"
+  and pp_mstm stm = pp_stm (Mark.data stm)
 
   (* and pp_stms stms = String.concat (List.map ~f:(fun stm -> pp_mstm stm ^ "\n") stms) *)
   let pp_param (param : param) = sprintf "%s %s" (pp_dtype param.t) (Symbol.name param.i)
