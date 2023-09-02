@@ -100,7 +100,6 @@ and dot =
   }
 
 and deref = { ptr : texp }
-
 and alloc = { dtype : dtype }
 
 and alloc_arr =
@@ -162,6 +161,12 @@ type fdefn =
 type program = fdefn list
 
 module Print = struct
+  let strip = function
+    | `Pointer ptr -> ptr
+    | `Array arr -> arr
+    | _ -> failwith "not need strip"
+  ;;
+
   let rec pp_dtype = function
     | `Int -> "int"
     | `Bool -> "bool"
@@ -171,6 +176,16 @@ module Print = struct
     | `NULL -> "NULL"
     | `Struct s -> "struct " ^ Symbol.name s
   ;;
+
+  (* let rec pp_dtype' = function
+    | `Int -> "int"
+    | `Bool -> "bool"
+    | `Void -> "void"
+    | `Pointer ptr -> pp_dtype ptr
+    | `Array arr -> pp_dtype arr ^ "[]"
+    | `NULL -> "NULL"
+    | `Struct s -> "struct " ^ Symbol.name s
+  ;; *)
 
   let pp_binop = function
     | `Plus -> "+"
@@ -218,7 +233,7 @@ module Print = struct
     | `Alloc_arr (alloc_arr : alloc_arr) ->
       sprintf "alloc_array(%s, %s)" (pp_dtype alloc_arr.etype) (pp_texp alloc_arr.nitems)
 
-  and pp_texp e = pp_exp e.data
+  and pp_texp e = "(" ^ pp_exp e.data ^ " : " ^ pp_dtype e.dtype ^ ")"
 
   let rec pp_stm = function
     | Assign asn_ast ->
@@ -236,7 +251,7 @@ module Print = struct
       | Some ret -> sprintf "return %s" (pp_texp ret)
       | None -> sprintf "return")
     | Nop -> ""
-    | Seq seq_ast -> sprintf "%s %s" (pp_stm seq_ast.head) (pp_stm seq_ast.tail)
+    | Seq seq_ast -> sprintf "%s\n%s" (pp_stm seq_ast.head) (pp_stm seq_ast.tail)
     | Declare decl_ast ->
       sprintf
         "decl{%s %s; %s}"
@@ -255,7 +270,7 @@ module Print = struct
 
   let pp_fdefn fdefn =
     sprintf
-      "%s %s(%s)%s"
+      "%s %s(%s)%s\n"
       (pp_dtype fdefn.ret_type)
       (Symbol.name fdefn.func_name)
       (List.map fdefn.pars ~f:pp_param |> String.concat ~sep:",")

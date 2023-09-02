@@ -298,7 +298,7 @@ let[@warning "-8"] gen_load (Src.Load load) : Dest.instr list =
     let (Dest.Temp dest) = trans_operand (Src.Temp load.dest) in
     let line =
       { uses = [ base_src; offset_src ]
-      ; defines = [ Dest.Reg base_dest; Dest.Reg offset_dest ]
+      ; defines = [ Dest.Reg base_dest; Dest.Reg offset_dest; Dest.Temp dest ]
       ; live_out = []
       ; move = false
       }
@@ -310,7 +310,7 @@ let[@warning "-8"] gen_load (Src.Load load) : Dest.instr list =
     let (Dest.Temp dest) = trans_operand (Src.Temp load.dest) in
     let line =
       { uses = [ base_src ]
-      ; defines = [ Dest.Reg base_dest ]
+      ; defines = [ Dest.Reg base_dest; Dest.Temp dest ]
       ; live_out = []
       ; move = false
       }

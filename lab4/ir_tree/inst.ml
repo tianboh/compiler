@@ -145,7 +145,7 @@ module Print : PRINT = struct
       | Some offset -> pp_exp offset
       | None -> ""
     in
-    sprintf "%s[%s]_%Ld" offset (pp_exp mem.base) (Size.type_size_byte mem.size)
+    sprintf "%s[%s]_%Ld" offset (pp_exp mem.base) (Size.type_size_bit mem.size)
 
   and pp_stm = function
     | Move mv -> Temp.name mv.dest ^ "  <--  " ^ pp_exp mv.src

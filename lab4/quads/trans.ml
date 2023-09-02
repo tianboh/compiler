@@ -46,6 +46,12 @@ let rec sizeof_exp : Tree.exp -> Size.primitive = function
     | Left_shift -> sizeof_exp binop.lhs)
 ;;
 
+let get_size (op : Inst.operand) =
+  match op with
+  | Imm i -> (i.size :> Size.primitive)
+  | Temp t -> t.size
+;;
+
 (* munch_exp_acc dest exp rev_acc
  *
  * Suppose we have the statement:
@@ -86,8 +92,9 @@ and munch_binop_acc
   =
   let op = munch_op binop in
   (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
-  let t1 = Temp.create `DWORD in
-  let t2 = Temp.create `DWORD in
+  let size = get_size dest in
+  let t1 = Temp.create size in
+  let t2 = Temp.create size in
   let rev_acc' =
     rev_acc |> munch_exp_acc (Quads.Temp t1) e1 |> munch_exp_acc (Quads.Temp t2) e2
   in
@@ -160,7 +167,7 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
     call :: args_stms_rev
   | Tree.Load load ->
     let base_exp =
-      if phys_equal load.src.disp 0L
+      if Base.Int64.( = ) load.src.disp 0L
       then load.src.base
       else (
         let lhs = Tree.Const { v = load.src.disp; size = `QWORD } in
@@ -181,7 +188,7 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
     (load :: offset_instr) @ base_instr
   | Tree.Store store ->
     let base_exp =
-      if phys_equal store.dest.disp 0L
+      if Base.Int64.( = ) store.dest.disp 0L
       then store.dest.base
       else (
         let lhs = Tree.Const { v = store.dest.disp; size = `QWORD } in

@@ -134,7 +134,7 @@ gdecl :
       { Cst.Typedef {t = t; t_var = var} }
   | Struct; var = VIdent; Semicolon
       { Cst.Sdecl { struct_name = var } }
-  | Struct; var = VIdent; L_brace; fields = field_list; R_brace; 
+  | Struct; var = VIdent; L_brace; fields = field_list; R_brace;  Semicolon
       { Cst.Sdefn { struct_name = var; fields = fields; } }
 
 field : 

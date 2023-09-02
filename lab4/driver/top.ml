@@ -31,8 +31,9 @@ type cmd_line_args =
   ; dump_parsing : bool
   ; dump_cst : bool
   ; dump_ast : bool
+  ; dump_tst : bool
   ; dump_ir : bool
-  ; dump_assem : bool
+  ; dump_quad : bool
   ; dump_conv : bool
   ; semcheck_only : bool
   ; regalloc_only : bool
@@ -73,17 +74,20 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
     let doc = "If present, print debug informaton from parsing." in
     flag (Arg.info [ "dump-parsing" ] ~doc)
   and dump_cst =
-    let doc = "If present, print the parsed cst." in
+    let doc = "If present, print the parsed concrete syntax tree." in
     flag (Arg.info [ "dump-cst" ] ~doc)
   and dump_ast =
-    let doc = "If present, print the parsed ast." in
+    let doc = "If present, print the parsed abstract syntax tree." in
     flag (Arg.info [ "dump-ast" ] ~doc)
+  and dump_tst =
+    let doc = "If present, print the type syntax tree." in
+    flag (Arg.info [ "dump-tst" ] ~doc)
   and dump_ir =
     let doc = "If present, print the translated ir ast." in
     flag (Arg.info [ "dump-ir" ] ~doc)
-  and dump_assem =
+  and dump_quad =
     let doc = "If present, print the final assembly." in
-    flag (Arg.info [ "dump-assem" ] ~doc)
+    flag (Arg.info [ "dump-quad" ] ~doc)
   and dump_conv =
     let doc = "If present, print the x86 conventional assembly." in
     flag (Arg.info [ "dump-conv" ] ~doc)
@@ -127,8 +131,9 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   ; dump_parsing
   ; dump_cst
   ; dump_ast
+  ; dump_tst
   ; dump_ir
-  ; dump_assem
+  ; dump_quad
   ; dump_conv
   ; semcheck_only
   ; regalloc_only
@@ -161,6 +166,7 @@ let compile (cmd : cmd_line_args) : unit =
   say_if cmd.dump_ast (fun () -> AST.Print.pp_program ast);
   say_if cmd.verbose (fun () -> "Semantic analysis...");
   let tst, tc_env = Semantic.Driver.run ast in
+  say_if cmd.dump_tst (fun () -> Semantic.Inst.Print.pp_program tst);
   if cmd.semcheck_only then exit 0;
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
@@ -171,18 +177,18 @@ let compile (cmd : cmd_line_args) : unit =
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
-  let assem_ps_ssa = Quads.Trans.gen ir in
+  let quad = Quads.Trans.gen ir in
   (* let assem_ps_ssa = Codegen.Optimize.optimize assem_ps_ssa in *)
   (* let () = Codegen.Gen.Pseudo.print_insts assem_ps_ssa in *)
   (* let stop = Unix.gettimeofday () in *)
   (* let () = Printf.printf "Execution time assem_ps_ssa: %fs\n%!" (stop -. start) in *)
-  say_if cmd.dump_assem (fun () -> Quads.Inst.pp_program assem_ps_ssa "");
+  say_if cmd.dump_quad (fun () -> Quads.Inst.pp_program quad "");
   match cmd.emit with
   (* Output: abstract 3-address assem *)
   | Abstract_assem ->
     let file = cmd.filename ^ ".abs" in
     say_if cmd.verbose (fun () -> sprintf "Writing abstract assem to %s..." file);
-    File.dump_ps file assem_ps_ssa
+    File.dump_ps file quad
   | X86_64 ->
     let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
@@ -190,7 +196,7 @@ let compile (cmd : cmd_line_args) : unit =
     (* let stop = Unix.gettimeofday () in *)
     (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
     (* let start = Unix.gettimeofday () in *)
-    let assem_x86_conv = Abs_asm.Trans.gen assem_ps_ssa [] in
+    let assem_x86_conv = Abs_asm.Trans.gen quad [] in
     say_if cmd.dump_conv (fun () -> Abs_asm.Inst.pp_program assem_x86_conv "");
     let progs =
       List.map assem_x86_conv ~f:(fun fdefn ->

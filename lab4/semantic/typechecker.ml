@@ -100,7 +100,7 @@ let error ~msg src_span =
   raise Util.Error_msg.Error
 ;;
 
-let type_cmp t1 t2 =
+let rec type_cmp t1 t2 =
   match t1, t2 with
   | `Int, `Int -> true
   | `Bool, `Bool -> true
@@ -108,8 +108,8 @@ let type_cmp t1 t2 =
   | `NULL, `NULL -> true
   | `NULL, `Pointer _ -> true
   | `Pointer _, `NULL -> true
-  | `Pointer p1, `Pointer p2 -> phys_equal p1 p2
-  | `Array a1, `Array a2 -> phys_equal a1 a2
+  | `Pointer p1, `Pointer p2 -> type_cmp p1 p2
+  | `Array a1, `Array a2 -> type_cmp a1 a2
   | `Struct s1, `Struct s2 -> phys_equal s1 s2
   | _ -> false
 ;;
