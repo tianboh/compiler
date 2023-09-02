@@ -195,8 +195,7 @@ let format_inst (size : Size.primitive) =
   | `BYTE -> "b"
   | `WORD -> "w"
   | `DWORD -> "l"
-  | `QWORD -> "q"
-  | `VOID -> ""
+  | `QWORD | `VOID -> ""
 ;;
 
 let format_inst' (operand : operand) =
@@ -244,10 +243,8 @@ let format = function
   | Mov mv ->
     let src_str = format_operand mv.src in
     let dest_str = format_operand mv.dest in
-    let src_size, dest_size = get_size mv.src, get_size mv.dest in
-    if Size.compare (src_size :> Size.t) (dest_size :> Size.t) < 0
-    then sprintf "mov%s %s, %s" (format_inst src_size) src_str dest_str
-    else sprintf "mov%s %s, %s" (format_inst dest_size) src_str dest_str
+    let dest_size = get_size mv.dest in
+    sprintf "mov%s %s, %s" (format_inst dest_size) src_str dest_str
   | Ret -> "ret"
   | Push push ->
     (match push.var with
