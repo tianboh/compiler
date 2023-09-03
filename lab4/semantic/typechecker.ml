@@ -191,7 +191,9 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
   let[@warning "-8"] tc_fcall (AST.Fcall fcall) : TST.texp =
     let func_name = fcall.func_name in
     if Map.mem env.vars func_name || not (Map.mem env.funcs func_name)
-    then error ~msg:"func and var name conflict/func not defined" None;
+    then (
+      let msg = sprintf "func %s and var name conflict/func not defined" func_name.name in
+      error ~msg None);
     let func = Map.find_exn env.funcs func_name in
     if phys_equal func.scope `C0 && phys_equal func.state Decl
     then func_list := func_name :: !func_list;

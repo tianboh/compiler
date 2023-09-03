@@ -225,7 +225,7 @@ let rec pp_insts (program : instr list) res =
   match program with
   | [] -> res
   | h :: t ->
-    let fdefn_str = pp_inst h ^ "\n" in
+    let fdefn_str = pp_inst h ^ "\n%!" in
     let res = res ^ fdefn_str in
     pp_insts t res
 ;;

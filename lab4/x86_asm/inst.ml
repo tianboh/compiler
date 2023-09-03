@@ -195,7 +195,8 @@ let format_inst (size : Size.primitive) =
   | `BYTE -> "b"
   | `WORD -> "w"
   | `DWORD -> "l"
-  | `QWORD | `VOID -> ""
+  | `QWORD -> "q"
+  | `VOID -> ""
 ;;
 
 let format_inst' (operand : operand) =
@@ -244,7 +245,23 @@ let format = function
     let src_str = format_operand mv.src in
     let dest_str = format_operand mv.dest in
     let dest_size = get_size mv.dest in
-    sprintf "mov%s %s, %s" (format_inst dest_size) src_str dest_str
+    let src_size = get_size mv.src in
+    (match mv.src, mv.dest with
+    | Imm _, _ | Mem _, _ ->
+      sprintf "mov%s %s, %s" (format_inst dest_size) src_str dest_str
+    | Reg _, Mem _ -> sprintf "mov%s %s, %s" (format_inst src_size) src_str dest_str
+    | Reg _, Reg _ ->
+      (match src_size, dest_size with
+      | `BYTE, `BYTE | `WORD, `WORD | `DWORD, `DWORD | `QWORD, `QWORD ->
+        sprintf "mov%s %s, %s" (format_inst dest_size) src_str dest_str
+      | `BYTE, `WORD
+      | `BYTE, `DWORD
+      | `BYTE, `QWORD
+      | `WORD, `DWORD
+      | `WORD, `QWORD
+      | `DWORD, `QWORD -> sprintf "movsxd %s, %s" src_str dest_str
+      | _ -> failwith "cannot move")
+    | Reg _, Imm _ -> failwith "invalid move")
   | Ret -> "ret"
   | Push push ->
     (match push.var with

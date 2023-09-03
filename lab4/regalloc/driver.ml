@@ -80,7 +80,7 @@ module Print = struct
           | Reg r -> Var.X86_reg.Hard.reg_to_str r
           | Mem m -> Memory.mem_to_str m
         in
-        printf "%s(%s) -> %s\n" t size r)
+        printf "%s(%s) -> %s\n%!" t size r)
   ;;
 end
 
@@ -385,6 +385,6 @@ let regalloc (fdefn : Abs_asm.fdefn) : (IG.Vertex.t * dest) option list =
     let seq_l = List.map seq ~f:(fun x -> IG.Print.pp_vertex x) in
     List.iter ~f:(printf "%s ") seq_l;
     Print.print_vertex_to_dest color;
-    printf "\n"; *)
+    printf "\n%!"; *)
     gen_result color prog)
 ;;

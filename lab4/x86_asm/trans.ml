@@ -30,7 +30,6 @@
 open Core
 module Size = Var.Size
 module Src = Abs_asm.Inst
-module Register = Var.X86_reg.Logic
 module X86_asm = Inst
 module Temp = Var.Temp
 module Reg = Var.X86_reg.Logic
@@ -54,10 +53,10 @@ let trans_operand (operand : Src.operand) (reg_alloc_info : Regalloc.dest IG.Ver
    * push rbp, mov rsp to rbp so in order to access parameters in callee function, 
    * we need to skip the pushed rbp, which is 1. *)
   | Above_frame af ->
-    let base = ({ reg = Register.RBP; size = `QWORD } : Var.X86_reg.Hard.t) in
+    let base = ({ reg = Reg.RBP; size = `QWORD } : Var.X86_reg.Hard.t) in
     X86_asm.Mem (Memory.above_frame base af.offset af.size)
   | Below_frame bf ->
-    let base = ({ reg = Register.RBP; size = `QWORD } : Var.X86_reg.Hard.t) in
+    let base = ({ reg = Reg.RBP; size = `QWORD } : Var.X86_reg.Hard.t) in
     X86_asm.Mem (Memory.below_frame base bf.offset bf.size)
 ;;
 
@@ -82,8 +81,8 @@ let shift_maximum_bit = Int64.of_int_exn 31 (* inclusive *)
 let safe_mov (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
-    ; X86_asm.Mov { dest = Mem dest; src = Reg { reg = Register.swap; size }; size }
+    [ X86_asm.Mov { dest = Reg { reg = Reg.swap; size }; src = Mem src; size }
+    ; X86_asm.Mov { dest = Mem dest; src = Reg { reg = Reg.swap; size }; size }
     ]
   | _ -> [ Mov { dest; src; size } ]
 ;;
@@ -91,8 +90,8 @@ let safe_mov (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primi
 let safe_add (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
-    ; X86_asm.Add { dest = Mem dest; src = Reg { reg = Register.swap; size }; size }
+    [ X86_asm.Mov { dest = Reg { reg = Reg.swap; size }; src = Mem src; size }
+    ; X86_asm.Add { dest = Mem dest; src = Reg { reg = Reg.swap; size }; size }
     ]
   | _ -> [ X86_asm.Add { dest; src; size } ]
 ;;
@@ -100,8 +99,8 @@ let safe_add (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primi
 let safe_sub (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
-    ; X86_asm.Sub { dest = Mem dest; src = Reg { reg = Register.swap; size }; size }
+    [ X86_asm.Mov { dest = Reg { reg = Reg.swap; size }; src = Mem src; size }
+    ; X86_asm.Sub { dest = Mem dest; src = Reg { reg = Reg.swap; size }; size }
     ]
   | _ -> [ Sub { dest; src; size } ]
 ;;
@@ -109,8 +108,8 @@ let safe_sub (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primi
 let safe_and (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
-    ; X86_asm.AND { dest = Mem dest; src = Reg { reg = Register.swap; size }; size }
+    [ X86_asm.Mov { dest = Reg { reg = Reg.swap; size }; src = Mem src; size }
+    ; X86_asm.AND { dest = Mem dest; src = Reg { reg = Reg.swap; size }; size }
     ]
   | _ -> [ AND { dest; src; size } ]
 ;;
@@ -118,8 +117,8 @@ let safe_and (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primi
 let safe_or (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
-    ; X86_asm.OR { dest = Mem dest; src = Reg { reg = Register.swap; size }; size }
+    [ X86_asm.Mov { dest = Reg { reg = Reg.swap; size }; src = Mem src; size }
+    ; X86_asm.OR { dest = Mem dest; src = Reg { reg = Reg.swap; size }; size }
     ]
   | _ -> [ OR { dest; src; size } ]
 ;;
@@ -127,8 +126,8 @@ let safe_or (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primit
 let safe_xor (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match dest, src with
   | Mem dest, Mem src ->
-    [ X86_asm.Mov { dest = Reg { reg = Register.swap; size }; src = Mem src; size }
-    ; X86_asm.XOR { dest = Mem dest; src = Reg { reg = Register.swap; size }; size }
+    [ X86_asm.Mov { dest = Reg { reg = Reg.swap; size }; src = Mem src; size }
+    ; X86_asm.XOR { dest = Mem dest; src = Reg { reg = Reg.swap; size }; size }
     ]
   | _ -> [ XOR { dest; src; size } ]
 ;;
@@ -156,7 +155,7 @@ let safe_sal
   =
   match src with
   | Reg _ | Mem _ ->
-    let ecx = Register.RCX in
+    let ecx = Reg.RCX in
     (* when src is register/memory, SAL can only use %cl to shift. *)
     (X86_asm.Mov { dest = Reg { reg = ecx; size }; src; size }
     :: shift_check (Reg { reg = ecx; size }) fpe_label)
@@ -176,7 +175,7 @@ let safe_sar
   =
   match src with
   | Reg _ | Mem _ ->
-    let ecx = Register.RCX in
+    let ecx = Reg.RCX in
     (* when src is register/memory, SAR can only use %cl to shift. *)
     (X86_asm.Mov { dest = Reg { reg = ecx; size }; src; size }
     :: shift_check (Reg { reg = ecx; size }) fpe_label)
@@ -240,9 +239,9 @@ let gen_x86_inst_bin
     (rhs : X86_asm.operand)
     (swap : Reg.t)
   =
-  let rax = X86_asm.Reg { reg = rax; size = `DWORD } in
-  let swap = X86_asm.Reg { reg = swap; size = `DWORD } in
   let size = Inst.get_size dest in
+  let rax = X86_asm.Reg { reg = rax; size } in
+  let swap = X86_asm.Reg { reg = swap; size } in
   match op with
   | Plus -> safe_mov dest lhs size @ safe_add dest rhs size
   | Minus -> safe_mov dest lhs size @ safe_sub dest rhs size
@@ -297,7 +296,8 @@ let rec _codegen_w_reg_rev
     | Mov mov ->
       let dest = trans_operand mov.dest reg_alloc_info in
       let src = trans_operand mov.src reg_alloc_info in
-      let insts = safe_mov dest src `DWORD in
+      let size = Inst.get_size dest in
+      let insts = safe_mov dest src size in
       let insts_rev = List.rev insts in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Ret _ ->
@@ -360,13 +360,25 @@ let rec _codegen_w_reg_rev
       let src = X86_asm.Mem (trans_mem load.src) in
       let dest = trans_operand (Src.Temp load.dest) reg_alloc_info in
       let size = load.size in
-      let insts_rev = [ X86_asm.Mov { dest; src; size } ] in
+      let insts_rev =
+        match dest with
+        | X86_asm.Mem _ ->
+          let r15 = X86_asm.Reg ({ reg = Reg.swap; size } : Var.X86_reg.Hard.t) in
+          [ X86_asm.Mov { dest; src = r15; size }; X86_asm.Mov { dest = r15; src; size } ]
+        | _ -> [ X86_asm.Mov { dest; src; size } ]
+      in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Store store ->
       let dest = X86_asm.Mem (trans_mem store.dest) in
       let src = trans_operand store.src reg_alloc_info in
       let size = store.size in
-      let insts_rev = [ X86_asm.Mov { dest; src; size } ] in
+      let insts_rev =
+        match src with
+        | X86_asm.Mem _ ->
+          let r15 = X86_asm.Reg ({ reg = Reg.swap; size } : Var.X86_reg.Hard.t) in
+          [ X86_asm.Mov { dest; src = r15; size }; X86_asm.Mov { dest = r15; src; size } ]
+        | _ -> [ X86_asm.Mov { dest; src; size } ]
+      in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Directive _ | Comment _ -> _codegen_w_reg_rev res t reg_alloc_info reg_swap)
 ;;
