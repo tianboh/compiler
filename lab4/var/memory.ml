@@ -57,12 +57,13 @@ let below_frame base offset size =
 ;;
 
 let mem_to_str t =
-  let offset =
-    match t.offset with
-    | `Imm imm -> sprintf "%Ld" (Int64.neg imm)
-    | `Reg reg -> X86_reg.Hard.reg_to_str reg
-  in
-  Printf.sprintf "%s(%s)" offset (X86_reg.Hard.reg_to_str t.base)
+  match t.offset with
+  | `Imm imm -> Printf.sprintf "%Ld(%s)" (Int64.neg imm) (X86_reg.Hard.reg_to_str t.base)
+  | `Reg reg ->
+    Printf.sprintf
+      "(%s, %s, 1)"
+      (X86_reg.Hard.reg_to_str t.base)
+      (X86_reg.Hard.reg_to_str reg)
 ;;
 
 let mem_idx_exn (mem : t) =

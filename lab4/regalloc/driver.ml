@@ -70,12 +70,17 @@ module Print = struct
     let sorted_keys = List.sort (IG.Vertex.Map.keys color) ~compare:IG.Vertex.compare in
     List.iter sorted_keys ~f:(fun k ->
         let t = IG.Print.pp_vertex k in
+        let size =
+          match k with
+          | IG.Vertex.Reg _ -> "log reg"
+          | IG.Vertex.Temp t -> Size.pp_size t.size
+        in
         let r =
           match IG.Vertex.Map.find_exn color k with
-          | Reg r -> Register.reg_to_str r.reg
+          | Reg r -> Var.X86_reg.Hard.reg_to_str r
           | Mem m -> Memory.mem_to_str m
         in
-        printf "%s -> %s\n" t r)
+        printf "%s(%s) -> %s\n" t size r)
   ;;
 end
 
@@ -323,6 +328,12 @@ let rec greedy seq adj vertex_to_dest =
     | IG.Vertex.T.Temp temp ->
       let nbr = IG.Vertex.Map.find_exn adj h in
       let dest = alloc temp.size nbr vertex_to_dest in
+      (* let () =
+        match dest with
+        | Reg r ->
+          printf "alloc %s for %s\n" (Var.X86_reg.Hard.reg_to_str r) (Temp.name temp)
+        | Mem m -> printf "alloc %s for %s\n" (Var.Memory.mem_to_str m) (Temp.name temp)
+      in *)
       let vertex_to_dest =
         IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Temp temp) ~data:dest
       in

@@ -127,7 +127,7 @@ let pp_memory mem =
     | Some offset -> pp_operand offset
     | None -> ""
   in
-  sprintf "%s(%s)_%Ld" offset (pp_operand mem.base) (Size.type_size_bit mem.size)
+  sprintf "%s(%s)_%Ld" offset (pp_operand mem.base) (Size.type_size_byte mem.size)
 ;;
 
 let pp_inst = function

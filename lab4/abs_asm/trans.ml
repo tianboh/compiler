@@ -78,7 +78,7 @@ let get_size' (operand : Dest.operand) : Size.primitive =
 ;;
 
 (* Generate x86 instr with binop convention *)
-let[@warning "-8"] gen_binop (Src.Binop bin) =
+let[@warning "-8"] gen_binop_rev (Src.Binop bin) =
   let op, dest, lhs, rhs =
     ( trans_binop bin.op
     , trans_operand bin.dest
@@ -101,18 +101,18 @@ let[@warning "-8"] gen_binop (Src.Binop bin) =
   [ Dest.Binop { op; dest; lhs; rhs; line } ]
 ;;
 
-let[@warning "-8"] gen_move (Src.Mov move) =
+let[@warning "-8"] gen_move_rev (Src.Mov move) =
   let dest, src = trans_operand move.dest, trans_operand move.src in
   let line = { defines = [ dest ]; uses = [ src ]; live_out = []; move = true } in
   [ Dest.Mov { dest; src; line } ]
 ;;
 
-let[@warning "-8"] gen_jump (Src.Jump jump) =
+let[@warning "-8"] gen_jump_rev (Src.Jump jump) =
   let line = empty_line () in
   [ Dest.Jump { target = jump.target; line } ]
 ;;
 
-let[@warning "-8"] gen_cjump (Src.CJump cjump) =
+let[@warning "-8"] gen_cjump_rev (Src.CJump cjump) =
   let lhs, rhs = trans_operand cjump.lhs, trans_operand cjump.rhs in
   let op = trans_binop cjump.op in
   let line = { defines = []; uses = [ lhs; rhs ]; live_out = []; move = false } in
@@ -121,7 +121,7 @@ let[@warning "-8"] gen_cjump (Src.CJump cjump) =
   [ Dest.CJump { lhs; op; rhs; target_true; target_false; line } ]
 ;;
 
-let[@warning "-8"] gen_ret (Src.Ret ret) (exit_label : Label.t) =
+let[@warning "-8"] gen_ret_rev (Src.Ret ret) (exit_label : Label.t) =
   let line = empty_line () in
   let mov =
     match ret.var with
@@ -136,7 +136,7 @@ let[@warning "-8"] gen_ret (Src.Ret ret) (exit_label : Label.t) =
   Dest.Jump { target = exit_label; line } :: mov
 ;;
 
-let[@warning "-8"] gen_asrt (Src.Assert asrt) =
+let[@warning "-8"] gen_asrt_rev (Src.Assert asrt) =
   let line = empty_line () in
   let var = trans_operand asrt in
   let size = get_size' var in
@@ -203,7 +203,7 @@ let gen_fret dest =
 ;;
 
 (* Generate x86 instr with function call convention *)
-let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
+let[@warning "-8"] gen_fcall_rev (Src.Fcall fcall) =
   let func_name = fcall.func_name in
   let dest =
     match fcall.dest with
@@ -278,7 +278,7 @@ let[@warning "-8"] gen_fcall (Src.Fcall fcall) =
 ;;
 
 (* Move from source operand to destination register *)
-let gen_move' (dest : Reg.t) (src : Src.operand)
+let gen_move_rev' (dest : Reg.t) (src : Src.operand)
     : Dest.instr * Var.X86_reg.Hard.t * Dest.operand
   =
   let reg = ({ reg = dest; size = `QWORD } : Var.X86_reg.Hard.t) in
@@ -288,12 +288,12 @@ let gen_move' (dest : Reg.t) (src : Src.operand)
   Dest.Mov { dest; src; line }, reg, src
 ;;
 
-let[@warning "-8"] gen_load (Src.Load load) : Dest.instr list =
+let[@warning "-8"] gen_load_rev (Src.Load load) : Dest.instr list =
   let size = load.dest.size in
-  let move_base, base_dest, base_src = gen_move' Reg.heap_base load.src.base in
+  let move_base, base_dest, base_src = gen_move_rev' Reg.heap_base load.src.base in
   match load.src.offset with
   | Some offset ->
-    let move_offset, offset_dest, offset_src = gen_move' Reg.heap_offset offset in
+    let move_offset, offset_dest, offset_src = gen_move_rev' Reg.heap_offset offset in
     let src = ({ base = base_dest; offset = Some offset_dest; size } : Dest.mem) in
     let (Dest.Temp dest) = trans_operand (Src.Temp load.dest) in
     let line =
@@ -304,7 +304,7 @@ let[@warning "-8"] gen_load (Src.Load load) : Dest.instr list =
       }
     in
     let load = Dest.Load { dest; src; size; line } in
-    [ move_base; move_offset; load ]
+    [ load; move_offset; move_base ]
   | None ->
     let src = ({ base = base_dest; offset = None; size } : Dest.mem) in
     let (Dest.Temp dest) = trans_operand (Src.Temp load.dest) in
@@ -316,38 +316,38 @@ let[@warning "-8"] gen_load (Src.Load load) : Dest.instr list =
       }
     in
     let load = Dest.Load { dest; src; size; line } in
-    [ move_base; load ]
+    [ load; move_base ]
 ;;
 
-let[@warning "-8"] gen_store (Src.Store store) : Dest.instr list =
+let[@warning "-8"] gen_store_rev (Src.Store store) : Dest.instr list =
   let size = store.dest.size in
-  let move_base, base_dest, base_src = gen_move' Reg.heap_base store.dest.base in
+  let move_base, base_dest, base_src = gen_move_rev' Reg.heap_base store.dest.base in
   match store.dest.offset with
   | Some offset ->
-    let move_offset, offset_dest, offset_src = gen_move' Reg.heap_offset offset in
+    let move_offset, offset_dest, offset_src = gen_move_rev' Reg.heap_offset offset in
     let dest = ({ base = base_dest; offset = Some offset_dest; size } : Dest.mem) in
     let src = trans_operand store.src in
     let line =
-      { uses = [ base_src; offset_src ]
+      { uses = [ base_src; offset_src; src ]
       ; defines = [ Dest.Reg base_dest; Dest.Reg offset_dest ]
       ; live_out = []
       ; move = false
       }
     in
     let store = Dest.Store { dest; src; size; line } in
-    [ move_base; move_offset; store ]
+    [ store; move_offset; move_base ]
   | None ->
     let dest = ({ base = base_dest; offset = None; size } : Dest.mem) in
     let src = trans_operand store.src in
     let line =
-      { uses = [ base_src ]
+      { uses = [ base_src; src ]
       ; defines = [ Dest.Reg base_dest ]
       ; live_out = []
       ; move = false
       }
     in
     let store = Dest.Store { dest; src; size; line } in
-    [ move_base; store ]
+    [ store; move_base ]
 ;;
 
 (* Generate instruction with x86 conventions *)
@@ -359,18 +359,18 @@ let rec gen_body (program : Src.instr list) (res : Dest.instr list) (exit_label 
   | h :: t ->
     let inst =
       match h with
-      | Binop bin -> gen_binop (Binop bin)
-      | Mov move -> gen_move (Mov move)
-      | Jump jump -> gen_jump (Jump jump)
-      | CJump cjump -> gen_cjump (CJump cjump)
-      | Ret ret -> gen_ret (Ret ret) exit_label
+      | Binop bin -> gen_binop_rev (Binop bin)
+      | Mov move -> gen_move_rev (Mov move)
+      | Jump jump -> gen_jump_rev (Jump jump)
+      | CJump cjump -> gen_cjump_rev (CJump cjump)
+      | Ret ret -> gen_ret_rev (Ret ret) exit_label
       | Label l -> [ Dest.Label { label = l; line = empty_line () } ]
       | Directive dir -> [ Dest.Directive dir ]
       | Comment cmt -> [ Dest.Comment cmt ]
-      | Assert asrt -> gen_asrt (Assert asrt)
-      | Fcall fcall -> gen_fcall (Fcall fcall)
-      | Load load -> gen_load (Load load)
-      | Store store -> gen_store (Store store)
+      | Assert asrt -> gen_asrt_rev (Assert asrt)
+      | Fcall fcall -> gen_fcall_rev (Fcall fcall)
+      | Load load -> gen_load_rev (Load load)
+      | Store store -> gen_store_rev (Store store)
     in
     gen_body t (inst @ res) exit_label
 ;;

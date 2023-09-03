@@ -159,8 +159,8 @@ module Logic = struct
   let callee_saved = [ RBX; R12; R13; R14; R15 ]
   let caller_saved = [ R10; R11 ]
   let parameters = [ RDI; RSI; RDX; RCX; R8; R9 ]
-  let heap_base = R10
-  let heap_offset = R9
+  let heap_base = RAX
+  let heap_offset = RBX
 
   (* ESP(6) and EBP(7) are used to store stack pointer and base pointer respectively, 
    * we should not assign these two registers for general purpose use like register allocation. 
