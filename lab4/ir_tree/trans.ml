@@ -57,7 +57,7 @@ let rec align (dtype : TST.dtype) (env : env) : Size.t =
   | `Int -> `DWORD
   | `Bool -> `DWORD
   | `Void -> `VOID
-  | `NULL -> `DWORD
+  | `NULL -> `QWORD
   | `Pointer _ -> `QWORD
   | `Array _ -> `QWORD
   | `Struct sname ->
@@ -76,7 +76,7 @@ let sizeof_dtype (dtype : TST.dtype) (env : env) : Size.t =
   | `Int -> `DWORD
   | `Bool -> `DWORD
   | `Void -> `VOID
-  | `NULL -> `DWORD
+  | `NULL -> `QWORD
   | `Pointer _ -> `QWORD
   | `Array _ -> `QWORD
   | `Struct sname ->
@@ -89,7 +89,7 @@ let sizeof_dtype' (dtype : TST.dtype) : Size.primitive =
   | `Int -> `DWORD
   | `Bool -> `DWORD
   | `Void -> `VOID
-  | `NULL -> `DWORD
+  | `NULL -> `QWORD
   | `Pointer _ -> `QWORD
   | `Array _ -> `QWORD
   | `Struct _ -> failwith "expect small type"

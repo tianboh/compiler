@@ -29,11 +29,13 @@ let munch_op : Tree.binop -> Quads.bin_op = function
 (* get Tree.exp size *)
 let rec sizeof_exp : Tree.exp -> Size.primitive = function
   | Void -> failwith "void doesn't have esize"
-  | Const _ -> `DWORD
+  | Const i -> (i.size :> Size.primitive)
   | Temp t -> t.size
   | Binop binop ->
+    let size_l, size_r = sizeof_exp binop.lhs, sizeof_exp binop.rhs in
+    if not (phys_equal size_l size_r) then failwith "binop lhs rhs size mismatch";
     (match binop.op with
-    | Equal_eq | Greater | Greater_eq | Less | Less_eq | Not_eq -> `DWORD
+    | Equal_eq | Greater | Greater_eq | Less | Less_eq | Not_eq -> size_l
     | Plus
     | Minus
     | Times
