@@ -237,7 +237,7 @@ module Print = struct
         "%s(%s)"
         (Symbol.name fcall.func_name)
         (List.map fcall.args ~f:(fun arg -> pp_mexp arg) |> String.concat ~sep:",")
-    | EDot edot -> sprintf "%s.%s" (pp_mexp edot.struct_obj) (Symbol.name edot.field)
+    | EDot edot -> sprintf "(%s).%s" (pp_mexp edot.struct_obj) (Symbol.name edot.field)
     | EDeref ederef -> sprintf "*%s" (pp_mexp ederef.ptr)
     | ENth enth -> sprintf "%s[%s]" (pp_mexp enth.arr) (pp_mexp enth.index)
     | NULL -> "NULL"

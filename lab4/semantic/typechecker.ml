@@ -350,7 +350,7 @@ and[@warning "-8"] tc_assign (AST.Assign asn_ast) (env : env) loc : TST.stm * en
   if not (op_cmp var_type asn_ast.op) then error ~msg:"operand and operator mismatch" None;
   match Mark.data asn_ast.name with
   | Ident ident ->
-    let env_vars = Map.set env.vars ~key:ident ~data:{ dtype = val_type; state = Defn } in
+    let env_vars = Map.set env.vars ~key:ident ~data:{ dtype = var_type; state = Defn } in
     asn_tst, { env with vars = env_vars }
   | LVDot _ | LVDeref _ | LVNth _ -> asn_tst, env
 
