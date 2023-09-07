@@ -55,28 +55,15 @@ let ct2pt = ref Symbol.Map.empty
  * typedef name conflict or not. *)
 let func_env = ref Symbol.Set.empty
 
-let rec elab_ptype = function
+let rec elab_type (ctype : Cst.dtype) : Ast.dtype =
+  match ctype with
   | `Int -> `Int
   | `Bool -> `Bool
   | `Void -> `Void
-  | `Ctype _ -> failwith "elab_ptype should only handle primitive types"
-  | `Pointer ptr -> `Pointer (elab_ptype ptr)
-  | `Array arr -> `Array (elab_ptype arr)
+  | `Ctype c -> elab_type (Symbol.Map.find_exn !ct2pt c)
+  | `Pointer ptr -> `Pointer (elab_type ptr)
+  | `Array arr -> `Array (elab_type arr)
   | `Struct s -> `Struct s
-;;
-
-let elab_type (ctype : Cst.dtype) : Ast.dtype =
-  let ptype =
-    match ctype with
-    | `Int -> `Int
-    | `Bool -> `Bool
-    | `Void -> `Void
-    | `Ctype c -> Symbol.Map.find_exn !ct2pt c
-    | `Pointer ptr -> `Pointer ptr
-    | `Array arr -> `Array arr
-    | `Struct s -> `Struct s
-  in
-  elab_ptype ptype
 ;;
 
 let elab_asnop (asnop : Cst.asnop) : Ast.asnop =

@@ -1,7 +1,7 @@
 module Symbol = Util.Symbol
 open Core
 
-let env = ref Symbol.Set.empty
-let add (var : Symbol.t) : unit = env := Symbol.Set.add !env var
-let mem (var : Symbol.t) : bool = Symbol.Set.mem !env var
+let types = ref Symbol.Set.empty
+let add_type (var : Symbol.t) : unit = types := Symbol.Set.add !types var
+let has_type (var : Symbol.t) : bool = Symbol.Set.mem !types var
 let is_header = ref true

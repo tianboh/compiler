@@ -115,6 +115,12 @@ let mark
 
 %%
 
+id_or_type : 
+  | vid = VIdent;
+      { vid }
+  | tid = TIdent;
+      { tid }
+
 program :
   | Eof;
       { [] }
@@ -130,7 +136,7 @@ gdecl :
       { if !Env.is_header 
         then Cst.Fdefn {ret_type = ret_type; func_name; par_type = pars; blk = blk; scope=`External} 
         else Cst.Fdefn {ret_type = ret_type; func_name; par_type = pars; blk = blk; scope=`C0} }
-  | Typedef; t = dtype; var = midrule(var = VIdent {Env.add var; var}); Semicolon
+  | Typedef; t = dtype; var = midrule(var = VIdent {Env.add_type var; var}); Semicolon
       { Cst.Typedef {t = t; t_var = var} }
   | Struct; var = VIdent; Semicolon
       { Cst.Sdecl { struct_name = var } }
@@ -138,7 +144,7 @@ gdecl :
       { Cst.Sdefn { struct_name = var; fields = fields; } }
 
 field : 
-  | t = dtype; var = VIdent; Semicolon
+  | t = dtype; var = id_or_type; Semicolon
       { {t = t; i = var} : Cst.field }
 
 field_list :
@@ -192,7 +198,7 @@ dtype :
       { `Pointer t }
   | t = dtype; L_bracket; R_bracket
       { `Array t }
-  | Struct; var = VIdent;
+  | Struct; var = id_or_type;
       { `Struct var }
       
 
@@ -280,7 +286,7 @@ exp :
     { Cst.Fcall {func_name = fname; args = arg_list} }
   | struct_obj = m(exp); Dot; ident = VIdent; 
       { Cst.Dot { struct_obj = struct_obj; field = ident } }
-  | ptr = m(exp); Arrow; ident = VIdent; 
+  | ptr = m(exp); Arrow; ident = id_or_type; 
       { Cst.Arrow { struct_ptr = ptr; field = ident } }
   | Alloc; L_paren; t = dtype; R_paren;
       { Cst.Alloc {t = t} }

@@ -199,7 +199,7 @@ rule initial = parse
   | hex_num as n { hex_constant n lexbuf }
 
   | ident as name { let var = (Symbol.symbol name) in 
-                    if Env.mem var then T.TIdent var else T.VIdent var }
+                    if Env.has_type var then T.TIdent var else T.VIdent var }
 
   | "/*" { comment 1 lexbuf }
   | "*/" { error lexbuf ~msg:"Unbalanced comments.";
