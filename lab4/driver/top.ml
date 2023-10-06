@@ -99,10 +99,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
     flag (Arg.info [ "r"; "regalloc-only" ] ~doc)
   and emit =
     let doc = "[abs|x86-64] The type of assembly $(docv) to emit." in
-    opt
-      Emit.conv
-      ~default:Emit.Abstract_assem
-      (Arg.info [ "e"; "emit" ] ~doc ~docv:"TARGET")
+    opt Emit.conv ~default:Emit.Quad (Arg.info [ "e"; "emit" ] ~doc ~docv:"TARGET")
   and opt_level =
     let doc = "[0|1|2] The optimization level $(docv)." in
     opt
@@ -178,17 +175,22 @@ let compile (cmd : cmd_line_args) : unit =
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
   let quad = Quads.Trans.gen ir in
-  (* let assem_ps_ssa = Codegen.Optimize.optimize assem_ps_ssa in *)
-  (* let () = Codegen.Gen.Pseudo.print_insts assem_ps_ssa in *)
+  (* let assem_ps_ssa = Codegen.Optimize.optimize assem_ps_ssa in
+  let () = Codegen.Gen.Pseudo.print_insts assem_ps_ssa in *)
   (* let stop = Unix.gettimeofday () in *)
   (* let () = Printf.printf "Execution time assem_ps_ssa: %fs\n%!" (stop -. start) in *)
   say_if cmd.dump_quad (fun () -> Quads.Inst.pp_program quad "");
   match cmd.emit with
   (* Output: abstract 3-address assem *)
+  | Quad ->
+    let file = cmd.filename ^ ".quad" in
+    say_if cmd.verbose (fun () -> sprintf "Writing abstract assem to %s..." file);
+    File.dump_quad file quad
   | Abstract_assem ->
     let file = cmd.filename ^ ".abs" in
     say_if cmd.verbose (fun () -> sprintf "Writing abstract assem to %s..." file);
-    File.dump_ps file quad
+    let abs = Abs_asm.Trans.gen quad [] in
+    File.dump_abs file abs
   | X86_64 ->
     let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
@@ -196,23 +198,23 @@ let compile (cmd : cmd_line_args) : unit =
     (* let stop = Unix.gettimeofday () in *)
     (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
     (* let start = Unix.gettimeofday () in *)
-    let assem_x86_conv = Abs_asm.Trans.gen quad [] in
-    say_if cmd.dump_conv (fun () -> Abs_asm.Inst.pp_program assem_x86_conv "");
+    let abs = Abs_asm.Trans.gen quad [] in
+    say_if cmd.dump_conv (fun () -> Abs_asm.Inst.pp_program abs "");
     let progs =
-      List.map assem_x86_conv ~f:(fun fdefn ->
+      List.map abs ~f:(fun fdefn ->
           let reg_alloc_info = Regalloc.Driver.regalloc fdefn in
           let instrs = X86_asm.Trans.gen fdefn reg_alloc_info in
           fdefn.func_name, instrs)
     in
     let _, instrs = List.unzip progs in
     let fnames =
-      List.filter assem_x86_conv ~f:(fun fdefn -> phys_equal fdefn.scope `C0)
+      List.filter abs ~f:(fun fdefn -> phys_equal fdefn.scope `C0)
       |> List.map ~f:(fun f -> f.func_name, f.scope)
     in
     let instrs =
       List.concat instrs @ X86_asm.Trans.fpe_handler @ X86_asm.Trans.abort_handler
     in
-    File.dump_asm_x86 file fnames instrs
+    File.dump_x86 file fnames instrs
 ;;
 
 let run (cmd : cmd_line_args) : unit =
