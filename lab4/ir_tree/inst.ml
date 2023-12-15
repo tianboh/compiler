@@ -134,7 +134,10 @@ module Print : PRINT = struct
 
   let rec pp_exp = function
     | Void -> "void"
-    | Const x -> Int64.to_string x.v
+    | Const x ->
+      (match x.size with
+      | `DWORD -> Int64.to_string x.v ^ "_4"
+      | `QWORD -> Int64.to_string x.v ^ "_8")
     | Temp t -> Temp.name t
     | Binop binop ->
       sprintf "(%s %s %s)" (pp_exp binop.lhs) (pp_binop binop.op) (pp_exp binop.rhs)

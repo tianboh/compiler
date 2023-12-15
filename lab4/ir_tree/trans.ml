@@ -146,8 +146,8 @@ let c0_raise (temp : Temp.t) : Tree.fdefn =
 (* Check whether base is 0 *)
 let check_null (base : Tree.exp) : Tree.stm list =
   let lhs, op, rhs = base, Tree.Equal_eq, Tree.Const { v = 0L; size = `QWORD } in
-  let target_true = Label.label None in
-  let target_false = Label.label None in
+  let target_true = Label.label (Some "is_null") in
+  let target_false = Label.label (Some "not_null") in
   [ Tree.CJump { lhs; op; rhs; target_true; target_false }
   ; Tree.Label target_true
   ; Tree.Fcall
@@ -162,7 +162,7 @@ let check_null (base : Tree.exp) : Tree.stm list =
 
 (* Check whether offset is within [0, array_size), also check whether array base is null. *)
 let check_bound (base : Tree.exp) (offset : Tree.exp) : Tree.stm list * Tree.stm list =
-  let zero = Tree.Const { v = 0L; size = `QWORD } in
+  let zero = Tree.Const { v = 0L; size = `DWORD } in
   let null_check = check_null base in
   let header = ({ disp = -8L; base; offset = None; size = `QWORD } : Tree.mem) in
   let size = Temp.create `DWORD in
@@ -375,7 +375,7 @@ let[@warning "-8"] rec trans_exp (need_check : bool) (exp_tst : TST.texp) (env :
     let base_stm, base = _trans_exp nth.arr env in
     let index_stm, index_exp = _trans_exp nth.index env in
     let scale = size |> Size.type_size_byte in
-    let lhs = Tree.Const { v = scale; size = `QWORD } in
+    let lhs = Tree.Const { v = scale; size = `DWORD } in
     let offset = Tree.Binop { lhs; rhs = index_exp; op = Times } in
     let load, dest = trans_mem base (Some offset) size in
     let base_check, bound_check =
@@ -415,7 +415,7 @@ let trans_lvalue (lvalue : TST.texp) (env : env) (need_check : bool)
     let base_stm, base = _trans_exp nth.arr env in
     let index_stm, index_exp = trans_exp need_check nth.index env in
     let scale = size |> Size.type_size_byte in
-    let lhs = Tree.Const { v = scale; size = `QWORD } in
+    let lhs = Tree.Const { v = scale; size = `DWORD } in
     let offset = Tree.Binop { lhs; rhs = index_exp; op = Times } in
     let dest = ({ disp = 0L; base; offset = Some offset; size } : Tree.mem) in
     let base_check, bound_check =
