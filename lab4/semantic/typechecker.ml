@@ -114,6 +114,12 @@ let rec type_cmp t1 t2 =
   | _ -> false
 ;;
 
+let is_big t =
+  match t with
+  | `Struct _ -> true
+  | _ -> false
+;;
+
 (* Check match between variable and assign operator. 
  * For now, only check assign with operation, like +=, -=, |=, >>= etc.
  * These assign operator should only deal with integer. *)
@@ -176,16 +182,17 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
   in
   let[@warning "-8"] tc_terop (AST.Terop terop) : TST.texp =
     let cond = tc_exp terop.cond env in
-    let true_exp = tc_exp terop.true_exp env in
-    let false_exp = tc_exp terop.false_exp env in
-    if type_cmp true_exp.dtype `Void || type_cmp false_exp.dtype `Void
-    then error ~msg:"exp type cannot be void" None;
     match cond.dtype with
     | `Int | `Void | `NULL | `Pointer _ | `Array _ | `Struct _ ->
       error ~msg:"Terop condition should be bool" loc
     | `Bool ->
+      let true_exp = tc_exp terop.true_exp env in
+      let false_exp = tc_exp terop.false_exp env in
       if type_cmp true_exp.dtype false_exp.dtype
-      then { data = `Terop { cond; true_exp; false_exp }; dtype = true_exp.dtype }
+      then
+        if type_cmp true_exp.dtype `Void || is_big true_exp.dtype
+        then error ~msg:"exp type cannot be void" None
+        else { data = `Terop { cond; true_exp; false_exp }; dtype = true_exp.dtype }
       else error ~msg:"Terop true & false exp type mismatch" loc
   in
   let[@warning "-8"] tc_fcall (AST.Fcall fcall) : TST.texp =
@@ -398,6 +405,7 @@ and[@warning "-8"] tc_declare (AST.Declare decl) loc env func_name =
   let decl_type, decl_name, tail = decl.t, decl.name, decl.tail in
   if type_cmp decl_type `Void
   then error ~msg:(sprintf "cannot declare var with void") None;
+  if is_big decl_type then error ~msg:(sprintf "cannot declare big type") None;
   if Map.mem env.vars decl_name then error ~msg:(sprintf "Redeclare a variable ") loc;
   let vars', value =
     match decl.value with
@@ -433,7 +441,8 @@ let tc_pars (pars : param list) =
          else Set.add acc par.i)
       : Set.t);
   List.iter pars ~f:(fun par ->
-      if phys_equal par.t `Void then error ~msg:"no void type for var" None)
+      if type_cmp par.t `Void then error ~msg:"no void type for var" None;
+      if is_big par.t then error ~msg:"cannot pass big type as parameter" None)
 ;;
 
 (* Rules to follow
@@ -442,6 +451,7 @@ let tc_pars (pars : param list) =
  * the declarations must be compatible. Types should be the
  * same, but parameter name are not required to be the same.
  * 3) Cannot declare int main() in header
+ * 4) Cannot use big type as parameter type
  *)
 let[@warning "-8"] tc_fdecl (AST.Fdecl fdecl) env =
   let ret_type, func_name, pars = fdecl.ret_type, fdecl.func_name, fdecl.pars in
