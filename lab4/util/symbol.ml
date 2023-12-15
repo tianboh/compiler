@@ -73,4 +73,11 @@ module Fname = struct
    * It returns zero if successful and a nonzero value if it fails. 
    * About the only reason for failure would be if the value of signum is invalid. *)
   let raise = symbol "raise"
+
+  (* check https://www.codequoi.com/en/sending-and-intercepting-a-signal-in-c/
+   * for more signals. *)
+  let abrt = 6L
+  let fpe = 8L
+  let segv = 11L
+  let usr2 = 12L
 end

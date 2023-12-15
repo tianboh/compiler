@@ -45,11 +45,6 @@ type ldest =
   | Mem of Tree.mem
   | Temp of Temp.t
 
-let header = 8L
-let no_abrt = Tree.Const { v = 6L; size = `DWORD }
-let no_fpe = Tree.Const { v = 8L; size = `DWORD }
-let no_usr2 = Tree.Const { v = 12L; size = `DWORD }
-
 (* Return the alignment requirement for data type
  * Struct alignment depends on the strictest(largest) field *)
 let rec align (dtype : TST.dtype) (env : env) : Size.t =
@@ -158,7 +153,7 @@ let check_null (base : Tree.exp) : Tree.stm list =
   ; Tree.Fcall
       { dest = None
       ; func_name = Symbol.Fname.raise
-      ; args = [ no_usr2 ]
+      ; args = [ Tree.Const { v = Symbol.Fname.usr2; size = `DWORD } ]
       ; scope = `Internal
       }
   ; Tree.Label target_false

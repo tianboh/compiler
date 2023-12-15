@@ -384,11 +384,11 @@ let rec _codegen_w_reg_rev
 ;;
 
 let fpe_handler =
-  let ecx = X86_asm.Reg { reg = RCX; size = `DWORD } in
-  (* We use ecx as zero reg because it is saved for shift. *)
+  let open Util.Symbol.Fname in
+  let edi = X86_asm.Reg { reg = RDI; size = `DWORD } in
   [ X86_asm.Label fpe_label
-  ; X86_asm.Mov { dest = ecx; src = Imm { v = 0L; size = `DWORD }; size = `DWORD }
-  ; X86_asm.Div { src = ecx; size = `DWORD }
+  ; X86_asm.Mov { dest = edi; src = Imm { v = fpe; size = `DWORD }; size = `DWORD }
+  ; X86_asm.Fcall { func_name = raise; scope = `Internal }
   ]
 ;;
 
