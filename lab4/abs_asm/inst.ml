@@ -99,10 +99,6 @@ type instr =
       { label : Label.t
       ; line : line
       }
-  | Assert of
-      { var : operand
-      ; line : line
-      }
   | Push of
       { var : operand
       ; line : line
@@ -208,7 +204,6 @@ let pp_inst = function
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
   | Ret _ -> sprintf "return"
-  | Assert asrt -> sprintf "assert %s" (pp_operand asrt.var)
   | Fcall fcall ->
     sprintf
       "fcall %s%s(%s)"

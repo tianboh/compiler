@@ -124,9 +124,6 @@ let rec gen_forward
     | Abs_asm.Push push ->
       let inst_info = helper push.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Assert asrt ->
-      let inst_info = helper asrt.line live_out false inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Load load ->
       let inst_info = helper load.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map

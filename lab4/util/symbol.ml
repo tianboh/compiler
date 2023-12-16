@@ -77,7 +77,8 @@ module Fname = struct
   (* check https://www.codequoi.com/en/sending-and-intercepting-a-signal-in-c/
    * for more signals. *)
   let abrt = 6L
-  let fpe = 8L
+  let fpe = 8L (* div by zero, shift bit overflow *)
+
   let segv = 11L
   let usr2 = 12L
 end

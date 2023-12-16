@@ -167,12 +167,10 @@ let check_bound (base : Tree.exp) (offset : Tree.exp) : Tree.stm list * Tree.stm
   let header = ({ disp = -8L; base; offset = None; size = `QWORD } : Tree.mem) in
   let size = Temp.create `DWORD in
   let load = [ Tree.Load { src = header; dest = size } ] in
-  let target_raise = Label.label None in
-  let target1 = Label.label None in
-  (* pass lower check*)
-  let target2 = Label.label None in
-  (* pass upper check *)
-  let lower_check =
+  let target_raise = Label.label (Some "fail_bd_check") in
+  let target1 = Label.label (Some "pass_lo_check") in
+  let target2 = Label.label (Some "pass_hi_check") in
+  let check =
     [ Tree.CJump
         { lhs = offset
         ; op = Tree.Greater_eq
@@ -181,20 +179,24 @@ let check_bound (base : Tree.exp) (offset : Tree.exp) : Tree.stm list * Tree.stm
         ; target_true = target1
         }
     ; Tree.Label target1
-    ]
-  in
-  let upper_check =
-    [ Tree.CJump
+    ; Tree.CJump
         { lhs = offset
         ; op = Tree.Less
         ; rhs = Tree.Temp size
         ; target_false = target_raise
         ; target_true = target2
         }
+    ; Tree.Label target_raise
+    ; Tree.Fcall
+        { dest = None
+        ; func_name = Symbol.Fname.raise
+        ; args = [ Tree.Const { v = Symbol.Fname.usr2; size = `DWORD } ]
+        ; scope = `Internal
+        }
     ; Tree.Label target2
     ]
   in
-  null_check, load @ lower_check @ upper_check
+  null_check, load @ check
 ;;
 
 let trans_exp_bin (binop : TST.binexp) (env : env) trans_func : Tree.stm list * Tree.exp =
@@ -425,29 +427,59 @@ let trans_lvalue (lvalue : TST.texp) (env : env) (need_check : bool)
   | _ -> failwith "should not appear as lvalue"
 ;;
 
-let trans_asnop (lhs : ldest) (op : TST.asnop) (rhs : Tree.exp) (size : Size.primitive)
-    : Tree.stm list * Tree.exp
+let[@warning "-8"] trans_asnop acc (TST.Assign asn_tst) need_check (env : env)
+    : Tree.stm list * env
   =
-  let stm, lhs =
+  let dest_size = sizeof_dtype' asn_tst.value.dtype in
+  let dest_stms, lhs = trans_lvalue asn_tst.name env need_check in
+  let v_stms, rhs = trans_exp need_check asn_tst.value env in
+  let load_stm, lhs_temp =
     match lhs with
     | Temp var -> [], Tree.Temp var
     | Mem mem ->
-      let t = Temp.create size in
+      let t = Temp.create dest_size in
       let stm = [ Tree.Load { src = mem; dest = t } ] in
       stm, Tree.Temp t
   in
-  match op with
-  | `Asn -> stm, rhs
-  | `Plus_asn -> stm, Tree.Binop { lhs; rhs; op = Plus }
-  | `Minus_asn -> stm, Tree.Binop { lhs; rhs; op = Minus }
-  | `Times_asn -> stm, Tree.Binop { lhs; rhs; op = Times }
-  | `Div_asn -> stm, Tree.Binop { lhs; rhs; op = Divided_by }
-  | `Mod_asn -> stm, Tree.Binop { lhs; rhs; op = Modulo }
-  | `And_asn -> stm, Tree.Binop { lhs; rhs; op = And }
-  | `Hat_asn -> stm, Tree.Binop { lhs; rhs; op = Xor }
-  | `Or_asn -> stm, Tree.Binop { lhs; rhs; op = Or }
-  | `Left_shift_asn -> stm, Tree.Binop { lhs; rhs; op = Left_shift }
-  | `Right_shift_asn -> stm, Tree.Binop { lhs; rhs; op = Right_shift }
+  let exp =
+    match asn_tst.op with
+    (* Pure, w.o. effect *)
+    | `Asn -> `Pure rhs
+    | `Plus_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = Plus })
+    | `Minus_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = Minus })
+    | `Times_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = Times })
+    | `And_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = And })
+    | `Hat_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = Xor })
+    | `Or_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = Or })
+    (* Impure, probably w. effect *)
+    | `Div_asn -> `Impure (Tree.Binop { lhs = lhs_temp; rhs; op = Divided_by })
+    | `Mod_asn -> `Impure (Tree.Binop { lhs = lhs_temp; rhs; op = Modulo })
+    | `Left_shift_asn -> `Impure (Tree.Binop { lhs = lhs_temp; rhs; op = Left_shift })
+    | `Right_shift_asn -> `Impure (Tree.Binop { lhs = lhs_temp; rhs; op = Right_shift })
+  in
+  match lhs with
+  | Temp dest ->
+    (match exp with
+    | `Pure p_exp -> (Tree.Move { dest; src = p_exp } :: List.rev v_stms) @ acc, env
+    | `Impure (Tree.Binop ip_exp) ->
+      ( (Tree.Effect { dest; lhs = Tree.Temp dest; rhs = ip_exp.rhs; op = ip_exp.op }
+        :: List.rev v_stms)
+        @ acc
+      , env ))
+  | Mem dest ->
+    let src, src_stm =
+      match exp with
+      | `Pure p_exp -> p_exp, []
+      | `Impure (Tree.Binop ip_exp) ->
+        let t = Temp.create dest_size in
+        ( Tree.Temp t
+        , [ Tree.Effect { dest = t; lhs = Tree.Temp t; rhs = ip_exp.rhs; op = ip_exp.op }
+          ] )
+    in
+    ( (((Tree.Store { dest; src } :: src_stm) @ load_stm) @ List.rev v_stms)
+      @ List.rev dest_stms
+      @ acc
+    , env )
 ;;
 
 (* env.vars keep trakcs from variable name to temporary. Two things keep in mind
@@ -463,18 +495,7 @@ let rec trans_stm_rev
     : Tree.stm list * env
   =
   match tst with
-  | TST.Assign asn_tst ->
-    let size = sizeof_dtype' asn_tst.value.dtype in
-    let dest_stms, dest = trans_lvalue asn_tst.name env need_check in
-    let v_stms, v_exp = trans_exp need_check asn_tst.value env in
-    let elab_stm, exp = trans_asnop dest asn_tst.op v_exp size in
-    (match dest with
-    | Temp temp -> (Tree.Move { dest = temp; src = exp } :: List.rev v_stms) @ acc, env
-    | Mem mem ->
-      ( ((Tree.Store { dest = mem; src = exp } :: elab_stm) @ List.rev v_stms)
-        @ List.rev dest_stms
-        @ acc
-      , env ))
+  | TST.Assign asn_tst -> trans_asnop acc (TST.Assign asn_tst) need_check env
   | TST.If if_TST ->
     (* 
      *  CJump cond label_true, label_false

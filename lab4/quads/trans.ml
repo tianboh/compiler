@@ -7,6 +7,8 @@ module Memory = Var.Memory
 module Label = Util.Label
 module Size = Var.Size
 
+let shift_maximum_bit = Int64.of_int_exn 31 (* inclusive *)
+
 let munch_op : Tree.binop -> Quads.bin_op = function
   | Plus -> Plus
   | Minus -> Minus
@@ -110,6 +112,54 @@ and munch_exp : Quads.operand -> Tree.exp -> Quads.instr list =
    * reverse the list before returning. *)
   List.rev (munch_exp_acc dest exp [])
 
+and[@warning "-8"] munch_effect_rev (Tree.Effect eft) : Quads.instr list =
+  let lhs_size = sizeof_exp eft.lhs in
+  let lhs = Quads.Temp (Temp.create lhs_size) in
+  let op = munch_op eft.op in
+  let rhs_size = sizeof_exp eft.rhs in
+  let rhs = Quads.Temp (Temp.create rhs_size) in
+  let lhs_inst_rev = munch_exp_acc lhs eft.lhs [] in
+  let rhs_inst_rev = munch_exp_acc rhs eft.rhs [] in
+  let safety_check_rev =
+    match eft.op with
+    | Right_shift | Left_shift ->
+      let l1 = Label.label None in
+      let l2 = Label.label None in
+      let l3 = Label.label None in
+      let l4 = Label.label None in
+      [ Quads.Label l4
+      ; Quads.Fcall
+          { func_name = Util.Symbol.Fname.raise
+          ; dest = None
+          ; args = [ Quads.Imm { v = Util.Symbol.Fname.fpe; size = `DWORD } ]
+          ; scope = `Internal
+          }
+      ; Quads.Label l3
+      ; Quads.Jump { target = l4 }
+      ; Quads.Label l2
+      ; Quads.CJump
+          { lhs = rhs
+          ; op = Quads.Less
+          ; rhs = Quads.Imm { v = Int64.zero; size = `DWORD }
+          ; target_true = l3
+          ; target_false = l2
+          }
+      ; Quads.Label l1
+      ; Quads.CJump
+          { lhs = rhs
+          ; op = Quads.Greater
+          ; rhs = Quads.Imm { v = shift_maximum_bit; size = `DWORD }
+          ; target_true = l3
+          ; target_false = l1
+          }
+      ]
+    | Divided_by | Modulo -> []
+    | _ -> failwith "not effect binop"
+  in
+  ((Quads.Binop { lhs; op; rhs; dest = Quads.Temp eft.dest } :: safety_check_rev)
+  @ rhs_inst_rev)
+  @ lhs_inst_rev
+
 (* Return a reversed Quads.instr list. *)
 and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
   match stm with
@@ -137,21 +187,30 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
     @ lhs_inst_rev
   | Tree.Label l -> [ Quads.Label l ]
   | Tree.Nop -> []
-  | Tree.Effect eft ->
-    let lhs_size = sizeof_exp eft.lhs in
-    let lhs = Quads.Temp (Temp.create lhs_size) in
-    let op = munch_op eft.op in
-    let rhs_size = sizeof_exp eft.rhs in
-    let rhs = Quads.Temp (Temp.create rhs_size) in
-    let lhs_inst_rev = munch_exp_acc lhs eft.lhs [] in
-    let rhs_inst_rev = munch_exp_acc rhs eft.rhs [] in
-    (Quads.Binop { lhs; op; rhs; dest = Quads.Temp eft.dest } :: rhs_inst_rev)
-    @ lhs_inst_rev
+  | Tree.Effect eft -> munch_effect_rev (Tree.Effect eft)
   | Tree.Assert asrt ->
-    let size = sizeof_exp asrt in
+    let size = `DWORD in
     let t = Temp.create size in
     let inst = munch_exp_acc (Quads.Temp t) asrt [] in
-    Quads.Assert (Quads.Temp t) :: inst
+    let pass = Label.label None in
+    let fail = Label.label None in
+    [ Quads.Label pass
+    ; Quads.Fcall
+        { func_name = Util.Symbol.Fname.raise
+        ; dest = None
+        ; args = [ Quads.Imm { v = Util.Symbol.Fname.abrt; size } ]
+        ; scope = `Internal
+        }
+    ; Quads.Label fail
+    ; Quads.CJump
+        { lhs = Quads.Temp t
+        ; op = Quads.Equal_eq
+        ; rhs = Quads.Imm { v = Int64.one; size }
+        ; target_true = pass
+        ; target_false = fail
+        }
+    ]
+    @ inst
   | Tree.Fcall fcall ->
     let args, args_stms_rev =
       List.map fcall.args ~f:(fun arg ->
@@ -212,16 +271,16 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
     let store = Quads.Store { src; dest = mem } in
     ((store :: src_instr) @ offset_instr) @ base_instr
 
-and munch_stms_rev stms res =
+and munch_stms stms res =
   match stms with
-  | [] -> res
+  | [] -> res |> List.rev
   | h :: t ->
     let stm = munch_stm_rev h in
-    munch_stms_rev t res @ stm
+    munch_stms t (stm @ res)
 ;;
 
 let gen_fdefn (fdefn : Tree.fdefn) : Quads.fdefn =
-  let body = munch_stms_rev fdefn.body [] |> List.rev in
+  let body = munch_stms fdefn.body [] in
   let pars = fdefn.temps in
   { func_name = fdefn.func_name; body; pars; scope = fdefn.scope }
 ;;

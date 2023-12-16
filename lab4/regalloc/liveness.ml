@@ -56,7 +56,6 @@ let rec gen_succ (inst_list : Abs_asm.instr list) (line_no : int) map =
     | Ret _
     | Mov _
     | Binop _
-    | Assert _
     | Fcall _
     | Push _
     | Pop _
@@ -99,7 +98,6 @@ let rec _gen_df_info_rev (inst_list : Abs_asm.instr list) line_number label_map 
       | Mov mov -> Some (_gen_df_info_helper line_number mov.line)
       | Push push -> Some (_gen_df_info_helper line_number push.line)
       | Pop pop -> Some (_gen_df_info_helper line_number pop.line)
-      | Assert asrt -> Some (_gen_df_info_helper line_number asrt.line)
       | Fcall fcall -> Some (_gen_df_info_helper line_number fcall.line)
       | Load load -> Some (_gen_df_info_helper line_number load.line)
       | Store store -> Some (_gen_df_info_helper line_number store.line)

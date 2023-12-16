@@ -136,19 +136,6 @@ let[@warning "-8"] gen_ret_rev (Src.Ret ret) (exit_label : Label.t) =
   Dest.Jump { target = exit_label; line } :: mov
 ;;
 
-let[@warning "-8"] gen_asrt_rev (Src.Assert asrt) =
-  let line = empty_line () in
-  let var = trans_operand asrt in
-  let size = get_size' var in
-  let line =
-    { line with
-      defines = [ Dest.Reg { reg = rax; size } ]
-    ; uses = [ trans_operand asrt ]
-    }
-  in
-  [ Dest.Assert { var; line } ]
-;;
-
 let param_map base idx size : Dest.operand =
   let open Base.Int64 in
   match idx with
@@ -367,7 +354,6 @@ let rec gen_body (program : Src.instr list) (res : Dest.instr list) (exit_label 
       | Label l -> [ Dest.Label { label = l; line = empty_line () } ]
       | Directive dir -> [ Dest.Directive dir ]
       | Comment cmt -> [ Dest.Comment cmt ]
-      | Assert asrt -> gen_asrt_rev (Assert asrt)
       | Fcall fcall -> gen_fcall_rev (Fcall fcall)
       | Load load -> gen_load_rev (Load load)
       | Store store -> gen_store_rev (Store store)

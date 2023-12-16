@@ -195,9 +195,6 @@ module Lazy = struct
               IG.Vertex.Set.union acc (trans_operand arg))
         in
         collect_vertex t res
-      | Assert asrt ->
-        let res = IG.Vertex.Set.union res (trans_operand asrt.var) in
-        collect_vertex t res
       | Push push ->
         let res = IG.Vertex.Set.union res (trans_operand push.var) in
         collect_vertex t res

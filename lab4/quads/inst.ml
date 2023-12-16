@@ -72,7 +72,6 @@ type instr =
       ; target_true : Label.t
       ; target_false : Label.t
       }
-  | Assert of operand
   | Ret of { var : operand option }
   | Load of
       { src : mem
@@ -170,7 +169,6 @@ let pp_inst = function
         (Symbol.pp_scope call.scope)
         (Symbol.name call.func_name)
         (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", "))
-  | Assert asrt -> sprintf "assert %s" (pp_operand asrt)
   | Load load -> sprintf "load %s <- %s" (Temp.name load.dest) (pp_memory load.src)
   | Store store -> sprintf "store %s <- %s" (pp_memory store.dest) (pp_operand store.src)
 ;;
@@ -183,7 +181,7 @@ let pp_fdefn (fdefn : fdefn) =
     List.map fdefn.body ~f:(fun inst -> pp_inst inst) |> String.concat ~sep:"\n"
   in
   let func_name = Symbol.pp_scope fdefn.scope ^ Symbol.name fdefn.func_name in
-  sprintf "%s(%s)\n%s" func_name pars_str body_str
+  sprintf "%s(%s)\n%s\n" func_name pars_str body_str
 ;;
 
 let rec pp_program (program : fdefn list) res =

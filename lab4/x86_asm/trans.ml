@@ -73,9 +73,9 @@ let rax = Reg.RAX
 let rdx = Reg.RDX
 let rbp = Reg.RBP
 let rsp = Reg.RSP
-let fpe_label = Label.label (Some "fpe")
-let abort_label = Label.label (Some "abt")
-let shift_maximum_bit = Int64.of_int_exn 31 (* inclusive *)
+
+(* let shift_maximum_bit = Int64.of_int_exn 31 inclusive *)
+let abort_label = Util.Label.Handler.sigabrt
 
 (* Now we provide safe instruction to avoid source and destination are both memory. *)
 let safe_mov (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
@@ -133,7 +133,7 @@ let safe_xor (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primi
 ;;
 
 (* shift bit should be [0, 31] *)
-let shift_check (shift_bit : X86_asm.operand) (fpe_label : Label.t) =
+(* let shift_check (shift_bit : X86_asm.operand) (fpe_label : Label.t) =
   [ X86_asm.Cmp
       { lhs = shift_bit
       ; rhs = Imm { v = shift_maximum_bit; size = `DWORD }
@@ -143,44 +143,30 @@ let shift_check (shift_bit : X86_asm.operand) (fpe_label : Label.t) =
   ; X86_asm.Cmp { lhs = shift_bit; rhs = Imm { v = 0L; size = `DWORD }; size = `DWORD }
   ; X86_asm.JL fpe_label
   ]
-;;
+;; *)
 
 (* Remember that ecx is preserved during register allocation.
  * So we can move src to ecx without store ecx value. *)
-let safe_sal
-    (dest : X86_asm.operand)
-    (src : X86_asm.operand)
-    (size : Size.primitive)
-    (fpe_label : Label.t)
-  =
+let safe_sal (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match src with
   | Reg _ | Mem _ ->
     let ecx = Reg.RCX in
     (* when src is register/memory, SAL can only use %cl to shift. *)
-    (X86_asm.Mov { dest = Reg { reg = ecx; size }; src; size }
-    :: shift_check (Reg { reg = ecx; size }) fpe_label)
-    @ [ SAL { dest; src = Reg { reg = ecx; size = `BYTE }; size } ]
-  | Imm _ ->
-    shift_check src fpe_label
-    @ [ SAL { dest; src = Inst.set_size src `BYTE; size = `BYTE } ]
+    X86_asm.Mov { dest = Reg { reg = ecx; size }; src; size }
+    :: [ SAL { dest; src = Reg { reg = ecx; size = `BYTE }; size } ]
+  | Imm _ -> [ SAL { dest; src = Inst.set_size src `BYTE; size = `BYTE } ]
 ;;
 
 (* Remember that ecx is preserved during register allocation.
  * So we can move src to ecx without store ecx value. *)
-let safe_sar
-    (dest : X86_asm.operand)
-    (src : X86_asm.operand)
-    (size : Size.primitive)
-    (fpe_label : Label.t)
-  =
+let safe_sar (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
   match src with
   | Reg _ | Mem _ ->
     let ecx = Reg.RCX in
     (* when src is register/memory, SAR can only use %cl to shift. *)
-    (X86_asm.Mov { dest = Reg { reg = ecx; size }; src; size }
-    :: shift_check (Reg { reg = ecx; size }) fpe_label)
-    @ [ SAR { dest; src = Reg { reg = ecx; size = `BYTE }; size } ]
-  | Imm _ -> shift_check src fpe_label @ [ SAR { dest; src; size = `BYTE } ]
+    X86_asm.Mov { dest = Reg { reg = ecx; size }; src; size }
+    :: [ SAR { dest; src = Reg { reg = ecx; size = `BYTE }; size } ]
+  | Imm _ -> [ SAR { dest; src; size = `BYTE } ]
 ;;
 
 let safe_ret (size : Size.primitive) =
@@ -269,8 +255,8 @@ let gen_x86_inst_bin
   | And -> safe_mov dest lhs size @ safe_and dest rhs size
   | Or -> safe_mov dest lhs size @ safe_or dest rhs size
   | Xor -> safe_mov dest lhs size @ safe_xor dest rhs size
-  | Right_shift -> safe_mov dest lhs size @ safe_sar dest rhs size fpe_label
-  | Left_shift -> safe_mov dest lhs size @ safe_sal dest rhs size fpe_label
+  | Right_shift -> safe_mov dest lhs size @ safe_sar dest rhs size
+  | Left_shift -> safe_mov dest lhs size @ safe_sal dest rhs size
   | Less | Less_eq | Greater | Greater_eq | Equal_eq | Not_eq ->
     gen_x86_relop_bin op dest lhs rhs swap
 ;;
@@ -346,16 +332,6 @@ let rec _codegen_w_reg_rev
       let func_name = fcall.func_name in
       let inst = X86_asm.Fcall { func_name; scope } in
       _codegen_w_reg_rev (inst :: res) t reg_alloc_info reg_swap
-    | Assert ast ->
-      let var = trans_operand ast.var reg_alloc_info in
-      let size = `QWORD in
-      let insts_rev =
-        [ X86_asm.Cmp { lhs = var; rhs = X86_asm.Imm { v = 1L; size }; size }
-        ; X86_asm.JNE abort_label
-        ]
-        |> List.rev
-      in
-      _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Load load ->
       let src = X86_asm.Mem (trans_mem load.src) in
       let dest = trans_operand (Src.Temp load.dest) reg_alloc_info in
@@ -383,14 +359,14 @@ let rec _codegen_w_reg_rev
     | Directive _ | Comment _ -> _codegen_w_reg_rev res t reg_alloc_info reg_swap)
 ;;
 
-let fpe_handler =
+(* let fpe_handler =
   let open Util.Symbol.Fname in
   let edi = X86_asm.Reg { reg = RDI; size = `DWORD } in
   [ X86_asm.Label fpe_label
   ; X86_asm.Mov { dest = edi; src = Imm { v = fpe; size = `DWORD }; size = `DWORD }
   ; X86_asm.Fcall { func_name = raise; scope = `Internal }
   ]
-;;
+;; *)
 
 let abort_handler = [ X86_asm.Label abort_label; X86_asm.Abort ]
 

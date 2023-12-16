@@ -211,9 +211,7 @@ let compile (cmd : cmd_line_args) : unit =
       List.filter abs ~f:(fun fdefn -> phys_equal fdefn.scope `C0)
       |> List.map ~f:(fun f -> f.func_name, f.scope)
     in
-    let instrs =
-      List.concat instrs @ X86_asm.Trans.fpe_handler @ X86_asm.Trans.abort_handler
-    in
+    let instrs = List.concat instrs in
     File.dump_x86 file fnames instrs
 ;;
 
