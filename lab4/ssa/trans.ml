@@ -225,10 +225,10 @@ let insert blk_map defsites df pred_map =
       insert_temp temp defs_l df acc_blk_map pred_map)
 ;;
 
-let rec rename_exp (exp : Tree.exp) (env : env) : Tree.exp =
-  match exp with
-  | Void -> Void
-  | Const c -> Const c
+let rec rename_exp (exp : Tree.sexp) (env : env) : Tree.sexp =
+  let size = exp.size in
+  match exp.data with
+  | Void | Const _ -> exp
   | Temp temp ->
     (* In some special cases, exp may be used when there is such temp stack
      * For example, in ternary op, statements are executed for side effect, 
@@ -239,11 +239,11 @@ let rec rename_exp (exp : Tree.exp) (env : env) : Tree.exp =
       | None -> [ temp ]
       | Some s -> s
     in
-    Temp (List.hd_exn temp_stack)
+    { data = Temp (List.hd_exn temp_stack); size }
   | Binop binop ->
     let lhs_new = rename_exp binop.lhs env in
     let rhs_new = rename_exp binop.rhs env in
-    Binop { binop with lhs = lhs_new; rhs = rhs_new }
+    { data = Binop { binop with lhs = lhs_new; rhs = rhs_new }; size }
 
 and rename_use (stm : Tree.stm) env : Tree.stm =
   match stm with
@@ -492,7 +492,8 @@ let rec _decompose_blk phis (tail_map : Tree.stm list Label.Map.t) =
           match operand with
           | None -> acc
           | Some src ->
-            let new_tail = Tree.Move { dest; src = Tree.Temp src } :: old_tail in
+            let src = ({ data = Tree.Temp src; size = src.size } : Tree.sexp) in
+            let new_tail = Tree.Move { dest; src } :: old_tail in
             Label.Map.set acc ~key:pred ~data:new_tail)
     in
     _decompose_blk t tail_map
@@ -564,7 +565,11 @@ let pre_process (fdefn : Tree.fdefn) : Tree.stm list * Label.t =
   let param_label = Label.label (Some (Symbol.name fdefn.func_name)) in
   let movs =
     List.map fdefn.temps ~f:(fun temp ->
-        Tree.Move { dest = temp; src = Tree.Const { v = Int64.zero; size = `DWORD } })
+        let src =
+          ({ data = Tree.Const { v = Int64.zero; size = `DWORD }; size = `DWORD }
+            : Tree.sexp)
+        in
+        Tree.Move { dest = temp; src })
   in
   Tree.Label param_label :: movs, param_label
 ;;

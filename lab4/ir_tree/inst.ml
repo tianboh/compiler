@@ -30,6 +30,11 @@ type binop =
   | Less_eq
   | Not_eq
 
+type 'a sized =
+  { size : Size.primitive
+  ; data : 'a
+  }
+
 type exp =
   | Void
   | Const of
@@ -39,57 +44,59 @@ type exp =
   (* DWORD for int32 from source code, QWORD for address calculation*)
   | Temp of Temp.t
   | Binop of
-      { lhs : exp
+      { lhs : sexp
       ; op : binop
-      ; rhs : exp
+      ; rhs : sexp
       }
+
+and sexp = exp sized
 
 (* field of struct, element of array 
  * Never access large type directly. *)
 type mem =
   { disp : Int64.t (* used by array *)
-  ; base : exp
-  ; offset : exp option (* used by array and struct *)
+  ; base : sexp
+  ; offset : sexp option (* used by array and struct *)
   ; size : Size.primitive
   }
 
 and stm =
   | Move of
       { dest : Temp.t
-      ; src : exp
+      ; src : sexp
       }
   | Effect of
       { dest : Temp.t
-      ; lhs : exp
+      ; lhs : sexp
       ; op : binop
-      ; rhs : exp
+      ; rhs : sexp
       }
   | Fcall of
       { dest : Temp.t option
       ; func_name : Symbol.t
-      ; args : exp list
+      ; args : sexp list
       ; scope : [ `C0 | `External | `Internal ]
       }
-  | Return of exp option
+  | Return of sexp option
   | Jump of Label.t
   | CJump of
       { (* Jump to target_true if lhs op rhs is true. 
          * Otherwise to target_false *)
-        lhs : exp
+        lhs : sexp
       ; op : binop
-      ; rhs : exp
+      ; rhs : sexp
       ; target_true : Label.t
       ; target_false : Label.t
       }
   | Label of Label.t
   | Nop
-  | Assert of exp
+  | Assert of sexp
   | Load of
       { src : mem
       ; dest : Temp.t
       }
   | Store of
-      { src : exp
+      { src : sexp
       ; dest : mem
       }
 
@@ -103,7 +110,7 @@ type fdefn =
 type program = fdefn list
 
 module type PRINT = sig
-  val pp_exp : exp -> string
+  val pp_sexp : sexp -> string
   val pp_stm : stm -> string
   val pp_stms : stm list -> string
   val pp_fdefn : fdefn -> string
@@ -132,7 +139,8 @@ module Print : PRINT = struct
     | Not_eq -> "!="
   ;;
 
-  let rec pp_exp = function
+  let rec pp_sexp (sexp : sexp) =
+    match sexp.data with
     | Void -> "void"
     | Const x ->
       (match x.size with
@@ -140,29 +148,34 @@ module Print : PRINT = struct
       | `QWORD -> Int64.to_string x.v ^ "_8")
     | Temp t -> Temp.name t
     | Binop binop ->
-      sprintf "(%s %s %s)" (pp_exp binop.lhs) (pp_binop binop.op) (pp_exp binop.rhs)
+      sprintf
+        "(%s %s %s)_%s"
+        (pp_sexp binop.lhs)
+        (pp_binop binop.op)
+        (pp_sexp binop.rhs)
+        (Size.pp_size sexp.size)
 
   and pp_mem mem =
     let offset =
       match mem.offset with
-      | Some offset -> pp_exp offset
+      | Some offset -> pp_sexp offset
       | None -> ""
     in
-    sprintf "%s[%s]_%Ld" offset (pp_exp mem.base) (Size.type_size_byte mem.size)
+    sprintf "%s[%s]_%Ld" offset (pp_sexp mem.base) (Size.type_size_byte mem.size)
 
   and pp_stm = function
-    | Move mv -> Temp.name mv.dest ^ "  <--  " ^ pp_exp mv.src
+    | Move mv -> Temp.name mv.dest ^ "  <--  " ^ pp_sexp mv.src
     | Effect eft ->
       sprintf
         "effect %s <- %s %s %s"
         (Temp.name eft.dest)
-        (pp_exp eft.lhs)
+        (pp_sexp eft.lhs)
         (pp_binop eft.op)
-        (pp_exp eft.rhs)
+        (pp_sexp eft.rhs)
     | Fcall c ->
       let scope = Symbol.pp_scope c.scope in
       let func_name = Symbol.name c.func_name in
-      let args = List.map (fun arg -> pp_exp arg) c.args |> String.concat ", " in
+      let args = List.map (fun arg -> pp_sexp arg) c.args |> String.concat ", " in
       (match c.dest with
       | Some dest ->
         let dest = Temp.name dest in
@@ -171,21 +184,21 @@ module Print : PRINT = struct
     | Return e ->
       (match e with
       | None -> "return\n"
-      | Some e -> "return " ^ pp_exp e ^ "\n")
+      | Some e -> "return " ^ pp_sexp e ^ "\n")
     | Jump j -> "jump " ^ Label.name j
     | CJump cj ->
       sprintf
         "cjump(%s %s %s) target_true:%s, target_false %s "
-        (pp_exp cj.lhs)
+        (pp_sexp cj.lhs)
         (pp_binop cj.op)
-        (pp_exp cj.rhs)
+        (pp_sexp cj.rhs)
         (Label.name cj.target_true)
         (Label.name cj.target_false)
     | Label l -> Label.content l
     | Nop -> "nop"
-    | Assert asrt -> sprintf "assert(%s)" (pp_exp asrt)
+    | Assert asrt -> sprintf "assert(%s)" (pp_sexp asrt)
     | Load ld -> sprintf "load %s <- %s" (Temp.name ld.dest) (pp_mem ld.src)
-    | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp_exp st.src)
+    | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp_sexp st.src)
 
   and pp_stms (stms : stm list) =
     List.map (fun stm -> pp_stm stm) stms |> String.concat "\n"
