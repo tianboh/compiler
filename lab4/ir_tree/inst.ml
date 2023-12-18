@@ -37,10 +37,7 @@ type 'a sized =
 
 type exp =
   | Void
-  | Const of
-      { v : Int64.t
-      ; size : [ `DWORD | `QWORD ]
-      }
+  | Const of Int64.t
   (* DWORD for int32 from source code, QWORD for address calculation*)
   | Temp of Temp.t
   | Binop of
@@ -61,18 +58,22 @@ type mem =
   }
 
 and stm =
+  | Cast of
+      { dest : Temp.t sized
+      ; src : Temp.t sized
+      }
   | Move of
-      { dest : Temp.t
+      { dest : Temp.t sized
       ; src : sexp
       }
   | Effect of
-      { dest : Temp.t
+      { dest : Temp.t sized
       ; lhs : sexp
       ; op : binop
       ; rhs : sexp
       }
   | Fcall of
-      { dest : Temp.t option
+      { dest : Temp.t sized option
       ; func_name : Symbol.t
       ; args : sexp list
       ; scope : [ `C0 | `External | `Internal ]
@@ -93,7 +94,7 @@ and stm =
   | Assert of sexp
   | Load of
       { src : mem
-      ; dest : Temp.t
+      ; dest : Temp.t sized
       }
   | Store of
       { src : sexp
@@ -102,7 +103,7 @@ and stm =
 
 type fdefn =
   { func_name : Symbol.t
-  ; temps : Temp.t list
+  ; temps : Temp.t sized list
   ; body : stm list
   ; scope : [ `Internal | `C0 ]
   }
@@ -142,11 +143,8 @@ module Print : PRINT = struct
   let rec pp_sexp (sexp : sexp) =
     match sexp.data with
     | Void -> "void"
-    | Const x ->
-      (match x.size with
-      | `DWORD -> Int64.to_string x.v ^ "_4"
-      | `QWORD -> Int64.to_string x.v ^ "_8")
-    | Temp t -> Temp.name t
+    | Const x -> Int64.to_string x ^ "_" ^ Size.pp_size sexp.size
+    | Temp t -> Temp.name t ^ "_" ^ Size.pp_size sexp.size
     | Binop binop ->
       sprintf
         "(%s %s %s)_%s"
@@ -164,11 +162,15 @@ module Print : PRINT = struct
     sprintf "%s[%s]_%Ld" offset (pp_sexp mem.base) (Size.type_size_byte mem.size)
 
   and pp_stm = function
-    | Move mv -> Temp.name mv.dest ^ "  <--  " ^ pp_sexp mv.src
+    | Cast cast ->
+      pp_sexp { data = Temp cast.dest.data; size = cast.dest.size }
+      ^ "  <--  "
+      ^ pp_sexp { data = Temp cast.src.data; size = cast.src.size }
+    | Move mv -> Temp.name mv.dest.data ^ "  <--  " ^ pp_sexp mv.src
     | Effect eft ->
       sprintf
         "effect %s <- %s %s %s"
-        (Temp.name eft.dest)
+        (Temp.name eft.dest.data)
         (pp_sexp eft.lhs)
         (pp_binop eft.op)
         (pp_sexp eft.rhs)
@@ -178,7 +180,7 @@ module Print : PRINT = struct
       let args = List.map (fun arg -> pp_sexp arg) c.args |> String.concat ", " in
       (match c.dest with
       | Some dest ->
-        let dest = Temp.name dest in
+        let dest = Temp.name dest.data in
         sprintf "%s <- %s%s(%s)" dest scope func_name args
       | None -> sprintf "%s%s(%s)" scope func_name args)
     | Return e ->
@@ -197,7 +199,7 @@ module Print : PRINT = struct
     | Label l -> Label.content l
     | Nop -> "nop"
     | Assert asrt -> sprintf "assert(%s)" (pp_sexp asrt)
-    | Load ld -> sprintf "load %s <- %s" (Temp.name ld.dest) (pp_mem ld.src)
+    | Load ld -> sprintf "load %s <- %s" (Temp.name ld.dest.data) (pp_mem ld.src)
     | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp_sexp st.src)
 
   and pp_stms (stms : stm list) =
@@ -207,7 +209,7 @@ module Print : PRINT = struct
   let pp_fdefn fdefn =
     let func_name = Symbol.pp_scope fdefn.scope ^ Symbol.name fdefn.func_name in
     let pars_str =
-      List.map (fun temp -> Temp.name temp) fdefn.temps |> String.concat ", "
+      List.map (fun temp -> Temp.name temp.data) fdefn.temps |> String.concat ", "
     in
     sprintf "%s(%s)\n" func_name pars_str ^ pp_stms fdefn.body
   ;;
