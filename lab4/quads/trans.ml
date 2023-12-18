@@ -85,13 +85,22 @@ and munch_binop_acc
   =
   let op = munch_op binop in
   (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
-  let size = get_size dest in
-  let t1 = Temp.create size in
-  let t2 = Temp.create size in
+  let t1 = Temp.create e1.size in
+  let t2 = Temp.create e2.size in
+  if Size.compare (e1.size :> Size.t) (e2.size :> Size.t) <> 0
+  then failwith "quad e1 e2 size mismatch";
   let rev_acc' =
     rev_acc |> munch_exp_acc (Quads.Temp t1) e1 |> munch_exp_acc (Quads.Temp t2) e2
   in
-  Quads.Binop { op; dest; lhs = Quads.Temp t1; rhs = Quads.Temp t2 } :: rev_acc'
+  if Size.compare (e1.size :> Size.t) (get_size dest :> Size.t) <> 0
+  then (
+    let dest' = Temp.create e1.size in
+    [ Quads.Mov { dest; src = Quads.Temp dest' }
+    ; Quads.Binop
+        { op; dest = Quads.Temp dest'; lhs = Quads.Temp t1; rhs = Quads.Temp t2 }
+    ]
+    @ rev_acc')
+  else Quads.Binop { op; dest; lhs = Quads.Temp t1; rhs = Quads.Temp t2 } :: rev_acc'
 
 (* munch_exp dest exp
  * Generates instructions for dest <-- exp. *)

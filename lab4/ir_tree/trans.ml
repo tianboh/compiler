@@ -179,18 +179,21 @@ let check_null (base : Tree.sexp) : Tree.stm list =
 
 (* Check whether offset is within [0, array_size), also check whether array base is null. *)
 let check_bound (base : Tree.sexp) (offset : Tree.sexp) : Tree.stm list * Tree.stm list =
-  let size = `DWORD in
+  let size = `QWORD in
+  let temp = Temp.create size in
+  let offset_8 = wrap_exp (Tree.Temp temp) in
   let zero = wrap_exp (Tree.Const { v = 0L; size }) in
   let null_check = check_null base in
-  let arr_header_addr = ({ disp = -8L; base; offset = None; size = `QWORD } : Tree.mem) in
+  let arr_header_addr = ({ disp = -8L; base; offset = None; size } : Tree.mem) in
   let arr_size = Temp.create size in
   let load = [ Tree.Load { src = arr_header_addr; dest = arr_size } ] in
   let target_raise = Label.label (Some "fail_bd_check") in
   let target1 = Label.label (Some "pass_lo_check") in
   let target2 = Label.label (Some "pass_hi_check") in
   let check =
-    [ Tree.CJump
-        { lhs = offset
+    [ Tree.Move { dest = temp; src = offset }
+    ; Tree.CJump
+        { lhs = offset_8
         ; op = Tree.Greater_eq
         ; rhs = zero
         ; target_false = target_raise
@@ -198,7 +201,7 @@ let check_bound (base : Tree.sexp) (offset : Tree.sexp) : Tree.stm list * Tree.s
         }
     ; Tree.Label target1
     ; Tree.CJump
-        { lhs = offset
+        { lhs = offset_8
         ; op = Tree.Less
         ; rhs = wrap_exp (Tree.Temp arr_size)
         ; target_false = target_raise
@@ -320,6 +323,7 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func =
   let base = wrap_exp (Tree.Temp ptr_disp) in
   let header = ({ base; offset = None; disp = 0L; size = `QWORD } : Tree.mem) in
   let store_size = Tree.Store { dest = header; src = size_times } in
+  let size_header = wrap_exp (Tree.Const { v = 8L; size = `QWORD }) in
   let base_addr =
     wrap_exp ~size:`QWORD (Tree.Binop { lhs = base; rhs = size_header; op = Plus })
   in
