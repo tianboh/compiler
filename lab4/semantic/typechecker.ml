@@ -244,10 +244,9 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
   in
   let[@warning "-8"] tc_alloc (AST.Alloc alloc) : TST.texp =
     match alloc.t with
-    | `Int | `Bool | `Pointer _ ->
+    | `Int | `Bool | `Pointer _ | `Array _ ->
       { data = `Alloc { dtype = alloc.t }; dtype = `Pointer alloc.t }
-    | `Void | `NULL | `Array _ ->
-      error ~msg:"cannot alloc void/null/array. For array, use alloc_array instead" loc
+    | `Void | `NULL -> error ~msg:"cannot alloc void/null." loc
     | `Struct s ->
       let s' = Map.find_exn env.structs s in
       if phys_equal s'.state Defn
