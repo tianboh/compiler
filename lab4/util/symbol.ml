@@ -81,4 +81,5 @@ module Fname = struct
 
   let segv = 11L
   let usr2 = 12L
+  let shift_bound = 31L
 end
