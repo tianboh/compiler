@@ -52,6 +52,11 @@ let create' (id : int) : t =
 let of_int (id : int) : t = Hashtbl.find_exn cache id
 let count () = !counter
 let name (t : t) : string = sprintf "%%t%d" t.id
+
+let name' (t : t) (size : Size.primitive) : string =
+  sprintf "%%t%d_%s" t.id (Size.pp_size size)
+;;
+
 let get_id (t : t) = t.id
 
 include Comparable.Make (T)

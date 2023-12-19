@@ -126,7 +126,7 @@ let pp_binop = function
 let pp_operand (oprd : operand) : string =
   match oprd.data with
   | Imm n -> "$" ^ Int64.to_string n ^ "_" ^ Size.pp_size oprd.size
-  | Temp t -> Temp.name t ^ "_" ^ Size.pp_size oprd.size
+  | Temp t -> Temp.name' t oprd.size
 ;;
 
 let pp_memory mem =
@@ -149,11 +149,9 @@ let pp_inst = function
   | Mov mv -> sprintf "%s <-- %s" (pp_operand mv.dest) (pp_operand mv.src)
   | Cast cast ->
     sprintf
-      "%s_%s <-- %s_%s"
-      (Temp.name cast.dest.data)
-      (Size.pp_size cast.dest.size)
-      (Temp.name cast.src.data)
-      (Size.pp_size cast.src.size)
+      "%s <-- %s"
+      (Temp.name' cast.dest.data cast.dest.size)
+      (Temp.name' cast.src.data cast.src.size)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
   | CJump cjp ->
     sprintf
@@ -180,24 +178,22 @@ let pp_inst = function
         (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
     | Some dest ->
       sprintf
-        "%s_%s <- %s%s(%s)"
-        (Temp.name dest.data)
-        (Size.pp_size dest.size)
+        "%s <- %s%s(%s)"
+        (Temp.name' dest.data dest.size)
         (Symbol.pp_scope call.scope)
         (Symbol.name call.func_name)
         (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", "))
   | Load load ->
     sprintf
-      "load %s_%s <- %s"
-      (Temp.name load.dest.data)
-      (Size.pp_size load.dest.size)
+      "load %s <- %s"
+      (Temp.name' load.dest.data load.dest.size)
       (pp_memory load.src)
   | Store store -> sprintf "store %s <- %s" (pp_memory store.dest) (pp_operand store.src)
 ;;
 
 let pp_fdefn (fdefn : fdefn) =
   let pars_str =
-    List.map fdefn.pars ~f:(fun par -> Temp.name par.data ^ Size.pp_size par.size)
+    List.map fdefn.pars ~f:(fun par -> Temp.name' par.data par.size)
     |> String.concat ~sep:", "
   in
   let body_str =

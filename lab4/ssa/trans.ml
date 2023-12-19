@@ -1,4 +1,4 @@
-(* 
+(* (* 
  * SSA will read an IR fdefn and generate a SSA formed IR fdefn
  * I use minimal SSA through dominance frontier to make
  * sure that phi function is inserted in a minimal time.
@@ -638,4 +638,4 @@ let run (fdefn : Tree.fdefn) : Tree.fdefn =
   let blk_map = decompose ssa_blk_map pred_map in
   (* Dominator.Print.pp_blk blk_map; *)
   post_process fdefn blk_map par_label valid_blk_label
-;;
+;; *)

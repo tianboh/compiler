@@ -144,7 +144,7 @@ module Print : PRINT = struct
     match sexp.data with
     | Void -> "void"
     | Const x -> Int64.to_string x ^ "_" ^ Size.pp_size sexp.size
-    | Temp t -> Temp.name t ^ "_" ^ Size.pp_size sexp.size
+    | Temp t -> Temp.name' t sexp.size
     | Binop binop ->
       sprintf
         "(%s %s %s)_%s"
@@ -163,14 +163,14 @@ module Print : PRINT = struct
 
   and pp_stm = function
     | Cast cast ->
-      pp_sexp { data = Temp cast.dest.data; size = cast.dest.size }
+      Temp.name' cast.dest.data cast.dest.size
       ^ "  <--  "
-      ^ pp_sexp { data = Temp cast.src.data; size = cast.src.size }
-    | Move mv -> Temp.name mv.dest.data ^ "  <--  " ^ pp_sexp mv.src
+      ^ Temp.name' cast.src.data cast.src.size
+    | Move mv -> Temp.name' mv.dest.data mv.dest.size ^ "  <--  " ^ pp_sexp mv.src
     | Effect eft ->
       sprintf
         "effect %s <- %s %s %s"
-        (Temp.name eft.dest.data)
+        (Temp.name' eft.dest.data eft.dest.size)
         (pp_sexp eft.lhs)
         (pp_binop eft.op)
         (pp_sexp eft.rhs)
@@ -180,7 +180,7 @@ module Print : PRINT = struct
       let args = List.map (fun arg -> pp_sexp arg) c.args |> String.concat ", " in
       (match c.dest with
       | Some dest ->
-        let dest = Temp.name dest.data in
+        let dest = Temp.name' dest.data dest.size in
         sprintf "%s <- %s%s(%s)" dest scope func_name args
       | None -> sprintf "%s%s(%s)" scope func_name args)
     | Return e ->
@@ -199,7 +199,8 @@ module Print : PRINT = struct
     | Label l -> Label.content l
     | Nop -> "nop"
     | Assert asrt -> sprintf "assert(%s)" (pp_sexp asrt)
-    | Load ld -> sprintf "load %s <- %s" (Temp.name ld.dest.data) (pp_mem ld.src)
+    | Load ld ->
+      sprintf "load %s <- %s" (Temp.name' ld.dest.data ld.dest.size) (pp_mem ld.src)
     | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp_sexp st.src)
 
   and pp_stms (stms : stm list) =
@@ -209,7 +210,8 @@ module Print : PRINT = struct
   let pp_fdefn fdefn =
     let func_name = Symbol.pp_scope fdefn.scope ^ Symbol.name fdefn.func_name in
     let pars_str =
-      List.map (fun temp -> Temp.name temp.data) fdefn.temps |> String.concat ", "
+      List.map (fun temp -> Temp.name' temp.data temp.size) fdefn.temps
+      |> String.concat ", "
     in
     sprintf "%s(%s)\n" func_name pars_str ^ pp_stms fdefn.body
   ;;
