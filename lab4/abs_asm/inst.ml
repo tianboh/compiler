@@ -7,39 +7,37 @@
 
 open Core
 module Size = Var.Size
-module Register = Var.X86_reg.Hard
+module Register = Var.X86_reg.Logic
 module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
 
-type imm =
-  { v : Int64.t
-  ; size : [ `DWORD | `QWORD ]
+type imm = Int64.t
+
+type 'a sized =
+  { data : 'a
+  ; size : Size.primitive
   }
 
-type operand =
+type operand_logic =
   | Imm of imm
   | Temp of Temp.t
   | Reg of Register.t
-  | Above_frame of
-      { offset : Int64.t
-      ; size : Size.primitive
-      }
-  | Below_frame of
-      { offset : Int64.t
-      ; size : Size.primitive
-      }
+  | Above_frame of Int64.t
+  | Below_frame of Int64.t
+
+type operand = operand_logic sized
 
 type mem =
-  { base : Register.t
-  ; offset : Register.t option
+  { base : Register.t sized
+  ; offset : Register.t sized option
   ; size : Size.primitive
   }
 
 type line =
-  { uses : operand list
-  ; defines : operand list
-  ; live_out : operand list
+  { uses : operand_logic list
+  ; defines : operand_logic list
+  ; live_out : operand_logic list
   ; move : bool
   }
 
@@ -76,6 +74,10 @@ type instr =
       ; line : line
       ; scope : [ `C0 | `External | `Internal ]
       }
+  | Cast of
+      { dest : Temp.t sized
+      ; src : Temp.t sized
+      }
   | Mov of
       { dest : operand
       ; src : operand
@@ -109,14 +111,12 @@ type instr =
       }
   | Load of
       { src : mem
-      ; dest : Temp.t
-      ; size : Size.primitive
+      ; dest : Temp.t sized
       ; line : line
       }
   | Store of
       { src : operand
       ; dest : mem
-      ; size : Size.primitive
       ; line : line
       }
   | Directive of string
@@ -137,7 +137,7 @@ type program = fdefn list
 
 let to_int_list (operands : operand list) : int list =
   List.fold operands ~init:[] ~f:(fun acc x ->
-      match x with
+      match x.data with
       | Temp t -> t.id :: acc
       | Reg r -> Register.reg_idx r :: acc
       | Above_frame _ | Below_frame _ | Imm _ -> acc)
@@ -162,12 +162,13 @@ let pp_binop = function
   | Not_eq -> "!="
 ;;
 
-let pp_operand = function
-  | Imm n -> "$" ^ Int64.to_string n.v
-  | Temp t -> Temp.name t
+let pp_operand (oprd : operand) =
+  match oprd.data with
+  | Imm n -> "$" ^ Int64.to_string n
+  | Temp t -> Temp.name' t oprd.size
   | Reg r -> Register.reg_to_str r
-  | Above_frame af -> sprintf "%Ld(%%rbp)" af.offset
-  | Below_frame bf -> sprintf "-%Ld(%%rbp)" bf.offset
+  | Above_frame af -> sprintf "%Ld(%%rbp)" af
+  | Below_frame bf -> sprintf "-%Ld(%%rbp)" bf
 ;;
 
 let pp_memory mem =
@@ -175,14 +176,15 @@ let pp_memory mem =
   let size = mem.size in
   sprintf
     "(%s, %s, %Ld)"
-    (Register.reg_to_str base)
+    (Register.reg_to_str ~size:base.size base.data)
     (match offset with
-    | Some r -> Register.reg_to_str r
+    | Some r -> Register.reg_to_str ~size:r.size r.data
     | None -> "")
     (Size.type_size_byte size)
 ;;
 
-let pp_inst = function
+let pp_inst inst =
+  match inst with
   | Binop binop ->
     sprintf
       "%s <-- %s %s %s"
@@ -191,6 +193,11 @@ let pp_inst = function
       (pp_binop binop.op)
       (pp_operand binop.rhs)
   | Mov mv -> sprintf "%s <-- %s" (pp_operand mv.dest) (pp_operand mv.src)
+  | Cast cast ->
+    sprintf
+      "%s <-- %s"
+      (Temp.name' cast.dest.data cast.dest.size)
+      (Temp.name' cast.src.data cast.src.size)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
   | CJump cjp ->
     sprintf
@@ -212,7 +219,11 @@ let pp_inst = function
       (List.map fcall.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
   | Push push -> sprintf "push %s" (pp_operand push.var)
   | Pop pop -> sprintf "pop %s " (pp_operand pop.var)
-  | Load load -> sprintf "load %s <- %s" (Temp.name load.dest) (pp_memory load.src)
+  | Load load ->
+    sprintf
+      "load %s <- %s"
+      (Temp.name' load.dest.data load.dest.size)
+      (pp_memory load.src)
   | Store store -> sprintf "store %s <- %s" (pp_memory store.dest) (pp_operand store.src)
 ;;
 
