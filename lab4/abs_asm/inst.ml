@@ -77,6 +77,7 @@ type instr =
   | Cast of
       { dest : Temp.t sized
       ; src : Temp.t sized
+      ; line : line
       }
   | Mov of
       { dest : operand

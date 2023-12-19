@@ -156,8 +156,10 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
   match stm with
   | Tree.Cast cast ->
     let dest : Temp.t Quads.sized = { data = cast.dest.data; size = cast.dest.size } in
-    let src : Temp.t Quads.sized = { data = cast.src.data; size = cast.src.size } in
-    [ Quads.Cast { dest; src } ]
+    let temp = Temp.create in
+    let temp_oprd : Quads.operand = { data = Quads.Temp temp; size = cast.dest.size } in
+    let move = munch_exp temp_oprd cast.src in
+    Quads.Cast { dest; src = { data = temp; size = temp_oprd.size } } :: move
   | Tree.Move mv ->
     let size = mv.dest.size in
     let dest : Quads.operand = { data = Quads.Temp mv.dest.data; size } in

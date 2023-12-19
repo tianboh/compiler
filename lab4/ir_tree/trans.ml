@@ -192,7 +192,8 @@ let check_bound (base : Tree.sexp) (offset : Tree.sexp) : Tree.stm list * Tree.s
   let target2 = Label.label (Some "pass_hi_check") in
   let check =
     [ Tree.Move { dest = offset_t_s; src = offset }
-    ; Tree.Cast { dest = unwrap_temp offset_8; src = offset_t_s }
+    ; Tree.Cast
+        { dest = unwrap_temp offset_8; src = wrap_exp offset.size (Tree.Temp offset_t) }
     ; Tree.CJump
         { lhs = offset_8
         ; op = Tree.Greater_eq

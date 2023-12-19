@@ -60,7 +60,7 @@ type mem =
 and stm =
   | Cast of
       { dest : Temp.t sized
-      ; src : Temp.t sized
+      ; src : sexp
       }
   | Move of
       { dest : Temp.t sized
@@ -162,10 +162,7 @@ module Print : PRINT = struct
     sprintf "%s[%s]_%Ld" offset (pp_sexp mem.base) (Size.type_size_byte mem.size)
 
   and pp_stm = function
-    | Cast cast ->
-      Temp.name' cast.dest.data cast.dest.size
-      ^ "  <--  "
-      ^ Temp.name' cast.src.data cast.src.size
+    | Cast cast -> Temp.name' cast.dest.data cast.dest.size ^ "  <--  " ^ pp_sexp cast.src
     | Move mv -> Temp.name' mv.dest.data mv.dest.size ^ "  <--  " ^ pp_sexp mv.src
     | Effect eft ->
       sprintf
