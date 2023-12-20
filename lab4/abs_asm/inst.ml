@@ -136,11 +136,11 @@ type fdefn =
 
 type program = fdefn list
 
-let to_int_list (operands : operand list) : int list =
+let to_int_list (operands : operand_logic list) : int list =
   List.fold operands ~init:[] ~f:(fun acc x ->
-      match x.data with
+      match x with
       | Temp t -> t.id :: acc
-      | Reg r -> Register.reg_idx r :: acc
+      | Reg r -> Register.get_idx r :: acc
       | Above_frame _ | Below_frame _ | Imm _ -> acc)
 ;;
 
@@ -177,9 +177,9 @@ let pp_memory mem =
   let size = mem.size in
   sprintf
     "(%s, %s, %Ld)"
-    (Register.reg_to_str ~size:base.size base.data)
+    (Register.reg_to_str base.data)
     (match offset with
-    | Some r -> Register.reg_to_str ~size:r.size r.data
+    | Some r -> Register.reg_to_str r.data
     | None -> "")
     (Size.type_size_byte size)
 ;;

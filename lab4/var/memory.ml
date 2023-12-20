@@ -23,7 +23,6 @@ module T = struct
     ; offset :
         (* base + offset is start address of a variable *)
         [ `Imm of Int64.t | `Reg of reg ]
-    ; size : Size.primitive (* size of corresponding variable *)
     }
   [@@deriving sexp, compare, hash]
 end
@@ -33,27 +32,35 @@ include T
 let counter = ref 0L
 let bias = ref 0L
 let get_allocated_count () = !counter
+let rbp : reg = { reg = X86_reg.Logic.RBP; size = `QWORD }
+let cache : t Int.Table.t = Int.Table.create ()
 
-let reset () =
+let reset () : unit =
+  Hashtbl.clear cache;
   counter := 0L;
   bias := 0L
 ;;
 
 (* Create memory in stack. *)
-let create index base size =
-  Int64.incr counter;
-  bias := !bias + Size.type_size_byte size;
-  { index = Some index; base; size; offset = `Imm !bias }
+let create index ?(base = rbp) size : t =
+  if Hashtbl.mem cache index
+  then Hashtbl.find_exn cache index
+  else (
+    Int64.incr counter;
+    bias := !bias + Size.type_size_byte size;
+    let mem = { index = Some index; base; offset = `Imm !bias } in
+    Hashtbl.add_exn cache ~key:index ~data:mem;
+    mem)
 ;;
 
-let above_frame base offset size =
+let above_frame base offset =
   let offset = Int64.neg (offset + Size.type_size_byte `QWORD) in
-  { index = None; base; offset = `Imm offset; size }
+  { index = None; base; offset = `Imm offset }
 ;;
 
-let below_frame base offset size =
+let below_frame base offset =
   let offset = offset + Size.type_size_byte `QWORD in
-  { index = None; base; offset = `Imm offset; size }
+  { index = None; base; offset = `Imm offset }
 ;;
 
 let mem_to_str t =

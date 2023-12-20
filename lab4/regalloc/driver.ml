@@ -31,15 +31,14 @@ module Temp = Var.Temp
 module Size = Var.Size
 module Memory = Var.Memory
 module Register = Var.X86_reg.Logic
+module Spill = Var.X86_reg.Spill
 module Reg_info = Program
 module Abs_asm = Abs_asm.Inst
 module IG = Interference_graph
 
-type reg = Register.t
-
 type dest =
-  | Reg of Var.X86_reg.Hard.t
-  | Mem of Memory.t
+  | Reg of Register.t
+  | Spill of Spill.t
 
 let threshold = 2000
 let eax = Register.RAX
@@ -70,17 +69,12 @@ module Print = struct
     let sorted_keys = List.sort (IG.Vertex.Map.keys color) ~compare:IG.Vertex.compare in
     List.iter sorted_keys ~f:(fun k ->
         let t = IG.Print.pp_vertex k in
-        let size =
-          match k with
-          | IG.Vertex.Reg _ -> "log reg"
-          | IG.Vertex.Temp t -> Size.pp_size t.size
-        in
         let r =
           match IG.Vertex.Map.find_exn color k with
-          | Reg r -> Var.X86_reg.Hard.reg_to_str r
-          | Mem m -> Memory.mem_to_str m
+          | Reg r -> Register.reg_to_str r
+          | Spill s -> Spill.spill_to_str s
         in
-        printf "%s(%s) -> %s\n%!" t size r)
+        printf "%s -> %s\n%!" t r)
   ;;
 end
 
@@ -164,10 +158,10 @@ module Lazy = struct
   let edx = Register.RDX
 
   let trans_operand (operand : Abs_asm.operand) =
-    match operand with
+    match operand.data with
     | Abs_asm.Temp t -> IG.Vertex.Set.of_list [ IG.Vertex.T.Temp t ]
     | Abs_asm.Imm _ | Abs_asm.Above_frame _ | Abs_asm.Below_frame _ -> IG.Vertex.Set.empty
-    | Abs_asm.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r.reg ]
+    | Abs_asm.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r ]
   ;;
 
   let rec collect_vertex (prog : Abs_asm.instr list) res =
@@ -183,6 +177,16 @@ module Lazy = struct
       | Mov mov ->
         let res = IG.Vertex.Set.union res (trans_operand mov.dest) in
         let res = IG.Vertex.Set.union res (trans_operand mov.src) in
+        collect_vertex t res
+      | Cast cast ->
+        let dest : Abs_asm.operand =
+          { data = Abs_asm.Temp cast.dest.data; size = cast.dest.size }
+        in
+        let src : Abs_asm.operand =
+          { data = Abs_asm.Temp cast.src.data; size = cast.src.size }
+        in
+        let res = IG.Vertex.Set.union res (trans_operand dest) in
+        let res = IG.Vertex.Set.union res (trans_operand src) in
         collect_vertex t res
       | CJump cjp ->
         let res = IG.Vertex.Set.union res (trans_operand cjp.lhs) in
@@ -202,7 +206,10 @@ module Lazy = struct
         let res = IG.Vertex.Set.union res (trans_operand pop.var) in
         collect_vertex t res
       | Load load ->
-        let res = IG.Vertex.Set.union res (trans_operand (Abs_asm.Temp load.dest)) in
+        let dest : Abs_asm.operand =
+          { data = Abs_asm.Temp load.dest.data; size = load.dest.size }
+        in
+        let res = IG.Vertex.Set.union res (trans_operand dest) in
         collect_vertex t res
       | Store store ->
         let res = IG.Vertex.Set.union res (trans_operand store.src) in
@@ -216,14 +223,11 @@ module Lazy = struct
     List.map vertex_list ~f:(fun vtx ->
         let dest =
           match vtx with
-          | IG.Vertex.T.Reg r -> Reg { reg = r; size = `QWORD }
-          | IG.Vertex.T.Temp t ->
-            let idx = t.id in
-            let base = ({ reg = Register.RBP; size = `QWORD } : Var.X86_reg.Hard.t) in
-            Mem (Memory.create idx base t.size)
+          | IG.Vertex.T.Reg r -> Reg r
+          | IG.Vertex.T.Temp t -> Spill { id = t.id }
         in
         match dest with
-        | Mem _ -> Some (vtx, dest)
+        | Spill _ -> Some (vtx, dest)
         | Reg _ -> None)
   ;;
 end
@@ -286,13 +290,13 @@ let find_min_available (nbr : Int.Set.t) (black_set : Int.Set.t) : int =
  * if t is connected to rax, it will not be assigned as rax.
  * 2) Minimum available registers among its temporary neighbors.
  *)
-let alloc size (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest =
+let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest =
   (* If a temporary is connected to a register, 
    * we cannot assign this register to it. *)
   let nbr_black_list =
     IG.Vertex.Set.fold nbr ~init:[] ~f:(fun acc u ->
         match u with
-        | IG.Vertex.T.Reg r -> Register.reg_idx r :: acc
+        | IG.Vertex.T.Reg r -> Register.get_idx r :: acc
         | IG.Vertex.T.Temp _ -> acc)
   in
   (* Keep track of assigned registers for neighbor temporaries *)
@@ -302,17 +306,13 @@ let alloc size (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) :
         | None -> acc
         | Some u' ->
           (match u' with
-          | Reg r -> Register.reg_idx r.reg :: acc
-          | Mem m -> Memory.mem_idx_exn m :: acc))
+          | Reg r -> Register.get_idx r :: acc
+          | Spill m -> Spill.get_idx m :: acc))
   in
   let nbr_int_s = Int.Set.of_list nbr_int_l in
   let black_set = Int.Set.of_list nbr_black_list in
   let r = find_min_available nbr_int_s black_set in
-  if r < Register.num_reg
-  then Reg (Var.X86_reg.Hard.idx_reg r size)
-  else (
-    let base = ({ reg = Register.RBP; size = `QWORD } : Var.X86_reg.Hard.t) in
-    Mem (Memory.create r base size))
+  if r < Register.num_reg then Reg (Register.idx_reg r) else Spill (Spill.create' r)
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)
@@ -324,12 +324,12 @@ let rec greedy seq adj vertex_to_dest =
     | IG.Vertex.T.Reg _ -> greedy t adj vertex_to_dest
     | IG.Vertex.T.Temp temp ->
       let nbr = IG.Vertex.Map.find_exn adj h in
-      let dest = alloc temp.size nbr vertex_to_dest in
+      let dest = alloc nbr vertex_to_dest in
       (* let () =
         match dest with
         | Reg r ->
-          printf "alloc %s for %s\n" (Var.X86_reg.Hard.reg_to_str r) (Temp.name temp)
-        | Mem m -> printf "alloc %s for %s\n" (Var.Memory.mem_to_str m) (Temp.name temp)
+          printf "alloc %s for %s\n" (Var.X86_reg.Logic.reg_to_str r) (Temp.name temp)
+        | Spill s -> printf "alloc %s for %s\n" (Spill.spill_to_str s) (Temp.name temp)
       in *)
       let vertex_to_dest =
         IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Temp temp) ~data:dest

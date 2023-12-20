@@ -7,7 +7,7 @@
  *)
 open Core
 
-(* Logical register is used for register allocation.
+(* 16 general purpose logical register is used for register allocation.
  * RAX, EAX, AX is treated as the same. *)
 module Logic = struct
   type t =
@@ -31,7 +31,7 @@ module Logic = struct
 
   let num_reg = 16
 
-  let reg_idx = function
+  let get_idx = function
     | RAX -> 0
     | RBX -> 1
     | RCX -> 2
@@ -92,7 +92,27 @@ module Logic = struct
     | _ -> failwith "not x86-64 register"
   ;;
 
-  let reg_to_str ?(size = `DWORD) (reg : t) =
+  let reg_to_str (reg : t) =
+    match reg with
+    | RAX -> "rax_logic"
+    | RBX -> "rbx_logic"
+    | RCX -> "rcx_logic"
+    | RDX -> "rdx_logic"
+    | RSI -> "rsi_logic"
+    | RDI -> "rdi_logic"
+    | RBP -> "rbp_logic"
+    | RSP -> "rsp_logic"
+    | R8 -> "r8_logic"
+    | R9 -> "r9_logic"
+    | R10 -> "r10_logic"
+    | R11 -> "r11_logic"
+    | R12 -> "r12_logic"
+    | R13 -> "r13_logic"
+    | R14 -> "r14_logic"
+    | R15 -> "r15_logic"
+  ;;
+
+  let reg_to_str' (reg : t) (size : Size.primitive) =
     match reg, size with
     | RAX, `BYTE -> "%al"
     | RBX, `BYTE -> "%bl"
@@ -152,7 +172,7 @@ module Logic = struct
     | R15, `QWORD -> "%r15"
     | _ ->
       failwith
-        (sprintf "illegal access %d with size %s" (reg_idx reg) (Size.pp_size size))
+        (sprintf "illegal access %d with size %s" (get_idx reg) (Size.pp_size size))
   ;;
 
   let swap = R15
@@ -186,11 +206,27 @@ module Hard = struct
     }
   [@@deriving compare, sexp, hash]
 
-  let reg_to_str (reg : t) : string = Logic.reg_to_str ~size:reg.size reg.reg
-  let reg_idx (reg : t) : int = Logic.reg_idx reg.reg
+  let get_idx (reg : t) : int = Logic.get_idx reg.reg
+  let reg_to_str (reg : t) : string = Logic.reg_to_str' reg.reg reg.size
 
   let idx_reg (idx : int) (size : Size.primitive) : t =
     let reg = Logic.idx_reg idx in
     { reg; size }
   ;;
+end
+
+(* Spill register is registers to spill, which is memory *)
+module Spill = struct
+  module T = struct
+    type t = { id : int } [@@deriving sexp, compare, hash]
+  end
+
+  include T
+
+  (* id start from 16 because 0-15 are real register.
+   * this help keep a global order between real register 
+   * and spill register *)
+  let create' (id : int) : t = { id }
+  let spill_to_str (s : t) : string = sprintf "s%s" (Int.to_string s.id)
+  let get_idx (s : t) : int = s.id
 end

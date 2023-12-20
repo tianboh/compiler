@@ -107,6 +107,7 @@ let rec group_stm
       in
       group_stm t [ Label label ] acc_blks_rev label
     | Move move -> group_stm t (Move move :: acc_stms_rev) acc_blks_rev acc_label
+    | Cast cast -> group_stm t (Cast cast :: acc_stms_rev) acc_blks_rev acc_label
     | Return ret -> group_stm t (Return ret :: acc_stms_rev) acc_blks_rev acc_label
     | Jump jp -> group_stm t (Jump jp :: acc_stms_rev) acc_blks_rev acc_label
     | CJump cjp -> group_stm t (CJump cjp :: acc_stms_rev) acc_blks_rev acc_label
@@ -134,7 +135,8 @@ let rec _build_block blks res : block Label.Map.t =
     in
     let succ_init =
       match (List.last_exn body : Tree.stm) with
-      | Label _ | Move _ | Effect _ | Fcall _ | Nop | Load _ | Store _ -> [ succ_label ]
+      | Label _ | Move _ | Effect _ | Fcall _ | Nop | Load _ | Store _ | Cast _ ->
+        [ succ_label ]
       | Return _ | Assert _ -> [ exit; succ_label ]
       | Jump jp -> [ jp ]
       | CJump cjp -> [ cjp.target_true; cjp.target_false; succ_label ]
@@ -143,7 +145,7 @@ let rec _build_block blks res : block Label.Map.t =
     let succ_l =
       List.fold body_wo_tail ~init:succ_init ~f:(fun acc (stm : Tree.stm) ->
           match stm with
-          | Label _ | Move _ | Effect _ | Nop | Fcall _ | Load _ | Store _ -> acc
+          | Label _ | Move _ | Effect _ | Nop | Fcall _ | Load _ | Store _ | Cast _ -> acc
           | Return _ | Assert _ -> exit :: acc
           | Jump jp -> jp :: acc
           | CJump cjp -> [ cjp.target_true; cjp.target_false ] @ acc)

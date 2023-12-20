@@ -72,16 +72,16 @@ and munch_binop_acc
   =
   let op = munch_op binop in
   (* Notice we fix the left hand side operand and destination the same to meet x86 instruction. *)
-  let t1 = Quads.Temp Temp.create in
+  let t1 = Quads.Temp (Temp.create ()) in
   let t1_s : Quads.operand = { data = t1; size = e1.size } in
-  let t2 = Quads.Temp Temp.create in
+  let t2 = Quads.Temp (Temp.create ()) in
   let t2_s : Quads.operand = { data = t2; size = e2.size } in
   if Size.compare (t1_s.size :> Size.t) (t2_s.size :> Size.t) <> 0
   then failwith "quad e1 e2 size mismatch";
   let rev_acc' = rev_acc |> munch_exp_acc t1_s e1 |> munch_exp_acc t2_s e2 in
   if Size.compare (e1.size :> Size.t) (dest.size :> Size.t) <> 0
   then (
-    let dest' = Quads.Temp Temp.create in
+    let dest' = Quads.Temp (Temp.create ()) in
     let dest'_s : Quads.operand = { data = dest'; size = e1.size } in
     [ Quads.Mov { dest; src = dest'_s }
     ; Quads.Binop { op; dest = dest'_s; lhs = t1_s; rhs = t2_s }
@@ -99,11 +99,11 @@ and munch_exp : Quads.operand -> Tree.sexp -> Quads.instr list =
 
 and[@warning "-8"] munch_effect_rev (Tree.Effect eft) : Quads.instr list =
   let lhs_size = eft.lhs.size in
-  let lhs = Quads.Temp Temp.create in
+  let lhs = Quads.Temp (Temp.create ()) in
   let lhs_s : Quads.operand = { data = lhs; size = lhs_size } in
   let op = munch_op eft.op in
   let rhs_size = eft.rhs.size in
-  let rhs = Quads.Temp Temp.create in
+  let rhs = Quads.Temp (Temp.create ()) in
   let rhs_s : Quads.operand = { data = rhs; size = rhs_size } in
   let dest_s : Quads.operand =
     { data = Quads.Temp eft.dest.data; size = eft.dest.size }
@@ -156,7 +156,7 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
   match stm with
   | Tree.Cast cast ->
     let dest : Temp.t Quads.sized = { data = cast.dest.data; size = cast.dest.size } in
-    let temp = Temp.create in
+    let temp = Temp.create () in
     let temp_oprd : Quads.operand = { data = Quads.Temp temp; size = cast.dest.size } in
     let move = munch_exp temp_oprd cast.src in
     Quads.Cast { dest; src = { data = temp; size = temp_oprd.size } } :: move
@@ -169,19 +169,19 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
     | None -> [ Quads.Ret { var = None } ]
     | Some e ->
       let size = e.size in
-      let t = Quads.Temp Temp.create in
-      let t_s : Quads.operand = { data = t; size } in
+      let t = Temp.create () in
+      let t_s : Quads.operand = { data = Quads.Temp t; size } in
       let inst = munch_exp_acc t_s e [] in
       Quads.Ret { var = Some t_s } :: inst)
   | Jump jmp -> [ Quads.Jump { target = jmp } ]
   | Tree.CJump cjmp ->
     let lhs_size = cjmp.lhs.size in
-    let lhs = Quads.Temp Temp.create in
-    let lhs_s : Quads.operand = { data = lhs; size = lhs_size } in
+    let lhs = Temp.create () in
+    let lhs_s : Quads.operand = { data = Quads.Temp lhs; size = lhs_size } in
     let op = munch_op cjmp.op in
     let rhs_size = cjmp.rhs.size in
-    let rhs = Quads.Temp Temp.create in
-    let rhs_s : Quads.operand = { data = rhs; size = rhs_size } in
+    let rhs = Temp.create () in
+    let rhs_s : Quads.operand = { data = Quads.Temp rhs; size = rhs_size } in
     let lhs_inst_rev = munch_exp_acc lhs_s cjmp.lhs [] in
     let rhs_inst_rev = munch_exp_acc rhs_s cjmp.rhs [] in
     (Quads.CJump
@@ -198,8 +198,8 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
   | Tree.Effect eft -> munch_effect_rev (Tree.Effect eft)
   | Tree.Assert asrt ->
     let size = asrt.size in
-    let t = Quads.Temp Temp.create in
-    let t_s : Quads.operand = { data = t; size } in
+    let t = Temp.create () in
+    let t_s : Quads.operand = { data = Quads.Temp t; size } in
     let inst = munch_exp_acc t_s asrt [] in
     let pass = Label.label None in
     let fail = Label.label None in
@@ -222,8 +222,8 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
     let args, args_stms_rev =
       List.map fcall.args ~f:(fun arg ->
           let s = arg.size in
-          let t = Quads.Temp Temp.create in
-          let t_s : Quads.operand = { data = t; size = s } in
+          let t = Temp.create () in
+          let t_s : Quads.operand = { data = Quads.Temp t; size = s } in
           let e = munch_exp_acc t_s arg [] in
           t_s, e)
       |> List.unzip
@@ -246,14 +246,14 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
         let lhs = ({ data = Tree.Const load.src.disp; size } : Tree.sexp) in
         { data = Tree.Binop { lhs; rhs = load.src.base; op = Plus }; size })
     in
-    let base = Quads.Temp Temp.create in
-    let base_s = wrap_op size base in
+    let base = Temp.create () in
+    let base_s = wrap_op size (Quads.Temp base) in
     let base_instr = munch_exp_acc base_s base_exp [] in
     let offset, offset_instr =
       match load.src.offset with
       | Some exp ->
-        let offset = Quads.Temp Temp.create in
-        let offset_s = wrap_op size offset in
+        let offset = Temp.create () in
+        let offset_s = wrap_op size (Quads.Temp offset) in
         let offset_instr = munch_exp_acc offset_s exp [] in
         Some offset_s, offset_instr
       | None -> None, []
@@ -272,21 +272,21 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
         ({ data = Tree.Binop { lhs; rhs = store.dest.base; op = Plus }; size }
           : Tree.sexp))
     in
-    let base = Quads.Temp Temp.create in
-    let base_s = wrap_op size base in
+    let base = Temp.create () in
+    let base_s = wrap_op size (Quads.Temp base) in
     let base_instr = munch_exp_acc base_s base_exp [] in
     let offset, offset_instr =
       match store.dest.offset with
       | Some exp ->
-        let offset = Quads.Temp Temp.create in
-        let offset_s = wrap_op size offset in
+        let offset = Temp.create () in
+        let offset_s = wrap_op size (Quads.Temp offset) in
         let offset_instr = munch_exp_acc offset_s exp [] in
         Some offset_s, offset_instr
       | None -> None, []
     in
     let mem = ({ base = base_s; offset; size = store.dest.size } : Quads.mem) in
-    let src = Quads.Temp Temp.create in
-    let src_s = wrap_op store.src.size src in
+    let src = Temp.create () in
+    let src_s = wrap_op store.src.size (Quads.Temp src) in
     let src_instr = munch_exp_acc src_s store.src [] in
     let store = Quads.Store { src = src_s; dest = mem } in
     ((store :: src_instr) @ offset_instr) @ base_instr

@@ -34,9 +34,9 @@ let reset () = counter := 16
 let cache : t Int.Table.t = Int.Table.create ()
 
 (* create and create' cannot be used at the same time *)
-let create : t =
+let create () : t =
   let id = !counter in
-  incr counter;
+  ignore (incr counter : unit);
   let t = { id } in
   Hashtbl.add_exn cache ~key:id ~data:t;
   t

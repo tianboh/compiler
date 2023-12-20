@@ -52,8 +52,12 @@ let transform_vertex_to_json (vertex : (IG.Vertex.t * Driver.dest) option) =
   | None -> None
   | Some (vtx, dest) ->
     (match dest with
-    | Reg reg -> Some (IG.Print.pp_vertex vtx, Register.reg_to_str ~size:`DWORD reg.reg)
-    | Mem m -> Some (IG.Print.pp_vertex vtx, Memory.mem_to_str m))
+    | Reg reg ->
+      let reg_hard : Var.X86_reg.Hard.t = { reg; size = `DWORD } in
+      Some (IG.Print.pp_vertex vtx, Var.X86_reg.Hard.reg_to_str reg_hard)
+    | Spill s ->
+      let mem = Memory.create s.id `DWORD in
+      Some (IG.Print.pp_vertex vtx, Memory.mem_to_str mem))
 ;;
 
 let transform_vertices_to_json (vertices : (IG.Vertex.t * Driver.dest) option list) =

@@ -23,21 +23,21 @@ type t =
 
 (* Return size of size in bit *)
 let type_size_bit = function
-  | `VOID -> Int64.of_int 0
-  | `BYTE -> Int64.of_int 8
-  | `WORD -> Int64.of_int 16
-  | `DWORD -> Int64.of_int 32
-  | `QWORD -> Int64.of_int 64
-  | `CBYTE i -> i * Int64.of_int 8
+  | `VOID -> 0L
+  | `BYTE -> 8L
+  | `WORD -> 16L
+  | `DWORD -> 32L
+  | `QWORD -> 64L
+  | `CBYTE i -> i * 8L
 ;;
 
 (* Return size of size in byte *)
 let type_size_byte = function
-  | `VOID -> Int64.of_int 0
-  | `BYTE -> Int64.of_int 1
-  | `WORD -> Int64.of_int 2
-  | `DWORD -> Int64.of_int 4
-  | `QWORD -> Int64.of_int 8
+  | `VOID -> 0L
+  | `BYTE -> 1L
+  | `WORD -> 2L
+  | `DWORD -> 4L
+  | `QWORD -> 8L
   | `CBYTE i -> i
 ;;
 
@@ -50,10 +50,11 @@ let byte_to_size = function
   | i -> `CBYTE i
 ;;
 
-let compare (t1 : t) (t2 : t) =
+let compare (t1 : t) (t2 : t) : int =
   let s1 = type_size_byte t1 in
   let s2 = type_size_byte t2 in
-  Int64.to_int_exn (s1 - s2)
+  let ret = Int64.to_int_exn (s1 - s2) in
+  ret
 ;;
 
 let is_primitive (t : t) : bool =

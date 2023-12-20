@@ -352,7 +352,7 @@ let rec gen_body (program : Src.instr list) (res : Dest.instr list) (exit_label 
 let save_callee () : Dest.instr list =
   let size = `QWORD in
   List.fold Reg.callee_saved ~init:[] ~f:(fun acc r ->
-      let t = Temp.create in
+      let t = Temp.create () in
       let line =
         { defines = [ Dest.Temp t ]; uses = [ Dest.Reg r ]; move = true; live_out = [] }
       in
@@ -398,7 +398,7 @@ let gen_pars (pars : Temp.t Dest.sized list) : Dest.instr list =
         let line = { defines; uses = [ src ]; live_out = []; move = true } in
         [ Mov { dest; src = { data = src; size = par.size }; line } ])
       else (
-        let temp = Temp.create in
+        let temp = Temp.create () in
         let temp_op : Dest.operand = { data = Dest.Temp temp; size = par.size } in
         let temp_mem = { data = src; size = par.size } in
         let line_load =

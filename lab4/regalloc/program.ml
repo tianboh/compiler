@@ -40,15 +40,15 @@ let empty_line line_num live_out =
 ;;
 
 (* Transform pseudo operands of type temp, imm, reg to reg/temp set*)
-let gen_VertexSet (l : Abs_asm.operand list) =
-  let rec _filter_imm (l : Abs_asm.operand list) (res : IG.Vertex.t list) =
+let gen_VertexSet (l : Abs_asm.operand_logic list) =
+  let rec _filter_imm (l : Abs_asm.operand_logic list) (res : IG.Vertex.t list) =
     match l with
     | [] -> res
     | h :: t ->
       (match h with
       | Imm _ | Above_frame _ | Below_frame _ -> _filter_imm t res
       | Temp temp -> _filter_imm t (IG.Vertex.T.Temp temp :: res)
-      | Reg r -> _filter_imm t (IG.Vertex.T.Reg r.reg :: res))
+      | Reg r -> _filter_imm t (IG.Vertex.T.Reg r :: res))
   in
   let l = _filter_imm l [] in
   IG.Vertex.Set.of_list l
@@ -102,6 +102,9 @@ let rec gen_forward
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Mov mov ->
       let inst_info = helper mov.line live_out true inst_info h line_num in
+      gen_forward t inst_info (line_num + 1) live_out_map
+    | Abs_asm.Cast cast ->
+      let inst_info = helper cast.line live_out true inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.CJump cjp ->
       let inst_info = helper cjp.line live_out false inst_info h line_num in
