@@ -162,8 +162,17 @@ module Print : PRINT = struct
     sprintf "%s[%s]_%Ld" offset (pp_sexp mem.base) (Size.type_size_byte mem.size)
 
   and pp_stm = function
-    | Cast cast -> Temp.name' cast.dest.data cast.dest.size ^ "  <--  " ^ pp_sexp cast.src
-    | Move mv -> Temp.name' mv.dest.data mv.dest.size ^ "  <--  " ^ pp_sexp mv.src
+    | Cast cast ->
+      "cast " ^ Temp.name' cast.dest.data cast.dest.size ^ "  <--  " ^ pp_sexp cast.src
+    | Move mv ->
+      if Size.compare (mv.src.size :> Size.t) (mv.dest.size :> Size.t) <> 0
+      then
+        failwith
+          (sprintf
+             "move size mismatch %s -> %s"
+             (pp_sexp mv.src)
+             (Temp.name' mv.dest.data mv.dest.size));
+      Temp.name' mv.dest.data mv.dest.size ^ "  <--  " ^ pp_sexp mv.src
     | Effect eft ->
       sprintf
         "effect %s <- %s %s %s"

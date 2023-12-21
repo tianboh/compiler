@@ -164,7 +164,6 @@ type fdefn =
 
 type program = fdefn list
 
-let set_size (operand : operand) (size : Size.primitive) : operand = { operand with size }
 let get_size (operand : operand) : Size.primitive = operand.size
 
 let pp_operand (oprd : operand) =
@@ -216,15 +215,27 @@ let format = function
     if Size.compare (src_size :> Size.t) (dest_size :> Size.t) = 0
     then failwith "cast oprd size match";
     if Size.compare (src_size :> Size.t) (dest_size :> Size.t) < 0
-    then sprintf "movsxd %s, %s" src_str dest_str
+    then (
+      match cast.dest.data with
+      | Reg _ -> sprintf "movsxd %s, %s" src_str dest_str
+      | Mem _ -> sprintf "mov%s %s, %s" (pp_inst src_size) src_str dest_str
+      | _ -> failwith "cast dest illegal")
     else (
       let dest_str = pp_operand { cast.dest with size = cast.src.size } in
       sprintf "mov%s %s, %s" (pp_inst src_size) src_str dest_str)
   | Mov mv ->
     let src_str = pp_operand mv.src in
     let dest_str = pp_operand mv.dest in
-    if Size.compare (mv.src.size :> Size.t) (mv.dest.size :> Size.t) <> 0
-    then failwith "move oprd size mismatch";
+    let () =
+      if Size.compare (mv.src.size :> Size.t) (mv.dest.size :> Size.t) <> 0
+      then
+        printf
+          "move oprd size mismatch mov%s %s, %s\n"
+          (pp_inst mv.dest.size)
+          src_str
+          dest_str
+      else ()
+    in
     let size = get_size mv.dest in
     (match mv.src.data, mv.dest.data with
     | Imm _, _ | Mem _, _ | Reg _, Reg _ | Reg _, Mem _ ->

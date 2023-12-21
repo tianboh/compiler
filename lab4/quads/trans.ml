@@ -77,7 +77,9 @@ and munch_binop_acc
   let t2 = Quads.Temp (Temp.create ()) in
   let t2_s : Quads.operand = { data = t2; size = e2.size } in
   if Size.compare (t1_s.size :> Size.t) (t2_s.size :> Size.t) <> 0
-  then failwith "quad e1 e2 size mismatch";
+  then
+    failwith
+      (sprintf "quad %s %s size mismatch" (Quads.pp_operand t1_s) (Quads.pp_operand t2_s));
   let rev_acc' = rev_acc |> munch_exp_acc t1_s e1 |> munch_exp_acc t2_s e2 in
   if Size.compare (e1.size :> Size.t) (dest.size :> Size.t) <> 0
   then (
@@ -157,7 +159,7 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
   | Tree.Cast cast ->
     let dest : Temp.t Quads.sized = { data = cast.dest.data; size = cast.dest.size } in
     let temp = Temp.create () in
-    let temp_oprd : Quads.operand = { data = Quads.Temp temp; size = cast.dest.size } in
+    let temp_oprd : Quads.operand = { data = Quads.Temp temp; size = cast.src.size } in
     let move = munch_exp temp_oprd cast.src in
     Quads.Cast { dest; src = { data = temp; size = temp_oprd.size } } :: move
   | Tree.Move mv ->
@@ -253,9 +255,20 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
       match load.src.offset with
       | Some exp ->
         let offset = Temp.create () in
-        let offset_s = wrap_op size (Quads.Temp offset) in
+        let offset_s = wrap_op exp.size (Quads.Temp offset) in
         let offset_instr = munch_exp_acc offset_s exp [] in
-        Some offset_s, offset_instr
+        if Size.compare (exp.size :> Size.t) size = 0
+        then Some offset_s, offset_instr
+        else (
+          let offset' = Temp.create () in
+          let offset'_s = wrap_op size (Quads.Temp offset') in
+          let cast =
+            Quads.Cast
+              { dest = { data = offset'; size }
+              ; src = { data = offset; size = exp.size }
+              }
+          in
+          Some offset'_s, cast :: offset_instr)
       | None -> None, []
     in
     let mem = ({ base = base_s; offset; size = load.src.size } : Quads.mem) in
@@ -279,9 +292,20 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
       match store.dest.offset with
       | Some exp ->
         let offset = Temp.create () in
-        let offset_s = wrap_op size (Quads.Temp offset) in
+        let offset_s = wrap_op exp.size (Quads.Temp offset) in
         let offset_instr = munch_exp_acc offset_s exp [] in
-        Some offset_s, offset_instr
+        if Size.compare (exp.size :> Size.t) size = 0
+        then Some offset_s, offset_instr
+        else (
+          let offset' = Temp.create () in
+          let offset'_s = wrap_op size (Quads.Temp offset') in
+          let cast =
+            Quads.Cast
+              { dest = { data = offset'; size }
+              ; src = { data = offset; size = exp.size }
+              }
+          in
+          Some offset'_s, cast :: offset_instr)
       | None -> None, []
     in
     let mem = ({ base = base_s; offset; size = store.dest.size } : Quads.mem) in

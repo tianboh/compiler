@@ -95,12 +95,15 @@ let safe_mov (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primi
 
 (* Now we provide safe instruction to avoid source and destination are both memory. *)
 let safe_cast (dest : X86_asm.operand) (src : X86_asm.operand) =
-  match dest.data, src.data with
-  | Mem _, Mem _ ->
-    let size = src.size in
-    let swap : X86_asm.operand = { data = X86_asm.Reg Reg_logic.swap; size } in
-    [ X86_asm.Mov { dest = swap; src; size }; X86_asm.Cast { dest; src = swap } ]
-  | _ -> [ Cast { dest; src } ]
+  if Size.compare (dest.size :> Size.t) (src.size :> Size.t) = 0
+  then []
+  else (
+    match dest.data, src.data with
+    | Mem _, Mem _ ->
+      let size = src.size in
+      let swap : X86_asm.operand = { data = X86_asm.Reg Reg_logic.swap; size } in
+      [ X86_asm.Mov { dest = swap; src; size }; X86_asm.Cast { dest; src = swap } ]
+    | _ -> [ X86_asm.Cast { dest; src } ])
 ;;
 
 let safe_add (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primitive) =
@@ -151,7 +154,7 @@ let safe_sal (dest : X86_asm.operand) (src : X86_asm.operand) (size : Size.primi
     let ecx : X86_asm.operand = { data = X86_asm.Reg Reg_logic.RCX; size = `BYTE } in
     (* when src is register/memory, SAL can only use %cl to shift. *)
     X86_asm.Cast { dest = ecx; src } :: [ SAL { dest; src = ecx; size } ]
-  | Imm _ -> [ SAL { dest; src = Inst.set_size src `BYTE; size = `BYTE } ]
+  | Imm _ -> [ SAL { dest; src; size = `BYTE } ]
 ;;
 
 (* Remember that ecx is preserved during register allocation.
@@ -206,11 +209,12 @@ let gen_x86_relop_bin
     | Not_eq -> [ X86_asm.SETNE { dest = al; size = `BYTE } ]
     | _ -> failwith "relop cannot handle other op"
   in
-  let cmp_inst = safe_cmp lhs rhs `DWORD swap in
-  [ X86_asm.XOR { dest = rax; src = rax; size = `DWORD } ]
+  let size = lhs.size in
+  let cmp_inst = safe_cmp lhs rhs size swap in
+  [ X86_asm.XOR { dest = rax; src = rax; size } ]
   @ cmp_inst
   @ set_inst
-  @ [ X86_asm.Mov { dest; src = Inst.set_size rax (Inst.get_size dest); size = `DWORD } ]
+  @ safe_cast dest rax
 ;;
 
 let gen_x86_inst_bin
@@ -284,8 +288,7 @@ let rec _codegen_w_reg_rev
       in
       let dest = trans_operand dest_oprd reg_alloc_info in
       let src = trans_operand src_oprd reg_alloc_info in
-      let size = Inst.get_size dest in
-      let insts = safe_mov dest src size in
+      let insts = safe_cast dest src in
       let insts_rev = List.rev insts in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Mov mov ->
@@ -306,10 +309,11 @@ let rec _codegen_w_reg_rev
     | CJump cjp ->
       let lhs = trans_operand cjp.lhs reg_alloc_info in
       let rhs = trans_operand cjp.rhs reg_alloc_info in
+      let size = lhs.size in
       let target_true = cjp.target_true in
       let target_false = cjp.target_false in
-      let swap : X86_asm.operand = { data = X86_asm.Reg reg_swap; size = `DWORD } in
-      let cmp_inst = safe_cmp lhs rhs `DWORD swap in
+      let swap : X86_asm.operand = { data = X86_asm.Reg reg_swap; size } in
+      let cmp_inst = safe_cmp lhs rhs size swap in
       let cmp_inst_rev = List.rev cmp_inst in
       let cjp_inst =
         match cjp.op with

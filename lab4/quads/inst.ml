@@ -146,10 +146,16 @@ let pp_inst = function
       (pp_operand binop.lhs)
       (pp_binop binop.op)
       (pp_operand binop.rhs)
-  | Mov mv -> sprintf "%s <-- %s" (pp_operand mv.dest) (pp_operand mv.src)
+  (* | Mov mv -> sprintf "%s <-- %s" (pp_operand mv.dest) (pp_operand mv.src) *)
+  | Mov mv ->
+    if Size.compare (mv.src.size :> Size.t) (mv.dest.size :> Size.t) <> 0
+    then
+      failwith
+        (sprintf "move size mismatch %s -> %s" (pp_operand mv.src) (pp_operand mv.dest));
+    sprintf "%s <-- %s" (pp_operand mv.dest) (pp_operand mv.src)
   | Cast cast ->
     sprintf
-      "%s <-- %s"
+      "cast %s <-- %s"
       (Temp.name' cast.dest.data cast.dest.size)
       (Temp.name' cast.src.data cast.src.size)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)

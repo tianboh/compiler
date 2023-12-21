@@ -27,6 +27,13 @@ type operand_logic =
   | Below_frame of Int64.t
 
 type operand = operand_logic sized
+(* 
+type mem_logic =
+  { base : Register.t sized
+  ; offset : Register.t sized option
+  }
+
+type mem = mem_logic sized *)
 
 type mem =
   { base : Register.t sized
@@ -172,7 +179,7 @@ let pp_operand (oprd : operand) =
   | Below_frame bf -> sprintf "-%Ld(%%rbp)" bf
 ;;
 
-let pp_memory mem =
+let pp_memory (mem : mem) =
   let base, offset = mem.base, mem.offset in
   let size = mem.size in
   sprintf
@@ -193,10 +200,15 @@ let pp_inst inst =
       (pp_operand binop.lhs)
       (pp_binop binop.op)
       (pp_operand binop.rhs)
-  | Mov mv -> sprintf "%s <-- %s" (pp_operand mv.dest) (pp_operand mv.src)
+  | Mov mv ->
+    if Size.compare (mv.dest.size :> Size.t) (mv.src.size :> Size.t) <> 0
+    then
+      failwith
+        (sprintf "move mismatch %s <-- %s" (pp_operand mv.dest) (pp_operand mv.src));
+    sprintf "%s <-- %s" (pp_operand mv.dest) (pp_operand mv.src)
   | Cast cast ->
     sprintf
-      "%s <-- %s"
+      "cast %s <-- %s"
       (Temp.name' cast.dest.data cast.dest.size)
       (Temp.name' cast.src.data cast.src.size)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
