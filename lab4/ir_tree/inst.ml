@@ -35,7 +35,15 @@ type 'a sized =
   ; data : 'a
   }
 
-type exp =
+type addr =
+  { (* Syntax sugar for x86 memory access. Return: base + index * scale + disp *)
+    base : sexp
+  ; index : sexp option (* used by array and struct *)
+  ; scale : sexp option
+  ; disp : sexp option (* used by array *)
+  }
+
+and exp =
   | Void
   | Const of Int64.t
   (* DWORD for int32 from source code, QWORD for address calculation*)
@@ -45,17 +53,11 @@ type exp =
       ; op : binop
       ; rhs : sexp
       }
+  | Addr of addr
 
 and sexp = exp sized
 
-(* field of struct, element of array 
- * Never access large type directly. *)
-type mem =
-  { disp : Int64.t (* used by array *)
-  ; base : sexp
-  ; offset : sexp option (* used by array and struct *)
-  ; size : Size.primitive
-  }
+type mem = addr sized
 
 and stm =
   | Cast of
@@ -152,14 +154,26 @@ module Print : PRINT = struct
         (pp_binop binop.op)
         (pp_sexp binop.rhs)
         (Size.pp_size sexp.size)
+    | Addr addr ->
+      let mem : mem =
+        { data =
+            { base = addr.base; index = addr.index; scale = addr.scale; disp = addr.disp }
+        ; size = sexp.size
+        }
+      in
+      pp_mem mem
 
-  and pp_mem mem =
-    let offset =
-      match mem.offset with
-      | Some offset -> pp_sexp offset
+  (* mov (%esi,%ebx,4), %edx     	/* Move the 4 bytes of data at address ESI+4*EBX into EDX. *)
+  and pp_mem (mem : mem) =
+    let base = pp_sexp mem.data.base in
+    let helper data =
+      match data with
+      | Some s -> pp_sexp s
       | None -> ""
     in
-    sprintf "%s[%s]_%Ld" offset (pp_sexp mem.base) (Size.type_size_byte mem.size)
+    let index = helper mem.data.index in
+    let scale = helper mem.data.scale in
+    sprintf "(%s, %s, %s)_%Ld" base index scale (Size.type_size_byte mem.size)
 
   and pp_stm = function
     | Cast cast ->
