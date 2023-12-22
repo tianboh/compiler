@@ -17,6 +17,10 @@ module Label = Util.Label
 module Mark = Util.Mark
 module Temp = Var.Temp
 module TC = Semantic.Typechecker
+module Exp = Tree.Exp
+module St = Tree.St
+module Sexp = Tree.Sexp
+module Mem = Tree.Mem
 
 type field =
   { dtype : TST.dtype
@@ -42,7 +46,7 @@ type env =
 
 (* Used by lvalue to distinguish variable type *)
 type ldest =
-  | Mem of Tree.mem
+  | Mem of Tree.Mem.t
   | Temp of Temp.t
 
 (* Return the alignment requirement for data type
@@ -102,9 +106,9 @@ let get_struct_exn (dtype : TST.dtype) : Symbol.t =
   | _ -> failwith "expect dtype as struct"
 ;;
 
-let wrap_exp size (exp : Tree.exp) : Tree.sexp = { data = exp; size }
+let wrap_exp (size : Size.primitive) (exp : Exp.t) : Sexp.t = Sexp.wrap exp size
 
-let unwrap_temp (temp : Tree.sexp) : Temp.t Tree.sized =
+let unwrap_temp (temp : Sexp.t) : St.t =
   match temp.data with
   | Tree.Temp t -> { data = t; size = temp.size }
   | _ -> failwith "expect temp"
@@ -155,8 +159,8 @@ let gen_cond (exp : Tree.sexp) : Tree.sexp * Tree.binop * Tree.sexp =
   | Tree.Temp t ->
     wrap_exp size (Tree.Temp t), Tree.Equal_eq, wrap_exp size (Tree.Const Int64.one)
   | Tree.Binop binop -> binop.lhs, binop.op, binop.rhs
-  | Tree.Addr addr ->
-    wrap_exp size (Tree.Addr addr), Tree.Equal_eq, wrap_exp size (Tree.Const Int64.one)
+  | Tree.BISD addr ->
+    wrap_exp size (Tree.BISD addr), Tree.Equal_eq, wrap_exp size (Tree.Const Int64.one)
 ;;
 
 let c0_raise (temp : Temp.t Tree.sized) : Tree.fdefn =
@@ -332,7 +336,7 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func =
   let func_name = Symbol.Fname.calloc in
   let eight : Tree.sexp = { data = Tree.Const 8L; size = size_4 } in
   let size_tot =
-    Tree.Addr { base = eight; index = Some nitems; scale = Some esize; disp = None }
+    Tree.BISD { base = eight; index = Some nitems; scale = Some esize; disp = None }
   in
   let args = [ wrap_exp size_4 (Tree.Const 1L); wrap_exp size_4 size_tot ] in
   let size_8 = `QWORD in
@@ -349,7 +353,7 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func =
   let ptr_c_s : Temp.t Tree.sized = { data = ptr_c_t; size = size_8 } in
   let c_addr : Tree.sexp =
     { data =
-        Tree.Addr { base = ptr_c0_s; index = None; scale = None; disp = Some eight_8 }
+        Tree.BISD { base = ptr_c0_s; index = None; scale = None; disp = Some eight_8 }
     ; size = size_8
     }
   in
@@ -416,7 +420,7 @@ and trans_nth need_check (nth : TST.nth TST.typed) env : Tree.stm list * Tree.se
   if is_large nth.dtype
   then
     ( base_stm
-    , { data = Tree.Addr { base; index = Some index_s; scale = Some scale_s; disp = None }
+    , { data = Tree.BISD { base; index = Some index_s; scale = Some scale_s; disp = None }
       ; size = `QWORD
       } )
   else (

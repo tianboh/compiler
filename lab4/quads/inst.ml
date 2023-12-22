@@ -25,12 +25,15 @@ type operand_logic =
 
 type operand = operand_logic sized
 
-type mem =
-  { (* Heap memory *)
+and addr =
+  { (* Syntax sugar for x86 memory access. Return: base + index * scale + disp *)
     base : operand
-  ; offset : operand option
-  ; size : Size.primitive
+  ; index : operand option
+  ; scale : operand option
+  ; disp : operand option
   }
+
+type mem = addr sized
 
 type bin_op =
   | Plus
@@ -57,6 +60,7 @@ type instr =
       ; lhs : operand
       ; rhs : operand
       }
+  | Addr of addr
   | Fcall of
       { func_name : Symbol.t
       ; dest : Temp.t sized option

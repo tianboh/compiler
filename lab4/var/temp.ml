@@ -25,6 +25,8 @@ open Core
 
 module T = struct
   type t = { id : int } [@@deriving sexp, compare, hash]
+
+  let pp_exp (t : t) : string = sprintf "%%t%d" t.id
 end
 
 include T
