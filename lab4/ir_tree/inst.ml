@@ -30,7 +30,11 @@ type binop =
   | Less_eq
   | Not_eq
 
-module rec Addr : Var.Sized.Interface = struct
+module rec Addr : sig
+  include Var.Sized.Interface
+
+  val of_bisp : Sexp.t -> Sexp.t option -> Sexp.t option -> Sexp.t option -> t
+end = struct
   type t =
     { (* Syntax sugar for x86 memory access. Return: base + index * scale + disp *)
       base : Sexp.t
@@ -50,12 +54,20 @@ module rec Addr : Var.Sized.Interface = struct
     let scale = helper addr.scale in
     Printf.sprintf "(%s, %s, %s)" base index scale
   ;;
+
+  let of_bisp base index scale disp = { base; index; scale; disp }
 end
 
 and Exp : sig
   include Var.Sized.Interface
 
   val pp_binop : binop -> string
+  val to_t : t -> Temp.t
+  val of_t : Temp.t -> t
+  val of_int : Int64.t -> t
+  val of_binop : binop -> Sexp.t -> Sexp.t -> t
+  val of_void : unit -> t
+  val of_bisp : Addr.t -> t
 end = struct
   type t =
     | Void
@@ -102,12 +114,51 @@ end = struct
         (Sexp.pp_sexp binop.rhs)
     | BISD bisd -> Addr.pp_exp bisd
   ;;
+
+  let to_t exp =
+    match exp with
+    | Temp t -> t
+    | _ -> failwith "expect temp"
+  ;;
+
+  let of_t (t : Temp.t) : t = Temp t
+  let of_int (i : Int64.t) = Const i
+  let of_binop op lhs rhs = Binop { op; lhs; rhs }
+  let of_void () = Void
+  let of_bisp (addr : Addr.t) = BISD addr
 end [@warning "-37"]
 
-and Sexp : (Var.Sized.Sized_Interface with type i = Exp.t) = Var.Sized.Wrapper (Exp)
+and Sexp : sig
+  include Var.Sized.Sized_Interface with type i = Exp.t
+
+  val to_St : t -> St.t
+end = struct
+  include Var.Sized.Wrapper (Exp)
+
+  let to_St (sexp : t) : St.t =
+    let size = get_size_p sexp in
+    let exp = get_data sexp in
+    let t = Exp.to_t exp in
+    St.wrap size t
+  ;;
+end
+
 and Mem : (Var.Sized.Sized_Interface with type i = Addr.t) = Var.Sized.Wrapper (Addr)
 
-module St : Var.Sized.Sized_Interface with type i = Temp.t = Var.Sized.Wrapper (Temp)
+and St : sig
+  include Var.Sized.Sized_Interface with type i = Temp.t
+
+  val to_Sexp : t -> Sexp.t
+end = struct
+  include Var.Sized.Wrapper (Temp)
+
+  let to_Sexp (st : t) : Sexp.t =
+    let size = get_size_p st in
+    let t = get_data st in
+    let exp = Exp.of_t t in
+    Sexp.wrap size exp
+  ;;
+end
 
 type stm =
   | Cast of

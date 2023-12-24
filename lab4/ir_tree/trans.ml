@@ -21,6 +21,7 @@ module Exp = Tree.Exp
 module St = Tree.St
 module Sexp = Tree.Sexp
 module Mem = Tree.Mem
+module Addr = Tree.Addr
 
 type field =
   { dtype : TST.dtype
@@ -46,7 +47,7 @@ type env =
 
 (* Used by lvalue to distinguish variable type *)
 type ldest =
-  | Mem of Tree.Mem.t
+  | Mem of Mem.t
   | Temp of Temp.t
 
 (* Return the alignment requirement for data type
@@ -106,23 +107,11 @@ let get_struct_exn (dtype : TST.dtype) : Symbol.t =
   | _ -> failwith "expect dtype as struct"
 ;;
 
-let wrap_exp (size : Size.primitive) (exp : Exp.t) : Sexp.t = Sexp.wrap exp size
-
-let unwrap_temp (temp : Sexp.t) : St.t =
-  match temp.data with
-  | Tree.Temp t -> { data = t; size = temp.size }
-  | _ -> failwith "expect temp"
-;;
-
-let wrap_temp (temp : Temp.t Tree.sized) : Tree.sexp =
-  { data = Tree.Temp temp.data; size = temp.size }
-;;
-
-let check_base_size (base : Tree.sexp) =
+let check_base_size (base : Sexp.t) =
   if Size.compare (base.size :> Size.t) `QWORD <> 0 then failwith "base should be qword"
 ;;
 
-let check_index_size (index : Tree.sexp) =
+let check_index_size (index : Sexp.t) =
   if Size.compare (index.size :> Size.t) `DWORD <> 0 then failwith "index should be dword"
 ;;
 
@@ -149,36 +138,27 @@ let trans_binop = function
   | `Not_eq -> `Compare Tree.Not_eq
 ;;
 
-let gen_cond (exp : Tree.sexp) : Tree.sexp * Tree.binop * Tree.sexp =
-  (* boolean var is dword in IR *)
-  let size = exp.size in
-  match exp.data with
-  | Tree.Void -> failwith "void cannot be used as cond"
-  | Tree.Const i ->
-    wrap_exp size (Tree.Const i), Tree.Equal_eq, wrap_exp size (Tree.Const Int64.one)
-  | Tree.Temp t ->
-    wrap_exp size (Tree.Temp t), Tree.Equal_eq, wrap_exp size (Tree.Const Int64.one)
-  | Tree.Binop binop -> binop.lhs, binop.op, binop.rhs
-  | Tree.BISD addr ->
-    wrap_exp size (Tree.BISD addr), Tree.Equal_eq, wrap_exp size (Tree.Const Int64.one)
+let gen_cond (sexp : Sexp.t) : Sexp.t * Tree.binop * Sexp.t =
+  let size = Sexp.get_size_p sexp in
+  sexp, Tree.Equal_eq, Sexp.wrap size (Exp.of_int 1L)
 ;;
 
-let c0_raise (temp : Temp.t Tree.sized) : Tree.fdefn =
+let c0_raise (signo : St.t) : Tree.fdefn =
   let body =
     [ Tree.Fcall
         { dest = None
         ; func_name = Symbol.Fname.raise
-        ; args = [ wrap_exp temp.size (Tree.Temp temp.data) ]
+        ; args = [ St.to_Sexp signo ]
         ; scope = `External
         }
     ]
   in
-  { func_name = Symbol.Fname.raise; temps = [ temp ]; body; scope = `Internal }
+  { func_name = Symbol.Fname.raise; temps = [ signo ]; body; scope = `Internal }
 ;;
 
 (* Check whether base is 0 *)
-let check_null (base : Tree.sexp) : Tree.stm list =
-  let lhs, op, rhs = base, Tree.Equal_eq, wrap_exp `QWORD (Tree.Const 0L) in
+let check_null (base : Sexp.t) : Tree.stm list =
+  let lhs, op, rhs = base, Tree.Equal_eq, Sexp.wrap `QWORD (Exp.of_int 0L) in
   check_base_size base;
   let target_true = Label.label (Some "is_null") in
   let target_false = Label.label (Some "not_null") in
@@ -187,24 +167,23 @@ let check_null (base : Tree.sexp) : Tree.stm list =
   ; Tree.Fcall
       { dest = None
       ; func_name = Symbol.Fname.raise
-      ; args = [ wrap_exp `DWORD (Tree.Const Symbol.Fname.usr2) ]
+      ; args = [ Sexp.wrap `DWORD (Exp.of_int Symbol.Fname.usr2) ]
       ; scope = `Internal
       }
   ; Tree.Label target_false
   ]
 ;;
 
-(* Check whether offset is within [0, array_size), also check whether array base is null. *)
-let check_bound (base : Tree.sexp) (index : Tree.sexp) : Tree.stm list * Tree.stm list =
-  let disp : Tree.sexp = { data = Tree.Const (-8L); size = base.size } in
-  let zero = wrap_exp index.size (Tree.Const 0L) in
+(* Check whether offset is within [0, array_size), also check whether array base is null.
+ * This array_size is number of elements. *)
+let check_bound (base : Sexp.t) (index : Sexp.t) : Tree.stm list * Tree.stm list =
+  let disp = Sexp.wrap base.size (Exp.of_int (-8L)) in
+  let zero = Sexp.wrap index.size (Exp.of_int 0L) in
   let null_check = check_null base in
-  let mem_header =
-    ({ data = { base; index = None; scale = None; disp = Some disp }; size = `DWORD }
-      : Tree.mem)
-  in
-  let arr_size_t = wrap_exp index.size (Tree.Temp (Temp.create ())) in
-  let arr_size_s = unwrap_temp arr_size_t in
+  let base, disp = base, Some disp in
+  let mem_header : Mem.t = Addr.of_bisp base None None disp |> Mem.wrap `DWORD in
+  let arr_size_t = Temp.create () |> Exp.of_t |> Sexp.wrap index.size in
+  let arr_size_s = Sexp.to_St arr_size_t in
   let load = [ Tree.Load { src = mem_header; dest = arr_size_s } ] in
   let target_raise = Label.label (Some "fail_bd_check") in
   let target1 = Label.label (Some "pass_lo_check") in
@@ -229,7 +208,7 @@ let check_bound (base : Tree.sexp) (index : Tree.sexp) : Tree.stm list * Tree.st
     ; Tree.Fcall
         { dest = None
         ; func_name = Symbol.Fname.raise
-        ; args = [ wrap_exp `DWORD (Tree.Const Symbol.Fname.usr2) ]
+        ; args = [ Sexp.wrap `DWORD (Exp.of_int Symbol.Fname.usr2) ]
         ; scope = `Internal
         }
     ; Tree.Label target2
@@ -238,18 +217,16 @@ let check_bound (base : Tree.sexp) (index : Tree.sexp) : Tree.stm list * Tree.st
   null_check, load @ check
 ;;
 
-let trans_exp_bin (binop : TST.binexp) (env : env) trans_func : Tree.stm list * Tree.sexp =
+let trans_exp_bin (binop : TST.binexp) (env : env) trans_func : Tree.stm list * Sexp.t =
   let lhs_stm, lhs = trans_func binop.lhs env in
   let rhs_stm, rhs = trans_func binop.rhs env in
   let size = sizeof_dtype' binop.lhs.dtype in
   match trans_binop binop.op with
-  | `Pure op -> lhs_stm @ rhs_stm, wrap_exp size (Tree.Binop { op; lhs; rhs })
+  | `Pure op -> lhs_stm @ rhs_stm, Sexp.wrap size (Exp.of_binop op lhs rhs)
   | `Impure op ->
-    let dest = Temp.create () in
-    let dest_s : Temp.t Tree.sized = { data = dest; size } in
-    ( lhs_stm @ rhs_stm @ [ Tree.Effect { dest = dest_s; lhs; op; rhs } ]
-    , wrap_exp size (Tree.Temp dest) )
-  | `Compare op -> lhs_stm @ rhs_stm, wrap_exp size (Tree.Binop { op; lhs; rhs })
+    let dest = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
+    lhs_stm @ rhs_stm @ [ Tree.Effect { dest; lhs; op; rhs } ], St.to_Sexp dest
+  | `Compare op -> lhs_stm @ rhs_stm, Sexp.wrap size (Exp.of_binop op lhs rhs)
 ;;
 
 let trans_terop (terop : TST.terexp) (env : env) trans_func =
@@ -267,8 +244,7 @@ let trans_terop (terop : TST.terexp) (env : env) trans_func =
   let true_stms, true_exp = trans_func terop.true_exp env in
   let false_stms, false_exp = trans_func terop.false_exp env in
   let size = sizeof_dtype' terop.true_exp.dtype in
-  let temp = Temp.create () in
-  let temp_s : Temp.t Tree.sized = { data = temp; size } in
+  let dest = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
   let target_true = Label.label (Some "terop_true") in
   let target_false = Label.label (Some "terop_false") in
   let true_stms = Tree.Label target_true :: true_stms in
@@ -279,11 +255,11 @@ let trans_terop (terop : TST.terexp) (env : env) trans_func =
     cond_stms
     @ [ Tree.CJump { lhs; op; rhs; target_true; target_false } ]
     @ true_stms
-    @ [ Tree.Move { dest = temp_s; src = true_exp }; Tree.Jump label_ter_end ]
+    @ [ Tree.Move { dest; src = true_exp }; Tree.Jump label_ter_end ]
     @ false_stms
-    @ [ Tree.Move { dest = temp_s; src = false_exp }; Tree.Label label_ter_end ]
+    @ [ Tree.Move { dest; src = false_exp }; Tree.Label label_ter_end ]
   in
-  seq, wrap_exp size (Tree.Temp temp)
+  seq, St.to_Sexp dest
 ;;
 
 let trans_fcall (fcall : TST.fcall) (env : env) trans_func =
@@ -304,81 +280,78 @@ let trans_fcall (fcall : TST.fcall) (env : env) trans_func =
   | `VOID ->
     let call = Tree.Fcall { dest = None; args; func_name; scope } in
     let call_stms = args_stms @ [ call ] in
-    call_stms, wrap_exp `VOID Tree.Void
+    call_stms, Sexp.wrap `VOID (Exp.of_void ())
   | _ ->
-    let dest = Temp.create () in
-    let dest_s : Temp.t Tree.sized = { data = dest; size } in
-    let call = Tree.Fcall { dest = Some dest_s; args; func_name; scope } in
+    let dest = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
+    let call = Tree.Fcall { dest = Some dest; args; func_name; scope } in
     let call_stms = args_stms @ [ call ] in
-    call_stms, wrap_exp size (Tree.Temp dest)
+    call_stms, St.to_Sexp dest
 ;;
 
 let trans_alloc (alloc : TST.alloc) env =
   let size = `DWORD in
-  let size_64 = sizeof_dtype alloc.dtype env |> Size.type_size_byte in
-  let size_32 = wrap_exp size (Tree.Const size_64) in
-  let nitems = wrap_exp size (Tree.Const Int64.one) in
-  let ptr = Temp.create () in
-  let ptr_s : Temp.t Tree.sized = { data = ptr; size = `QWORD } in
+  let size_32 =
+    sizeof_dtype alloc.dtype env |> Size.type_size_byte |> Exp.of_int |> Sexp.wrap size
+  in
+  let nitems = Sexp.wrap size (Exp.of_int 1L) in
+  let ptr : St.t = Temp.create () |> Exp.of_t |> Sexp.wrap `QWORD |> Sexp.to_St in
   let func_name = Symbol.Fname.calloc in
   let args = [ nitems; size_32 ] in
-  ( [ Tree.Fcall { dest = Some ptr_s; func_name; args; scope = `External } ]
-  , wrap_exp `QWORD (Tree.Temp ptr) )
+  [ Tree.Fcall { dest = Some ptr; func_name; args; scope = `External } ], St.to_Sexp ptr
 ;;
 
 let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func =
   (* C0 array has 8 byte header to store the array length. But it only take DWORD for the size.
    * To access it, use base + disp. Base is the start addr for array. *)
-  let stms, (nitems : Tree.sexp) = trans_func alloc_arr.nitems env in
+  let stms, (nitems : Sexp.t) = trans_func alloc_arr.nitems env in
   let size_4 = nitems.size in
-  let esize = sizeof_dtype alloc_arr.etype env |> Size.type_size_byte in
-  let esize = wrap_exp size_4 (Tree.Const esize) in
+  let esize =
+    sizeof_dtype alloc_arr.etype env
+    |> Size.type_size_byte
+    |> Exp.of_int
+    |> Sexp.wrap size_4
+  in
   let func_name = Symbol.Fname.calloc in
-  let eight : Tree.sexp = { data = Tree.Const 8L; size = size_4 } in
   let size_tot =
-    Tree.BISD { base = eight; index = Some nitems; scale = Some esize; disp = None }
+    Addr.of_bisp (Sexp.wrap size_4 (Exp.of_int 8L)) (Some nitems) (Some esize) None
   in
-  let args = [ wrap_exp size_4 (Tree.Const 1L); wrap_exp size_4 size_tot ] in
+  let args =
+    [ 1L |> Exp.of_int |> Sexp.wrap size_4; size_tot |> Exp.of_bisp |> Sexp.wrap size_4 ]
+  in
   let size_8 = `QWORD in
-  let eight_8 : Tree.sexp = { eight with size = size_8 } in
-  let ptr_c0_t : Temp.t Tree.sized = { data = Temp.create (); size = size_8 } in
-  let ptr_c0_s : Tree.sexp = wrap_temp ptr_c0_t in
-  let alloc = Tree.Fcall { dest = Some ptr_c0_t; func_name; args; scope = `External } in
-  let header : Tree.mem =
-    { data = { base = ptr_c0_s; index = None; scale = None; disp = None }; size = size_8 }
+  let ptr_c0 = Temp.create () |> Exp.of_t |> Sexp.wrap size_8 in
+  let alloc =
+    Tree.Fcall { dest = Some (Sexp.to_St ptr_c0); func_name; args; scope = `External }
   in
-  let size_tot_s : Tree.sexp = { data = size_tot; size = size_4 } in
-  let store_size = Tree.Store { dest = header; src = size_tot_s } in
-  let ptr_c_t = Temp.create () in
-  let ptr_c_s : Temp.t Tree.sized = { data = ptr_c_t; size = size_8 } in
-  let c_addr : Tree.sexp =
-    { data =
-        Tree.BISD { base = ptr_c0_s; index = None; scale = None; disp = Some eight_8 }
-    ; size = size_8
-    }
+  let header = Mem.wrap size_8 (Addr.of_bisp ptr_c0 None None None) in
+  let store_size = Tree.Store { dest = header; src = nitems } in
+  let ptr_c = Temp.create () |> Exp.of_t |> Sexp.wrap size_8 |> Sexp.to_St in
+  let c_addr =
+    Addr.of_bisp ptr_c0 None None (Some (Sexp.wrap size_8 (Exp.of_int 8L)))
+    |> Exp.of_bisp
+    |> Sexp.wrap size_8
   in
-  let move = Tree.Move { dest = ptr_c_s; src = c_addr } in
-  stms @ [ alloc; store_size; move ], wrap_exp `QWORD (Tree.Temp ptr_c_t)
+  let move = Tree.Move { dest = ptr_c; src = c_addr } in
+  stms @ [ alloc; store_size; move ], St.to_Sexp ptr_c
 ;;
 
 let trans_mem
-    (base : Tree.sexp)
-    (index : Tree.sexp option)
-    (scale : Tree.sexp option)
-    (disp : Tree.sexp option)
+    (base : Sexp.t)
+    (index : Sexp.t option)
+    (scale : Sexp.t option)
+    (disp : Sexp.t option)
     (size : Size.primitive)
-    : Tree.stm list * Tree.sexp
+    : Tree.stm list * Sexp.t
   =
-  let src : Tree.mem = { data = { base; index; scale; disp }; size } in
-  let dest = Temp.create () in
-  let dest_s : Temp.t Tree.sized = { data = dest; size } in
-  let load = Tree.Load { src; dest = dest_s } in
-  [ load ], wrap_exp size (Tree.Temp dest)
+  let src = Addr.of_bisp base index scale disp |> Mem.wrap size in
+  let dest = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
+  let load = Tree.Load { src; dest } in
+  [ load ], St.to_Sexp dest
 ;;
 
 (* Return small value, or memory calculation formula *)
 let[@warning "-8"] rec trans_exp (need_check : bool) (exp_tst : TST.texp) (env : env)
-    : Tree.stm list * Tree.sexp
+    : Tree.stm list * Sexp.t
   =
   let size = sizeof_dtype' exp_tst.dtype in
   match exp_tst.data with
@@ -399,42 +372,37 @@ let[@warning "-8"] rec trans_exp (need_check : bool) (exp_tst : TST.texp) (env :
   | `Alloc_arr alloc_arr -> trans_alloc_arr alloc_arr env (trans_exp need_check)
   | `Var id ->
     let var = Map.find_exn env.vars id in
-    [], wrap_exp size (Tree.Temp var.temp)
-  | `Const_int c -> [], wrap_exp size (Tree.Const (Int64.of_int32 c))
-  | `True -> [], wrap_exp size (Tree.Const Int64.one)
-  | `False -> [], wrap_exp size (Tree.Const Int64.zero)
-  | `NULL -> [], wrap_exp size (Const Int64.zero)
+    [], Sexp.wrap size (Exp.of_t var.temp)
+  | `Const_int c -> [], Sexp.wrap size (Exp.of_int (Int64.of_int32 c))
+  | `True -> [], Sexp.wrap size (Exp.of_int 1L)
+  | `False -> [], Sexp.wrap size (Exp.of_int 0L)
+  | `NULL -> [], Sexp.wrap size (Exp.of_int 0L)
 
-and trans_nth need_check (nth : TST.nth TST.typed) env : Tree.stm list * Tree.sexp =
+and trans_nth need_check (nth : TST.nth TST.typed) env : Tree.stm list * Sexp.t =
   let base_stm, base = trans_exp need_check nth.data.arr env in
   let index_stm, index_exp = trans_exp need_check nth.data.index env in
   check_base_size base;
   check_index_size index_exp;
-  let index_t = Temp.create () in
-  let index_s : Tree.sexp = { data = Tree.Temp index_t; size = `QWORD } in
-  let index_stm =
-    Tree.Cast { dest = { data = index_t; size = `QWORD }; src = index_exp } :: index_stm
+  let index = Temp.create () |> Exp.of_t |> Sexp.wrap `QWORD in
+  let index_stm = Tree.Cast { dest = Sexp.to_St index; src = index_exp } :: index_stm in
+  let scale =
+    sizeof_dtype nth.dtype env |> Size.type_size_byte |> Exp.of_int |> Sexp.wrap `QWORD
   in
-  let scale = sizeof_dtype nth.dtype env |> Size.type_size_byte in
-  let scale_s : Tree.sexp = { data = Tree.Const scale; size = `QWORD } in
   if is_large nth.dtype
   then
     ( base_stm
-    , { data = Tree.BISD { base; index = Some index_s; scale = Some scale_s; disp = None }
-      ; size = `QWORD
-      } )
+    , Addr.of_bisp base (Some index) (Some scale) None |> Exp.of_bisp |> Sexp.wrap `QWORD
+    )
   else (
     let size = sizeof_dtype' nth.dtype in
-    let load, dest = trans_mem base (Some index_s) (Some scale_s) None size in
-    let base_check, bound_check =
-      if need_check then check_bound base index_s else [], []
-    in
+    let load, dest = trans_mem base (Some index) (Some scale) None size in
+    let base_check, bound_check = if need_check then check_bound base index else [], [] in
     base_stm @ base_check @ index_stm @ bound_check @ load, dest)
 
-and trans_dot need_check (dot : TST.dot TST.typed) env : Tree.stm list * Tree.sexp =
+and trans_dot need_check (dot : TST.dot TST.typed) env : Tree.stm list * Sexp.t =
   let s = Map.find_exn env.structs (get_struct_exn dot.data.struct_obj.dtype) in
   let field = Map.find_exn s.fields dot.data.field in
-  let offset_s = wrap_exp `QWORD (Tree.Const field.offset) in
+  let offset = Sexp.wrap `QWORD (Exp.of_int field.offset) in
   let base_stm, base =
     let s' = dot.data.struct_obj in
     match s'.data with
@@ -446,13 +414,11 @@ and trans_dot need_check (dot : TST.dot TST.typed) env : Tree.stm list * Tree.se
   in
   check_base_size base;
   if is_large dot.dtype
-  then
-    ( base_stm
-    , { data = Tree.Binop { lhs = base; rhs = offset_s; op = Plus }; size = `QWORD } )
+  then base_stm, Sexp.wrap `QWORD (Exp.of_binop Plus base offset)
   else (
     let size = sizeof_dtype' dot.dtype in
-    let one : Tree.sexp = { data = Tree.Const 1L; size = `QWORD } in
-    let load, dest = trans_mem base (Some offset_s) (Some one) None size in
+    let one : Sexp.t = Sexp.wrap `QWORD (Exp.of_int 1L) in
+    let load, dest = trans_mem base (Some offset) (Some one) None size in
     let check = if need_check then check_null base else [] in
     base_stm @ check @ load, dest)
 ;;
@@ -480,64 +446,50 @@ let[@warning "-8"] trans_asnop acc (TST.Assign asn_tst) need_check (env : env)
   let v_stms, rhs = trans_exp need_check asn_tst.value env in
   let load_stm, lhs_temp =
     match lhs with
-    | Temp var -> [], wrap_exp size (Tree.Temp var)
+    | Temp var -> [], Sexp.wrap size (Exp.of_t var)
     | Mem mem ->
-      let t = Temp.create () in
-      let t_s : Temp.t Tree.sized = { data = t; size } in
-      let stm = [ Tree.Load { src = mem; dest = t_s } ] in
-      stm, wrap_exp size (Tree.Temp t)
+      let dest : St.t = St.wrap size (Temp.create ()) in
+      let stm = [ Tree.Load { src = mem; dest } ] in
+      stm, St.to_Sexp dest
   in
-  let exp =
+  let p_ip =
     match asn_tst.op with
     (* Pure, w.o. effect *)
-    | `Asn -> `Pure rhs.data
-    | `Plus_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = Plus })
-    | `Minus_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = Minus })
-    | `Times_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = Times })
-    | `And_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = And })
-    | `Hat_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = Xor })
-    | `Or_asn -> `Pure (Tree.Binop { lhs = lhs_temp; rhs; op = Or })
+    | `Asn | `Plus_asn | `Minus_asn | `Times_asn | `And_asn | `Hat_asn | `Or_asn -> `Pure
     (* Impure, probably w. effect *)
-    | `Div_asn -> `Impure (Tree.Binop { lhs = lhs_temp; rhs; op = Divided_by })
-    | `Mod_asn -> `Impure (Tree.Binop { lhs = lhs_temp; rhs; op = Modulo })
-    | `Left_shift_asn -> `Impure (Tree.Binop { lhs = lhs_temp; rhs; op = Left_shift })
-    | `Right_shift_asn -> `Impure (Tree.Binop { lhs = lhs_temp; rhs; op = Right_shift })
+    | `Div_asn | `Mod_asn | `Left_shift_asn | `Right_shift_asn -> `Impure
+  in
+  let (op : Tree.binop) =
+    match asn_tst.op with
+    | `Plus_asn -> Plus
+    | `Minus_asn -> Minus
+    | `Times_asn -> Times
+    | `And_asn -> And
+    | `Hat_asn -> Xor
+    | `Or_asn -> Or
+    | `Div_asn -> Divided_by
+    | `Mod_asn -> Modulo
+    | `Left_shift_asn -> Left_shift
+    | `Right_shift_asn -> Right_shift
   in
   match lhs with
-  | Temp dest ->
-    let dest_s : Temp.t Tree.sized = { data = dest; size } in
-    (match exp with
-    | `Pure p_exp ->
-      ( (Tree.Move { dest = dest_s; src = wrap_exp size p_exp } :: List.rev v_stms) @ acc
-      , env )
-    | `Impure (Tree.Binop ip_exp) ->
-      ( (Tree.Effect
-           { dest = dest_s
-           ; lhs = wrap_exp size (Tree.Temp dest)
-           ; rhs = ip_exp.rhs
-           ; op = ip_exp.op
-           }
-        :: List.rev v_stms)
-        @ acc
-      , env ))
+  | Temp t ->
+    let dest : St.t = St.wrap size t in
+    (match p_ip with
+    | `Pure ->
+      let src = Sexp.wrap size (Exp.of_binop op (St.to_Sexp dest) rhs) in
+      (Tree.Move { dest; src } :: List.rev v_stms) @ acc, env
+    | `Impure ->
+      (Tree.Effect { dest; lhs = St.to_Sexp dest; rhs; op } :: List.rev v_stms) @ acc, env)
   | Mem dest ->
     let src, src_stm =
-      match exp with
-      | `Pure p_exp -> p_exp, []
-      | `Impure (Tree.Binop ip_exp) ->
-        let t = Temp.create () in
-        let t_s : Temp.t Tree.sized = { data = t; size } in
-        ( Tree.Temp t
-        , [ Tree.Effect
-              { dest = t_s
-              ; lhs = wrap_exp size (Tree.Temp t)
-              ; rhs = ip_exp.rhs
-              ; op = ip_exp.op
-              }
-          ] )
+      match p_ip with
+      | `Pure -> Sexp.wrap size (Exp.of_binop op lhs_temp rhs), []
+      | `Impure ->
+        let t = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
+        St.to_Sexp t, [ Tree.Effect { dest = t; lhs = St.to_Sexp t; rhs; op } ]
     in
-    ( (((Tree.Store { dest; src = wrap_exp size src } :: src_stm) @ load_stm)
-      @ List.rev v_stms)
+    ( (((Tree.Store { dest; src } :: src_stm) @ load_stm) @ List.rev v_stms)
       @ List.rev dest_stms
       @ acc
     , env )
@@ -622,9 +574,9 @@ let rec trans_stm_rev
     let tail, _ = trans_stm_rev seq_TST.tail [] env need_check in
     tail @ head @ acc, env
   | TST.Declare decl_TST ->
-    let temp = Temp.create () in
-    let temp_s : Temp.t Tree.sized = { data = temp; size = sizeof_dtype' decl_TST.t } in
-    let var = { temp; dtype = decl_TST.t } in
+    let size = sizeof_dtype' decl_TST.t in
+    let temp = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
+    let var = { temp = temp.data; dtype = decl_TST.t } in
     let vars' = Map.add_exn env.vars ~key:decl_TST.name ~data:var in
     let env' = { env with vars = vars' } in
     let tail, _ = trans_stm_rev decl_TST.tail [] env' need_check in
@@ -633,7 +585,7 @@ let rec trans_stm_rev
       | None -> []
       | Some value ->
         let v_stms, v_exp = trans_exp need_check value env in
-        [ Tree.Move { dest = temp_s; src = v_exp } ] @ List.rev v_stms
+        [ Tree.Move { dest = temp; src = v_exp } ] @ List.rev v_stms
     in
     tail @ mov @ acc, env
   | TST.Sexp sexp_TST ->
@@ -709,11 +661,11 @@ let trans_fdefn func_name (pars : TST.param list) blk (env : env) (need_check : 
   let env = { env with vars } in
   let blk_rev, env = trans_stm_rev blk [] env need_check in
   let body = List.rev blk_rev in
-  let temps : Temp.t Tree.sized list =
+  let temps : St.t list =
     List.map pars ~f:(fun par ->
         let var = Map.find_exn env.vars par.data in
         let size = sizeof_dtype' var.dtype in
-        let var_s : Temp.t Tree.sized = { data = var.temp; size } in
+        let var_s = Sexp.wrap size (Exp.of_t var.temp) |> Sexp.to_St in
         var_s)
   in
   { func_name; temps; body; scope = `C0 }
@@ -728,9 +680,8 @@ let rec trans_prog
   =
   match program with
   | [] ->
-    let t = Temp.create () in
-    let ts : Temp.t Tree.sized = { data = t; size = `DWORD } in
-    List.rev acc @ [ c0_raise ts ]
+    let t = Temp.create () |> Exp.of_t |> Sexp.wrap `DWORD |> Sexp.to_St in
+    List.rev acc @ [ c0_raise t ]
   | fdefn :: t ->
     let fdefn_tree = trans_fdefn fdefn.func_name fdefn.pars fdefn.blk env need_check in
     trans_prog t (fdefn_tree :: acc) env need_check
