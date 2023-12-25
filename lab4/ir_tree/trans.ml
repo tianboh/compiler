@@ -181,7 +181,7 @@ let check_bound (base : Sexp.t) (index : Sexp.t) : Tree.stm list * Tree.stm list
   let zero = Sexp.wrap index.size (Exp.of_int 0L) in
   let null_check = check_null base in
   let base, disp = base, Some disp in
-  let mem_header : Mem.t = Addr.of_bisp base None None disp |> Mem.wrap `DWORD in
+  let mem_header : Mem.t = Addr.of_bisd base None None disp |> Mem.wrap `DWORD in
   let arr_size_t = Temp.create () |> Exp.of_t |> Sexp.wrap index.size in
   let arr_size_s = Sexp.to_St arr_size_t in
   let load = [ Tree.Load { src = mem_header; dest = arr_size_s } ] in
@@ -313,22 +313,22 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func =
   in
   let func_name = Symbol.Fname.calloc in
   let size_tot =
-    Addr.of_bisp (Sexp.wrap size_4 (Exp.of_int 8L)) (Some nitems) (Some esize) None
+    Addr.of_bisd (Sexp.wrap size_4 (Exp.of_int 8L)) (Some nitems) (Some esize) None
   in
   let args =
-    [ 1L |> Exp.of_int |> Sexp.wrap size_4; size_tot |> Exp.of_bisp |> Sexp.wrap size_4 ]
+    [ 1L |> Exp.of_int |> Sexp.wrap size_4; size_tot |> Exp.of_bisd |> Sexp.wrap size_4 ]
   in
   let size_8 = `QWORD in
   let ptr_c0 = Temp.create () |> Exp.of_t |> Sexp.wrap size_8 in
   let alloc =
     Tree.Fcall { dest = Some (Sexp.to_St ptr_c0); func_name; args; scope = `External }
   in
-  let header = Mem.wrap size_8 (Addr.of_bisp ptr_c0 None None None) in
+  let header = Mem.wrap size_8 (Addr.of_bisd ptr_c0 None None None) in
   let store_size = Tree.Store { dest = header; src = nitems } in
   let ptr_c = Temp.create () |> Exp.of_t |> Sexp.wrap size_8 |> Sexp.to_St in
   let c_addr =
-    Addr.of_bisp ptr_c0 None None (Some (Sexp.wrap size_8 (Exp.of_int 8L)))
-    |> Exp.of_bisp
+    Addr.of_bisd ptr_c0 None None (Some (Sexp.wrap size_8 (Exp.of_int 8L)))
+    |> Exp.of_bisd
     |> Sexp.wrap size_8
   in
   let move = Tree.Move { dest = ptr_c; src = c_addr } in
@@ -343,7 +343,7 @@ let trans_mem
     (size : Size.primitive)
     : Tree.stm list * Sexp.t
   =
-  let src = Addr.of_bisp base index scale disp |> Mem.wrap size in
+  let src = Addr.of_bisd base index scale disp |> Mem.wrap size in
   let dest = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
   let load = Tree.Load { src; dest } in
   [ load ], St.to_Sexp dest
@@ -391,7 +391,7 @@ and trans_nth need_check (nth : TST.nth TST.typed) env : Tree.stm list * Sexp.t 
   if is_large nth.dtype
   then
     ( base_stm
-    , Addr.of_bisp base (Some index) (Some scale) None |> Exp.of_bisp |> Sexp.wrap `QWORD
+    , Addr.of_bisd base (Some index) (Some scale) None |> Exp.of_bisd |> Sexp.wrap `QWORD
     )
   else (
     let size = sizeof_dtype' nth.dtype in

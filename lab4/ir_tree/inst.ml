@@ -30,33 +30,7 @@ type binop =
   | Less_eq
   | Not_eq
 
-module rec Addr : sig
-  include Var.Sized.Interface
-
-  val of_bisp : Sexp.t -> Sexp.t option -> Sexp.t option -> Sexp.t option -> t
-end = struct
-  type t =
-    { (* Syntax sugar for x86 memory access. Return: base + index * scale + disp *)
-      base : Sexp.t
-    ; index : Sexp.t option (* used by array and struct *)
-    ; scale : Sexp.t option
-    ; disp : Sexp.t option (* used by array *)
-    }
-
-  let pp_exp (addr : t) =
-    let base = Sexp.pp_sexp addr.base in
-    let helper data =
-      match data with
-      | Some s -> Sexp.pp_sexp s
-      | None -> ""
-    in
-    let index = helper addr.index in
-    let scale = helper addr.scale in
-    Printf.sprintf "(%s, %s, %s)" base index scale
-  ;;
-
-  let of_bisp base index scale disp = { base; index; scale; disp }
-end
+module rec Addr : (Var.Addr.Sig with type i = Sexp.t) = Var.Addr.Wrapper (Sexp)
 
 and Exp : sig
   include Var.Sized.Interface
@@ -67,7 +41,7 @@ and Exp : sig
   val of_int : Int64.t -> t
   val of_binop : binop -> Sexp.t -> Sexp.t -> t
   val of_void : unit -> t
-  val of_bisp : Addr.t -> t
+  val of_bisd : Addr.t -> t
 end = struct
   type t =
     | Void
@@ -101,7 +75,7 @@ end = struct
     | Not_eq -> "!="
   ;;
 
-  let pp_exp exp =
+  let pp exp =
     match exp with
     | Void -> "void"
     | Const x -> Int64.to_string x
@@ -109,10 +83,10 @@ end = struct
     | Binop binop ->
       Printf.sprintf
         "(%s %s %s)"
-        (Sexp.pp_sexp binop.lhs)
+        (Sexp.pp binop.lhs)
         (pp_binop binop.op)
-        (Sexp.pp_sexp binop.rhs)
-    | BISD bisd -> Addr.pp_exp bisd
+        (Sexp.pp binop.rhs)
+    | BISD bisd -> Addr.pp bisd
   ;;
 
   let to_t exp =
@@ -125,7 +99,7 @@ end = struct
   let of_int (i : Int64.t) = Const i
   let of_binop op lhs rhs = Binop { op; lhs; rhs }
   let of_void () = Void
-  let of_bisp (addr : Addr.t) = BISD addr
+  let of_bisd (addr : Addr.t) = BISD addr
 end [@warning "-37"]
 
 and Sexp : sig
@@ -215,51 +189,49 @@ type program = fdefn list
 
 module Print = struct
   let sprintf = Printf.sprintf
-  let pp_sexp = Sexp.pp_sexp
-  let pp_mem = Mem.pp_sexp
+  let pp = Sexp.pp
+  let pp_mem = Mem.pp
 
   let rec pp_stm = function
-    | Cast cast -> "cast " ^ St.pp_sexp cast.dest ^ "  <--  " ^ pp_sexp cast.src
+    | Cast cast -> "cast " ^ St.pp cast.dest ^ "  <--  " ^ pp cast.src
     | Move mv ->
       if Size.compare (Sexp.get_size mv.src) (St.get_size mv.dest) <> 0
-      then
-        failwith
-          (sprintf "move size mismatch %s -> %s" (pp_sexp mv.src) (St.pp_sexp mv.dest));
-      St.pp_sexp mv.dest ^ "  <--  " ^ pp_sexp mv.src
+      then failwith (sprintf "move size mismatch %s -> %s" (pp mv.src) (St.pp mv.dest));
+      St.pp mv.dest ^ "  <--  " ^ pp mv.src
     | Effect eft ->
       sprintf
         "effect %s <- %s %s %s"
-        (St.pp_sexp eft.dest)
-        (pp_sexp eft.lhs)
+        (St.pp eft.dest)
+        (pp eft.lhs)
         (Exp.pp_binop eft.op)
-        (pp_sexp eft.rhs)
+        (pp eft.rhs)
     | Fcall c ->
       let scope = Symbol.pp_scope c.scope in
       let func_name = Symbol.name c.func_name in
-      let args = List.map (fun arg -> pp_sexp arg) c.args |> String.concat ", " in
+      let args = List.map (fun arg -> pp arg) c.args |> String.concat ", " in
       (match c.dest with
       | Some dest ->
-        let dest = St.pp_sexp dest in
+        let dest = St.pp dest in
         sprintf "%s <- %s%s(%s)" dest scope func_name args
       | None -> sprintf "%s%s(%s)" scope func_name args)
     | Return e ->
       (match e with
       | None -> "return\n"
-      | Some e -> "return " ^ pp_sexp e ^ "\n")
+      | Some e -> "return " ^ pp e ^ "\n")
     | Jump j -> "jump " ^ Label.name j
     | CJump cj ->
       sprintf
         "cjump(%s %s %s) target_true:%s, target_false %s "
-        (pp_sexp cj.lhs)
+        (pp cj.lhs)
         (Exp.pp_binop cj.op)
-        (pp_sexp cj.rhs)
+        (pp cj.rhs)
         (Label.name cj.target_true)
         (Label.name cj.target_false)
     | Label l -> Label.content l
     | Nop -> "nop"
-    | Assert asrt -> sprintf "assert(%s)" (pp_sexp asrt)
-    | Load ld -> sprintf "load %s <- %s" (St.pp_sexp ld.dest) (pp_mem ld.src)
-    | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp_sexp st.src)
+    | Assert asrt -> sprintf "assert(%s)" (pp asrt)
+    | Load ld -> sprintf "load %s <- %s" (St.pp ld.dest) (pp_mem ld.src)
+    | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp st.src)
 
   and pp_stms (stms : stm list) =
     List.map (fun stm -> pp_stm stm) stms |> String.concat "\n"
@@ -267,9 +239,7 @@ module Print = struct
 
   let pp_fdefn fdefn =
     let func_name = Symbol.pp_scope fdefn.scope ^ Symbol.name fdefn.func_name in
-    let pars_str =
-      List.map (fun temp -> St.pp_sexp temp) fdefn.temps |> String.concat ", "
-    in
+    let pars_str = List.map (fun temp -> St.pp temp) fdefn.temps |> String.concat ", " in
     sprintf "%s(%s)\n" func_name pars_str ^ pp_stms fdefn.body
   ;;
 
