@@ -14,28 +14,57 @@ module Label = Util.Label
 module Symbol = Util.Symbol
 module Size = Var.Size
 
-type 'a sized =
-  { size : Size.primitive
-  ; data : 'a
-  }
+module Op = struct
+  type t =
+    | Imm of Int64.t
+    | Temp of Temp.t
 
-type operand_logic =
-  | Imm of Int64.t
-  | Temp of Temp.t
+  let pp = function
+    | Imm i -> Int64.to_string i
+    | Temp t -> Temp.name t
+  ;;
 
-type operand = operand_logic sized
+  let of_int i = Imm i
+  let of_t t = Temp t
+end
 
-and addr =
-  { (* Syntax sugar for x86 memory access. Return: base + index * scale + disp *)
-    base : operand
-  ; index : operand option
-  ; scale : operand option
-  ; disp : operand option
-  }
+module rec Sop : sig
+  include Var.Sized.Sized_Interface with type i = Op.t
 
-type mem = addr sized
+  val to_St : t -> St.t
+  val to_t : t -> Temp.t
+end = struct
+  include Var.Sized.Wrapper (Op)
 
-type bin_op =
+  let to_t sop : Temp.t =
+    match sop.data with
+    | Temp t -> t
+    | Imm _ -> failwith "imm cannot to t"
+  ;;
+
+  let to_St sop =
+    match sop.data with
+    | Temp t -> St.wrap sop.size t
+    | _ -> failwith "to_St expect temp"
+  ;;
+end
+
+and St : sig
+  include Var.Sized.Sized_Interface with type i = Temp.t
+
+  val to_Sop : t -> Sop.t
+  val to_t : t -> Temp.t
+end = struct
+  include Var.Sized.Wrapper (Temp)
+
+  let to_Sop st = st.data |> Op.of_t |> Sop.wrap st.size
+  let to_t st = st.data
+end
+
+module Addr : Var.Addr.Sig with type i = Sop.t = Var.Addr.Wrapper (Sop)
+module Mem : Var.Sized.Sized_Interface with type i = Addr.t = Var.Sized.Wrapper (Addr)
+
+type binop =
   | Plus
   | Minus
   | Times
@@ -55,43 +84,44 @@ type bin_op =
 
 type instr =
   | Binop of
-      { op : bin_op
-      ; dest : operand
-      ; lhs : operand
-      ; rhs : operand
+      { op : binop
+      ; dest : St.t
+      ; lhs : Sop.t
+      ; rhs : Sop.t
       }
-  | Addr of addr
   | Fcall of
       { func_name : Symbol.t
-      ; dest : Temp.t sized option
-      ; args : operand list
+      ; dest : St.t option
+      ; args : Sop.t list
       ; scope : [ `C0 | `External | `Internal ]
       }
   | Cast of
-      { dest : Temp.t sized
-      ; src : Temp.t sized
+      { (* Do not generate new temporary. 
+         * Only change the size of temporary. *)
+        dest : St.t
+      ; src : St.t
       }
   | Mov of
-      { dest : operand
-      ; src : operand
+      { dest : St.t
+      ; src : Sop.t
       }
   | Jump of { target : Label.t }
   | CJump of
       { (*Jump if cond == 1*)
-        lhs : operand
-      ; op : bin_op
-      ; rhs : operand
+        lhs : Sop.t
+      ; op : binop
+      ; rhs : Sop.t
       ; target_true : Label.t
       ; target_false : Label.t
       }
-  | Ret of { var : operand option }
+  | Ret of { var : Sop.t option }
   | Load of
-      { src : mem
-      ; dest : Temp.t sized
+      { src : Mem.t
+      ; dest : St.t
       }
   | Store of
-      { src : operand
-      ; dest : mem
+      { src : Sop.t
+      ; dest : Mem.t
       }
   | Label of Label.t
   | Directive of string
@@ -100,7 +130,7 @@ type instr =
 type fdefn =
   { func_name : Symbol.t
   ; body : instr list
-  ; pars : Temp.t sized list
+  ; pars : St.t list
   ; scope : [ `Internal | `C0 ]
   }
 
@@ -127,36 +157,19 @@ let pp_binop = function
   | Not_eq -> "!="
 ;;
 
-let pp_operand (oprd : operand) : string =
-  match oprd.data with
-  | Imm n -> "$" ^ Int64.to_string n ^ "_" ^ Size.pp_size oprd.size
-  | Temp t -> Temp.name' t oprd.size
-;;
-
-let pp_memory mem =
-  let offset =
-    match mem.offset with
-    | Some offset -> pp_operand offset
-    | None -> ""
-  in
-  sprintf "%s(%s)_%Ld" offset (pp_operand mem.base) (Size.type_size_byte mem.size)
-;;
-
 let pp_inst = function
   | Binop binop ->
     sprintf
       "%s <-- %s %s %s"
-      (pp_operand binop.dest)
-      (pp_operand binop.lhs)
+      (St.pp binop.dest)
+      (Sop.pp binop.lhs)
       (pp_binop binop.op)
-      (pp_operand binop.rhs)
-  (* | Mov mv -> sprintf "%s <-- %s" (pp_operand mv.dest) (pp_operand mv.src) *)
+      (Sop.pp binop.rhs)
+  (* | Mov mv -> sprintf "%s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src) *)
   | Mov mv ->
     if Size.compare (mv.src.size :> Size.t) (mv.dest.size :> Size.t) <> 0
-    then
-      failwith
-        (sprintf "move size mismatch %s -> %s" (pp_operand mv.src) (pp_operand mv.dest));
-    sprintf "%s <-- %s" (pp_operand mv.dest) (pp_operand mv.src)
+    then failwith (sprintf "move size mismatch %s -> %s" (Sop.pp mv.src) (St.pp mv.dest));
+    sprintf "%s <-- %s" (St.pp mv.dest) (Sop.pp mv.src)
   | Cast cast ->
     sprintf
       "cast %s <-- %s"
@@ -166,9 +179,9 @@ let pp_inst = function
   | CJump cjp ->
     sprintf
       "cjump(%s %s %s) %s, %s"
-      (pp_operand cjp.lhs)
+      (Sop.pp cjp.lhs)
       (pp_binop cjp.op)
-      (pp_operand cjp.rhs)
+      (Sop.pp cjp.rhs)
       (Label.name cjp.target_true)
       (Label.name cjp.target_false)
   | Label label -> sprintf "%s" (Label.content label)
@@ -177,7 +190,7 @@ let pp_inst = function
   | Ret ret ->
     (match ret.var with
     | None -> sprintf "return"
-    | Some var -> sprintf "return %s" (pp_operand var))
+    | Some var -> sprintf "return %s" (Sop.pp var))
   | Fcall call ->
     (match call.dest with
     | None ->
@@ -185,20 +198,17 @@ let pp_inst = function
         "%s%s(%s)"
         (Symbol.pp_scope call.scope)
         (Symbol.name call.func_name)
-        (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
+        (List.map call.args ~f:(fun arg -> Sop.pp arg) |> String.concat ~sep:", ")
     | Some dest ->
       sprintf
         "%s <- %s%s(%s)"
         (Temp.name' dest.data dest.size)
         (Symbol.pp_scope call.scope)
         (Symbol.name call.func_name)
-        (List.map call.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", "))
+        (List.map call.args ~f:(fun arg -> Sop.pp arg) |> String.concat ~sep:", "))
   | Load load ->
-    sprintf
-      "load %s <- %s"
-      (Temp.name' load.dest.data load.dest.size)
-      (pp_memory load.src)
-  | Store store -> sprintf "store %s <- %s" (pp_memory store.dest) (pp_operand store.src)
+    sprintf "load %s <- %s" (Temp.name' load.dest.data load.dest.size) (Mem.pp load.src)
+  | Store store -> sprintf "store %s <- %s" (Mem.pp store.dest) (Sop.pp store.src)
 ;;
 
 let pp_fdefn (fdefn : fdefn) =

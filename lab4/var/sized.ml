@@ -25,7 +25,7 @@ module type Sized_Interface = sig
   val get_size_p : t -> Size.primitive
 end
 
-module Wrapper (M : Interface) = struct
+module Wrapper (M : Interface) : Sized_Interface with type i = M.t = struct
   type i = M.t
 
   type t =

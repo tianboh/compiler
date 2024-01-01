@@ -177,10 +177,9 @@ let check_null (base : Sexp.t) : Tree.stm list =
 (* Check whether offset is within [0, array_size), also check whether array base is null.
  * This array_size is number of elements. *)
 let check_bound (base : Sexp.t) (index : Sexp.t) : Tree.stm list * Tree.stm list =
-  let disp = Sexp.wrap base.size (Exp.of_int (-8L)) in
+  let disp = Some (Sexp.wrap base.size (Exp.of_int (-8L))) in
   let zero = Sexp.wrap index.size (Exp.of_int 0L) in
   let null_check = check_null base in
-  let base, disp = base, Some disp in
   let mem_header : Mem.t = Addr.of_bisd base None None disp |> Mem.wrap `DWORD in
   let arr_size_t = Temp.create () |> Exp.of_t |> Sexp.wrap index.size in
   let arr_size_s = Sexp.to_St arr_size_t in

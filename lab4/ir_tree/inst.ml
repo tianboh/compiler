@@ -33,8 +33,18 @@ type binop =
 module rec Addr : (Var.Addr.Sig with type i = Sexp.t) = Var.Addr.Wrapper (Sexp)
 
 and Exp : sig
-  include Var.Sized.Interface
+  type t =
+    | Void
+    | Const of Int64.t
+    | Temp of Temp.t
+    | Binop of
+        { lhs : Sexp.t
+        ; op : binop
+        ; rhs : Sexp.t
+        }
+    | BISD of Addr.t
 
+  val pp : t -> string
   val pp_binop : binop -> string
   val to_t : t -> Temp.t
   val of_t : Temp.t -> t
@@ -46,7 +56,6 @@ end = struct
   type t =
     | Void
     | Const of Int64.t
-    (* DWORD for int32 from source code, QWORD for address calculation*)
     | Temp of Temp.t
     | Binop of
         { lhs : Sexp.t
@@ -136,7 +145,9 @@ end
 
 type stm =
   | Cast of
-      { dest : St.t
+      { (* Do not generate new temporary. 
+         * Only change the size of temporary. *)
+        dest : St.t
       ; src : Sexp.t
       }
   | Move of
