@@ -71,7 +71,7 @@ module Print = struct
         let t = IG.Print.pp_vertex k in
         let r =
           match IG.Vertex.Map.find_exn color k with
-          | Reg r -> Register.reg_to_str r
+          | Reg r -> Register.ppr
           | Spill s -> Spill.spill_to_str s
         in
         printf "%s -> %s\n%!" t r)
@@ -328,7 +328,7 @@ let rec greedy seq adj vertex_to_dest =
       (* let () =
         match dest with
         | Reg r ->
-          printf "alloc %s for %s\n" (Var.X86_reg.Logic.reg_to_str r) (Temp.name temp)
+          printf "alloc %s for %s\n" (Var.X86_reg.Logic.ppr) (Temp.name temp)
         | Spill s -> printf "alloc %s for %s\n" (Spill.spill_to_str s) (Temp.name temp)
       in *)
       let vertex_to_dest =

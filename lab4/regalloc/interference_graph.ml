@@ -32,7 +32,7 @@ module Print = struct
   open Printf
 
   let pp_vertex = function
-    | Vertex.Reg reg -> X86_reg.reg_to_str reg
+    | Vertex.Reg reg -> X86_reg.ppreg
     | Vertex.Temp temp -> Temp.name temp
   ;;
 

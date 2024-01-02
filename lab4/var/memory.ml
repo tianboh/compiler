@@ -3,6 +3,7 @@
  * Base pointer + offset is the memory adress to inquire. 
  * WARNNING: offset is not index! It should be multiple of 0x8, 0x10, or 0x20.
  * Dataload size is the size to fetch on the memory address.
+ *
  * Author: tianboh
  *)
 
@@ -15,7 +16,7 @@ let ( * ) = Base.Int64.( * )
 let ( / ) = Base.Int64.( / )
 
 module T = struct
-  type reg = X86_reg.Hard.t [@@deriving compare, sexp, hash]
+  type reg = X86_reg.Hard.t
 
   type t =
     { index : int option (* This is a global unique id for memory.*)
@@ -24,7 +25,6 @@ module T = struct
         (* base + offset is start address of a variable *)
         [ `Imm of Int64.t | `Reg of reg ]
     }
-  [@@deriving sexp, compare, hash]
 end
 
 include T
@@ -32,7 +32,7 @@ include T
 let counter = ref 0L
 let bias = ref 0L
 let get_allocated_count () = !counter
-let rbp : reg = { reg = X86_reg.Logic.RBP; size = `QWORD }
+let rbp : reg = X86_reg.Hard.wrap `QWORD X86_reg.Logic.RBP
 let cache : t Int.Table.t = Int.Table.create ()
 
 let reset () : unit =
@@ -65,12 +65,9 @@ let below_frame base offset =
 
 let mem_to_str t =
   match t.offset with
-  | `Imm imm -> Printf.sprintf "%Ld(%s)" (Int64.neg imm) (X86_reg.Hard.reg_to_str t.base)
+  | `Imm imm -> Printf.sprintf "%Ld(%s)" (Int64.neg imm) (X86_reg.Hard.pp t.base)
   | `Reg reg ->
-    Printf.sprintf
-      "(%s, %s, 1)"
-      (X86_reg.Hard.reg_to_str t.base)
-      (X86_reg.Hard.reg_to_str reg)
+    Printf.sprintf "(%s, %s, 1)" (X86_reg.Hard.pp t.base) (X86_reg.Hard.pp reg)
 ;;
 
 let mem_idx_exn (mem : t) =
@@ -78,5 +75,3 @@ let mem_idx_exn (mem : t) =
   | None -> failwith "illegal access frame memory"
   | Some idx -> idx
 ;;
-
-include Comparable.Make (T)

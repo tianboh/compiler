@@ -92,7 +92,7 @@ module Logic = struct
     | _ -> failwith "not x86-64 register"
   ;;
 
-  let reg_to_str (reg : t) =
+  let pp (reg : t) =
     match reg with
     | RAX -> "rax_logic"
     | RBX -> "rbx_logic"
@@ -196,23 +196,10 @@ module Logic = struct
   ;;
 end
 
-(* Hard register is logical register attached with size information
- * 1) used for x86 convention.
- * 2) register allocation result. *)
 module Hard = struct
-  type t =
-    { reg : Logic.t
-    ; size : Size.primitive
-    }
-  [@@deriving compare, sexp, hash]
+  include Sized.Wrapper (Logic)
 
-  let get_idx (reg : t) : int = Logic.get_idx reg.reg
-  let reg_to_str (reg : t) : string = Logic.reg_to_str' reg.reg reg.size
-
-  let idx_reg (idx : int) (size : Size.primitive) : t =
-    let reg = Logic.idx_reg idx in
-    { reg; size }
-  ;;
+  let get_idx (reg : t) : int = Logic.get_idx reg.data
 end
 
 (* Spill register is registers to spill, which is memory *)
