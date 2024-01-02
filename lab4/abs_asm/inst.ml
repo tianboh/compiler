@@ -12,43 +12,42 @@ module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
 
-type imm = Int64.t
+module Op = struct
+  type t =
+    | Imm of Int64.t
+    | Temp of Temp.t
+    | Reg of Register.t
+    | Above_frame of Int64.t
+    | Below_frame of Int64.t
 
-type 'a sized =
-  { data : 'a
-  ; size : Size.primitive
-  }
+  let pp = function
+    | Imm n -> "$" ^ Int64.to_string n
+    | Temp t -> Temp.name t
+    | Reg r -> Register.pp r
+    | Above_frame af -> sprintf "%Ld(%%rbp)" af
+    | Below_frame bf -> sprintf "-%Ld(%%rbp)" bf
+  ;;
 
-type operand_logic =
-  | Imm of imm
-  | Temp of Temp.t
-  | Reg of Register.t
-  | Above_frame of Int64.t
-  | Below_frame of Int64.t
+  let of_imm i = Imm i
+  let of_temp t = Temp t
+  let of_reg (reg : Register.t) = Reg reg
+  let of_af af = Above_frame af
+  let of_bf bf = Below_frame bf
+end
 
-type operand = operand_logic sized
-(* 
-type mem_logic =
-  { base : Register.t sized
-  ; offset : Register.t sized option
-  }
-
-type mem = mem_logic sized *)
-
-type mem =
-  { base : Register.t sized
-  ; offset : Register.t sized option
-  ; size : Size.primitive
-  }
+module Sop = Var.Sized.Wrapper (Op)
+module Addr = Var.Addr.Wrapper (Register)
+module Mem = Var.Sized.Wrapper (Addr)
+module St = Var.Sized.Wrapper (Temp)
 
 type line =
-  { uses : operand_logic list
-  ; defines : operand_logic list
-  ; live_out : operand_logic list
+  { uses : Op.t list
+  ; defines : Op.t list
+  ; live_out : Op.t list
   ; move : bool
   }
 
-type bin_op =
+type binop =
   | Plus
   | Minus
   | Times
@@ -68,27 +67,27 @@ type bin_op =
 
 type instr =
   | Binop of
-      { op : bin_op
-      ; dest : operand
-      ; lhs : operand
-      ; rhs : operand
+      { op : binop
+      ; dest : Sop.t
+      ; lhs : Sop.t
+      ; rhs : Sop.t
       ; line : line
       }
   | Fcall of
       { (* return to rax by convention *)
         func_name : Symbol.t
-      ; args : operand list
+      ; args : Sop.t list
       ; line : line
       ; scope : [ `C0 | `External | `Internal ]
       }
   | Cast of
-      { dest : Temp.t sized
-      ; src : Temp.t sized
+      { dest : St.t
+      ; src : St.t
       ; line : line
       }
   | Mov of
-      { dest : operand
-      ; src : operand
+      { dest : Sop.t
+      ; src : Sop.t
       ; line : line
       }
   | Jump of
@@ -97,9 +96,9 @@ type instr =
       }
   | CJump of
       { (*Jump if cond == 1*)
-        lhs : operand
-      ; op : bin_op
-      ; rhs : operand
+        lhs : Sop.t
+      ; op : binop
+      ; rhs : Sop.t
       ; target_true : Label.t
       ; target_false : Label.t
       ; line : line
@@ -110,21 +109,21 @@ type instr =
       ; line : line
       }
   | Push of
-      { var : operand
+      { var : Sop.t
       ; line : line
       }
   | Pop of
-      { var : operand
+      { var : Sop.t
       ; line : line
       }
   | Load of
-      { src : mem
-      ; dest : Temp.t sized
+      { src : Mem.t
+      ; dest : St.t
       ; line : line
       }
   | Store of
-      { src : operand
-      ; dest : mem
+      { src : Sop.t
+      ; dest : Mem.t
       ; line : line
       }
   | Directive of string
@@ -143,8 +142,8 @@ type fdefn =
 
 type program = fdefn list
 
-let to_int_list (operands : operand_logic list) : int list =
-  List.fold operands ~init:[] ~f:(fun acc x ->
+let to_int_list (ops : Op.t list) : int list =
+  List.fold ops ~init:[] ~f:(fun acc x ->
       match x with
       | Temp t -> t.id :: acc
       | Reg r -> Register.get_idx r :: acc
@@ -170,42 +169,19 @@ let pp_binop = function
   | Not_eq -> "!="
 ;;
 
-let pp_operand (oprd : operand) =
-  match oprd.data with
-  | Imm n -> "$" ^ Int64.to_string n
-  | Temp t -> Temp.name' t oprd.size
-  | Reg r -> Register.reg_to_str r
-  | Above_frame af -> sprintf "%Ld(%%rbp)" af
-  | Below_frame bf -> sprintf "-%Ld(%%rbp)" bf
-;;
-
-let pp_memory (mem : mem) =
-  let base, offset = mem.base, mem.offset in
-  let size = mem.size in
-  sprintf
-    "(%s, %s, %Ld)"
-    (Register.reg_to_str base.data)
-    (match offset with
-    | Some r -> Register.reg_to_str r.data
-    | None -> "")
-    (Size.type_size_byte size)
-;;
-
 let pp_inst inst =
   match inst with
   | Binop binop ->
     sprintf
       "%s <-- %s %s %s"
-      (pp_operand binop.dest)
-      (pp_operand binop.lhs)
+      (Sop.pp binop.dest)
+      (Sop.pp binop.lhs)
       (pp_binop binop.op)
-      (pp_operand binop.rhs)
+      (Sop.pp binop.rhs)
   | Mov mv ->
     if Size.compare (mv.dest.size :> Size.t) (mv.src.size :> Size.t) <> 0
-    then
-      failwith
-        (sprintf "move mismatch %s <-- %s" (pp_operand mv.dest) (pp_operand mv.src));
-    sprintf "%s <-- %s" (pp_operand mv.dest) (pp_operand mv.src)
+    then failwith (sprintf "move mismatch %s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src));
+    sprintf "%s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src)
   | Cast cast ->
     sprintf
       "cast %s <-- %s"
@@ -215,9 +191,9 @@ let pp_inst inst =
   | CJump cjp ->
     sprintf
       "cjump(%s %s %s) target_true: %s, target_false : %s"
-      (pp_operand cjp.lhs)
+      (Sop.pp cjp.lhs)
       (pp_binop cjp.op)
-      (pp_operand cjp.rhs)
+      (Sop.pp cjp.rhs)
       (Label.name cjp.target_true)
       (Label.name cjp.target_false)
   | Label label -> sprintf "%s" (Label.content label.label)
@@ -229,15 +205,12 @@ let pp_inst inst =
       "fcall %s%s(%s)"
       (Symbol.pp_scope fcall.scope)
       (Symbol.name fcall.func_name)
-      (List.map fcall.args ~f:(fun arg -> pp_operand arg) |> String.concat ~sep:", ")
-  | Push push -> sprintf "push %s" (pp_operand push.var)
-  | Pop pop -> sprintf "pop %s " (pp_operand pop.var)
+      (List.map fcall.args ~f:(fun arg -> Sop.pp arg) |> String.concat ~sep:", ")
+  | Push push -> sprintf "push %s" (Sop.pp push.var)
+  | Pop pop -> sprintf "pop %s " (Sop.pp pop.var)
   | Load load ->
-    sprintf
-      "load %s <- %s"
-      (Temp.name' load.dest.data load.dest.size)
-      (pp_memory load.src)
-  | Store store -> sprintf "store %s <- %s" (pp_memory store.dest) (pp_operand store.src)
+    sprintf "load %s <- %s" (Temp.name' load.dest.data load.dest.size) (Mem.pp load.src)
+  | Store store -> sprintf "store %s <- %s" (Mem.pp store.dest) (Sop.pp store.src)
 ;;
 
 let rec pp_insts (program : instr list) res =
