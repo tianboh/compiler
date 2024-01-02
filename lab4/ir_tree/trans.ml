@@ -177,10 +177,9 @@ let check_null (base : Sexp.t) : Tree.stm list =
 (* Check whether offset is within [0, array_size), also check whether array base is null.
  * This array_size is number of elements. *)
 let check_bound (base : Sexp.t) (index : Sexp.t) : Tree.stm list * Tree.stm list =
-  let disp = Some (Sexp.wrap base.size (Exp.of_int (-8L))) in
   let zero = Sexp.wrap index.size (Exp.of_int 0L) in
   let null_check = check_null base in
-  let mem_header : Mem.t = Addr.of_bisd base None None disp |> Mem.wrap `DWORD in
+  let mem_header : Mem.t = Addr.of_bisd base None None (Some (-8L)) |> Mem.wrap `DWORD in
   let arr_size_t = Temp.create () |> Exp.of_t |> Sexp.wrap index.size in
   let arr_size_s = Sexp.to_St arr_size_t in
   let load = [ Tree.Load { src = mem_header; dest = arr_size_s } ] in
@@ -304,12 +303,7 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func =
    * To access it, use base + disp. Base is the start addr for array. *)
   let stms, (nitems : Sexp.t) = trans_func alloc_arr.nitems env in
   let size_4 = nitems.size in
-  let esize =
-    sizeof_dtype alloc_arr.etype env
-    |> Size.type_size_byte
-    |> Exp.of_int
-    |> Sexp.wrap size_4
-  in
+  let esize = sizeof_dtype alloc_arr.etype env |> Size.type_size_byte in
   let func_name = Symbol.Fname.calloc in
   let size_tot =
     Addr.of_bisd (Sexp.wrap size_4 (Exp.of_int 8L)) (Some nitems) (Some esize) None
@@ -326,9 +320,7 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func =
   let store_size = Tree.Store { dest = header; src = nitems } in
   let ptr_c = Temp.create () |> Exp.of_t |> Sexp.wrap size_8 |> Sexp.to_St in
   let c_addr =
-    Addr.of_bisd ptr_c0 None None (Some (Sexp.wrap size_8 (Exp.of_int 8L)))
-    |> Exp.of_bisd
-    |> Sexp.wrap size_8
+    Addr.of_bisd ptr_c0 None None (Some 8L) |> Exp.of_bisd |> Sexp.wrap size_8
   in
   let move = Tree.Move { dest = ptr_c; src = c_addr } in
   stms @ [ alloc; store_size; move ], St.to_Sexp ptr_c
@@ -337,8 +329,8 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func =
 let trans_mem
     (base : Sexp.t)
     (index : Sexp.t option)
-    (scale : Sexp.t option)
-    (disp : Sexp.t option)
+    (scale : Int64.t option)
+    (disp : Int64.t option)
     (size : Size.primitive)
     : Tree.stm list * Sexp.t
   =
@@ -384,9 +376,7 @@ and trans_nth need_check (nth : TST.nth TST.typed) env : Tree.stm list * Sexp.t 
   check_index_size index_exp;
   let index = Temp.create () |> Exp.of_t |> Sexp.wrap `QWORD in
   let index_stm = Tree.Cast { dest = Sexp.to_St index; src = index_exp } :: index_stm in
-  let scale =
-    sizeof_dtype nth.dtype env |> Size.type_size_byte |> Exp.of_int |> Sexp.wrap `QWORD
-  in
+  let scale = sizeof_dtype nth.dtype env |> Size.type_size_byte in
   if is_large nth.dtype
   then
     ( base_stm
@@ -416,8 +406,7 @@ and trans_dot need_check (dot : TST.dot TST.typed) env : Tree.stm list * Sexp.t 
   then base_stm, Sexp.wrap `QWORD (Exp.of_binop Plus base offset)
   else (
     let size = sizeof_dtype' dot.dtype in
-    let one : Sexp.t = Sexp.wrap `QWORD (Exp.of_int 1L) in
-    let load, dest = trans_mem base (Some offset) (Some one) None size in
+    let load, dest = trans_mem base (Some offset) (Some 1L) None size in
     let check = if need_check then check_null base else [] in
     base_stm @ check @ load, dest)
 ;;

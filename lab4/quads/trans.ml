@@ -75,8 +75,8 @@ and munch_bisd_acc
     (dest : St.t)
     (base : Sexp.t)
     (index : Sexp.t option)
-    (scale : Sexp.t option)
-    (disp : Sexp.t option)
+    (scale : Int64.t option)
+    (disp : Int64.t option)
     (rev_acc : Quads.instr list)
     : Quads.instr list
   =
@@ -86,7 +86,11 @@ and munch_bisd_acc
   | Some disp, None, _ | Some disp, _, None ->
     let t_disp = Temp.create () |> St.wrap size in
     let t_base = Temp.create () |> St.wrap size in
-    let rev_acc' = rev_acc |> munch_exp_acc t_base base |> munch_exp_acc t_disp disp in
+    let rev_acc' =
+      rev_acc
+      |> munch_exp_acc t_base base
+      |> munch_exp_acc t_disp (disp |> Tree.Exp.of_int |> Sexp.wrap size)
+    in
     Quads.Binop { op = Plus; dest; lhs = St.to_Sop t_base; rhs = St.to_Sop t_disp }
     :: rev_acc'
   | _, Some index, Some scale ->
@@ -98,7 +102,7 @@ and munch_bisd_acc
       rev_acc
       |> munch_exp_acc t_base base
       |> munch_exp_acc t_index index
-      |> munch_exp_acc t_scale scale
+      |> munch_exp_acc t_scale (scale |> Tree.Exp.of_int |> Sexp.wrap size)
     in
     let rev_acc'' =
       Quads.Binop
@@ -111,7 +115,9 @@ and munch_bisd_acc
       :: rev_acc''
     | Some disp ->
       let t_disp = Temp.create () |> St.wrap size in
-      let ret = rev_acc'' |> munch_exp_acc t_disp disp in
+      let ret =
+        rev_acc'' |> munch_exp_acc t_disp (disp |> Tree.Exp.of_int |> Sexp.wrap size)
+      in
       let t = Temp.create () |> St.wrap size in
       [ Quads.Binop { op = Plus; dest; lhs = St.to_Sop t; rhs = St.to_Sop t_disp }
       ; Quads.Binop
@@ -221,25 +227,17 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
   let get_addr
       (base : Sexp.t)
       (index : Sexp.t option)
-      (scale : Sexp.t option)
-      (disp : Sexp.t option)
+      (scale : Int64.t option)
+      (disp : Int64.t option)
       : Quads.Addr.t * Quads.instr list
     =
     let t_base = Temp.create () |> St.wrap base.size in
     let t_index = sexp2st index in
-    let t_scale = sexp2st scale in
-    let t_disp = sexp2st disp in
     let rev_acc = munch_exp_acc t_base base [] in
-    let rev_acc =
-      munch_helper t_index index rev_acc
-      |> munch_helper t_scale scale
-      |> munch_helper t_disp disp
-    in
+    let rev_acc = munch_helper t_index index rev_acc in
     let op_base = St.to_Sop t_base in
     let op_index = st2sop t_index in
-    let op_scale = st2sop t_scale in
-    let op_disp = st2sop t_disp in
-    Quads.Addr.of_bisd op_base op_index op_scale op_disp, rev_acc
+    Quads.Addr.of_bisd op_base op_index scale disp, rev_acc
   in
   match stm with
   | Tree.Cast cast ->
