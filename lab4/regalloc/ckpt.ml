@@ -1,7 +1,6 @@
 open Core
 module Temp = Var.Temp
 module Size = Var.Size
-module Memory = Var.Memory
 module Register = Var.X86_reg.Logic
 module IG = Interference_graph
 module Inst_reg_info = Json_reader.Lab1_checkpoint
@@ -55,9 +54,7 @@ let transform_vertex_to_json (vertex : (IG.Vertex.t * Driver.dest) option) =
     | Reg reg ->
       let reg_hard : Var.X86_reg.Hard.t = { data = reg; size = `DWORD } in
       Some (IG.Print.pp_vertex vtx, Var.X86_reg.Hard.pp reg_hard)
-    | Spill s ->
-      let mem = Memory.create s.id `DWORD in
-      Some (IG.Print.pp_vertex vtx, Memory.mem_to_str mem))
+    | Spill s -> Some (IG.Print.pp_vertex vtx, Var.X86_reg.Spill.pp s))
 ;;
 
 let transform_vertices_to_json (vertices : (IG.Vertex.t * Driver.dest) option list) =

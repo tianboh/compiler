@@ -209,11 +209,21 @@ module Spill = struct
   end
 
   include T
+  module IntSet = Set.Make (Int)
+
+  let set = ref IntSet.empty
 
   (* id start from 16 because 0-15 are real register.
    * this help keep a global order between real register 
    * and spill register *)
-  let create' (id : int) : t = { id }
-  let spill_to_str (s : t) : string = sprintf "s%s" (Int.to_string s.id)
+  let of_int (id : int) : t =
+    assert (id > 15);
+    set := IntSet.add !set id;
+    { id }
+  ;;
+
+  let pp (s : t) : string = sprintf "s%s" (Int.to_string s.id)
   let get_idx (s : t) : int = s.id
+  let get_tot () = IntSet.length !set
+  let reset () = set := IntSet.empty
 end

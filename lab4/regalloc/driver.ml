@@ -29,7 +29,6 @@ open Core
  *)
 module Temp = Var.Temp
 module Size = Var.Size
-module Memory = Var.Memory
 module Register = Var.X86_reg.Logic
 module Spill = Var.X86_reg.Spill
 module Reg_info = Program
@@ -72,7 +71,7 @@ module Print = struct
         let r =
           match IG.Vertex.Map.find_exn color k with
           | Reg r -> Register.pp r
-          | Spill s -> Spill.spill_to_str s
+          | Spill s -> Spill.pp s
         in
         printf "%s -> %s\n%!" t r)
   ;;
@@ -307,7 +306,7 @@ let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest
   let nbr_int_s = Int.Set.of_list nbr_int_l in
   let black_set = Int.Set.of_list nbr_black_list in
   let r = find_min_available nbr_int_s black_set in
-  if r < Register.num_reg then Reg (Register.idx_reg r) else Spill (Spill.create' r)
+  if r < Register.num_reg then Reg (Register.idx_reg r) else Spill (Spill.of_int r)
 ;;
 
 (* Infinite registers to allocate during greedy coloring. *)
@@ -324,7 +323,7 @@ let rec greedy seq adj vertex_to_dest =
         match dest with
         | Reg r ->
           printf "alloc %s for %s\n" (Var.X86_reg.Logic.ppr) (Temp.name temp)
-        | Spill s -> printf "alloc %s for %s\n" (Spill.spill_to_str s) (Temp.name temp)
+        | Spill s -> printf "alloc %s for %s\n" (Spill.pp s) (Temp.name temp)
       in *)
       let vertex_to_dest =
         IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Temp temp) ~data:dest
@@ -356,7 +355,7 @@ let rec gen_result (color : dest IG.Vertex.Map.t) prog =
 ;;
 
 let regalloc (fdefn : Abs_asm.fdefn) : (IG.Vertex.t * dest) option list =
-  Memory.reset ();
+  Spill.reset ();
   if Temp.count () > threshold
   then (
     let vertex_set = Lazy.collect_vertex fdefn.body IG.Vertex.Set.empty in
