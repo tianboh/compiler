@@ -60,9 +60,14 @@ module Wrapper (M : Op) : Sig with type i = M.t = struct
       | Some s -> print s
       | None -> ""
     in
+    let disp =
+      match addr.disp with
+      | Some d -> Int64.to_string d
+      | None -> ""
+    in
     let index = helper addr.index M.pp in
     let scale = helper addr.scale Int64.to_string in
-    Printf.sprintf "(%s, %s, %s)" base index scale
+    Printf.sprintf "%s(%s, %s, %s)" disp base index scale
   ;;
 
   let get_base addr = addr.base

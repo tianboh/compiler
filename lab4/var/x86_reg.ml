@@ -199,6 +199,7 @@ end
 module Hard = struct
   include Sized.Wrapper (Logic)
 
+  let pp reg = Logic.reg_to_str' reg.data reg.size
   let get_idx (reg : t) : int = Logic.get_idx reg.data
 end
 
