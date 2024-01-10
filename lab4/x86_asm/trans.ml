@@ -39,7 +39,7 @@ module Label = Util.Label
 module IG = Regalloc.Interference_graph
 module Regalloc = Regalloc.Driver
 
-let trans_operand (operand : Src.operand) (reg_alloc_info : Regalloc.dest IG.Vertex.Map.t)
+let trans_operand (operand : Src.Sop.t) (reg_alloc_info : Regalloc.dest IG.Vertex.Map.t)
     : X86_asm.operand
   =
   let size = operand.size in
@@ -64,7 +64,7 @@ let trans_operand (operand : Src.operand) (reg_alloc_info : Regalloc.dest IG.Ver
     { data = X86_asm.Mem frame; size }
 ;;
 
-let trans_mem (mem : Src.mem) : Memory.t =
+let trans_mem (mem : Src.Mem.t) : Memory.t =
   let base, offset = mem.base, mem.offset in
   let base : Memory.reg = { reg = base.data; size = base.size } in
   match offset with
@@ -191,7 +191,7 @@ let safe_cmp
 ;;
 
 let gen_x86_relop_bin
-    (op : Src.bin_op)
+    (op : Src.binop)
     (dest : X86_asm.operand)
     (lhs : X86_asm.operand)
     (rhs : X86_asm.operand)
@@ -218,7 +218,7 @@ let gen_x86_relop_bin
 ;;
 
 let gen_x86_inst_bin
-    (op : Src.bin_op)
+    (op : Src.binop)
     (dest : X86_asm.operand)
     (lhs : X86_asm.operand)
     (rhs : X86_asm.operand)
@@ -280,12 +280,8 @@ let rec _codegen_w_reg_rev
       let insts_rev = List.rev insts in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Cast cast ->
-      let dest_oprd : Src.operand =
-        { data = Src.Temp cast.dest.data; size = cast.dest.size }
-      in
-      let src_oprd : Src.operand =
-        { data = Src.Temp cast.src.data; size = cast.src.size }
-      in
+      let dest_oprd = Src.St.to_Sop cast.dest in
+      let src_oprd = Src.St.to_Sop cast.src in
       let dest = trans_operand dest_oprd reg_alloc_info in
       let src = trans_operand src_oprd reg_alloc_info in
       let insts = safe_cast dest src in
@@ -348,9 +344,7 @@ let rec _codegen_w_reg_rev
       let src = X86_asm.Mem (trans_mem load.src) in
       let size = load.src.size in
       let src_oprd : X86_asm.operand = { data = src; size } in
-      let dest_oprd : Src.operand =
-        { data = Src.Temp load.dest.data; size = load.dest.size }
-      in
+      let dest_oprd : Src.Sop.t = Src.St.to_Sop load.dest in
       let dest : X86_asm.operand = trans_operand dest_oprd reg_alloc_info in
       let insts_rev =
         match dest.data with

@@ -35,10 +35,18 @@ module Op = struct
   let of_bf bf = Below_frame bf
 end
 
-module Sop = Var.Sized.Wrapper (Op)
+module Sop : Var.Sized.Sized_Interface with type i = Op.t = Var.Sized.Wrapper (Op)
 module Addr = Var.Addr.Wrapper (Register)
 module Mem = Var.Sized.Wrapper (Addr)
-module St = Var.Sized.Wrapper (Temp)
+
+module St = struct
+  include Var.Sized.Wrapper (Temp)
+
+  let to_Sop st =
+    let size = st.size in
+    st.data |> Op.of_temp |> Sop.wrap size
+  ;;
+end
 
 type line =
   { uses : Op.t list

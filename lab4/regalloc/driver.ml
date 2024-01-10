@@ -71,7 +71,7 @@ module Print = struct
         let t = IG.Print.pp_vertex k in
         let r =
           match IG.Vertex.Map.find_exn color k with
-          | Reg r -> Register.ppr
+          | Reg r -> Register.pp r
           | Spill s -> Spill.spill_to_str s
         in
         printf "%s -> %s\n%!" t r)
@@ -157,11 +157,12 @@ module Lazy = struct
   let ecx = Register.RCX
   let edx = Register.RDX
 
-  let trans_operand (operand : Abs_asm.operand) =
+  let trans_operand (operand : Abs_asm.Sop.t) =
     match operand.data with
-    | Abs_asm.Temp t -> IG.Vertex.Set.of_list [ IG.Vertex.T.Temp t ]
-    | Abs_asm.Imm _ | Abs_asm.Above_frame _ | Abs_asm.Below_frame _ -> IG.Vertex.Set.empty
-    | Abs_asm.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r ]
+    | Abs_asm.Op.Temp t -> IG.Vertex.Set.of_list [ IG.Vertex.T.Temp t ]
+    | Abs_asm.Op.Imm _ | Abs_asm.Op.Above_frame _ | Abs_asm.Op.Below_frame _ ->
+      IG.Vertex.Set.empty
+    | Abs_asm.Op.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r ]
   ;;
 
   let rec collect_vertex (prog : Abs_asm.instr list) res =
@@ -179,12 +180,8 @@ module Lazy = struct
         let res = IG.Vertex.Set.union res (trans_operand mov.src) in
         collect_vertex t res
       | Cast cast ->
-        let dest : Abs_asm.operand =
-          { data = Abs_asm.Temp cast.dest.data; size = cast.dest.size }
-        in
-        let src : Abs_asm.operand =
-          { data = Abs_asm.Temp cast.src.data; size = cast.src.size }
-        in
+        let dest = Abs_asm.St.to_Sop cast.dest in
+        let src = Abs_asm.St.to_Sop cast.src in
         let res = IG.Vertex.Set.union res (trans_operand dest) in
         let res = IG.Vertex.Set.union res (trans_operand src) in
         collect_vertex t res
@@ -206,9 +203,7 @@ module Lazy = struct
         let res = IG.Vertex.Set.union res (trans_operand pop.var) in
         collect_vertex t res
       | Load load ->
-        let dest : Abs_asm.operand =
-          { data = Abs_asm.Temp load.dest.data; size = load.dest.size }
-        in
+        let dest = Abs_asm.St.to_Sop load.dest in
         let res = IG.Vertex.Set.union res (trans_operand dest) in
         collect_vertex t res
       | Store store ->

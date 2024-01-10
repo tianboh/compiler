@@ -40,8 +40,8 @@ let empty_line line_num live_out =
 ;;
 
 (* Transform pseudo operands of type temp, imm, reg to reg/temp set*)
-let gen_VertexSet (l : Abs_asm.operand_logic list) =
-  let rec _filter_imm (l : Abs_asm.operand_logic list) (res : IG.Vertex.t list) =
+let gen_VertexSet (l : Abs_asm.Op.t list) =
+  let rec _filter_imm (l : Abs_asm.Op.t list) (res : IG.Vertex.t list) =
     match l with
     | [] -> res
     | h :: t ->
