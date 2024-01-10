@@ -22,7 +22,6 @@ module CST = Front.Cst
 module Typechecker = Semantic.Typechecker
 module Controlflow = Semantic.Controlflow
 module Dfana = Flow.Dfana
-module Memory = Var.Memory
 module Symbol = Util.Symbol
 
 (* Command line arguments *)

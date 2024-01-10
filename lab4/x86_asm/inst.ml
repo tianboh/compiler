@@ -1,47 +1,63 @@
-(* L3 x86 assembly 
- * 
- * Provide function call based on l2
+(* L4 x86 assembly 
  *
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
 
 open Core
 module Register = Var.X86_reg.Logic
-module Memory = Var.Memory
 module Label = Util.Label
 module Symbol = Util.Symbol
 module Size = Var.Size
+module Addr = Var.Addr.Wrapper (Var.X86_reg.Hard)
 
-type 'a sized =
-  { data : 'a
-  ; size : Size.primitive
-  }
+module Op = struct
+  type t =
+    | Imm of Int64.t
+    | Reg of Register.t
+    | Addr of Addr.t
 
-type operand_logic =
-  | Imm of Int64.t
-  | Reg of Register.t
-  | Mem of Memory.t
+  let pp = function
+    | Imm i -> Int64.to_string i
+    | Reg r -> Register.pp r
+    | Addr addr -> Addr.pp addr
+  ;;
 
-type operand = operand_logic sized
+  let of_imm i = Imm i
+  let of_reg r = Reg r
+  let of_addr b i s d = Addr (Addr.of_bisd b i s d)
+end
+
+module Sop = Var.Sized.Wrapper (Op)
+
+module Mem = struct
+  include Var.Sized.Wrapper (Addr)
+
+  let to_Sop mem =
+    let b, i, s, d = Addr.get mem.data in
+    let size = mem.size in
+    let addr = Op.of_addr b i s d in
+    Sop.wrap size addr
+  ;;
+end
 
 type instr =
   | Add of
-      { src : operand
-      ; dest : operand
+      { src : Sop.t
+      ; dest : Sop.t
       ; size : Size.primitive
       }
   | Sub of
-      { src : operand
-      ; dest : operand
+      { src : Sop.t
+      ; dest : Sop.t
       ; size : Size.primitive
       }
   | Mul of
-      { src : operand
-      ; dest : operand
+      { src : Sop.t
+      ; dest : Sop.t
       ; size : Size.primitive
-      } (* Destination is form of EDX:EAX by default. Only one operand required. *)
+      } (* Destination is form of EDX:EAX by default. Only one Sop.t required. *)
   | Div of
-      { src : operand
+      { src : Sop.t
       ; size : Size.primitive
       }
   (* temp := EDX:EAX / SRC;
@@ -52,26 +68,26 @@ type instr =
                 EDX := EDX:EAX MOD SRC;
             FI; *)
   | Mod of
-      { src : operand
+      { src : Sop.t
       ; size : Size.primitive
       } (* Similar as above, but use edx after div.*)
   | Cast of
-      { dest : operand
-      ; src : operand
+      { dest : Sop.t
+      ; src : Sop.t
       }
   | Mov of
-      { dest : operand
-      ; src : operand
+      { dest : Sop.t
+      ; src : Sop.t
       ; size : Size.primitive
             (* how many bytes to move from src. size <= dest.size; size <= src.size. *)
       }
   | Cvt of { size : Size.primitive } (*could be cdq, cqo, etc based on size it wants to extend. EDX:EAX := sign-extend of EAX *)
   | Ret
-  | Pop of { var : operand }
-  | Push of { var : operand }
+  | Pop of { var : Sop.t }
+  | Push of { var : Sop.t }
   | Cmp of
-      { lhs : operand
-      ; rhs : operand
+      { lhs : Sop.t
+      ; rhs : Sop.t
       ; size : Size.primitive
       }
   | LAHF (* Load: AH := flags SF ZF xx AF xx PF xx CF *)
@@ -85,63 +101,63 @@ type instr =
   | JLE of Label.t (* Jump if less or equal, <=, ZF = 1 or SF <> OF *)
   | JG of Label.t (* Jump if greater, >, ZF = 0 and SF = OF *)
   | JGE of Label.t (* Jump if greater or equal, >=, SF = OF *)
-  (* SETCC family. Notice it can only set 8-bit operand to register, 
+  (* SETCC family. Notice it can only set 8-bit Sop.t to register, 
    * so it only works for %al, %bl, %cl and %dl. We use %al by default. *)
   | SETE of
       { (* Set byte if equal (ZF=1). size is a placeholder for dest,
          * it can only be BYTE *)
-        dest : operand
+        dest : Sop.t
       ; size : Size.primitive
       }
   | SETNE of
-      { dest : operand
+      { dest : Sop.t
       ; size : Size.primitive
       }
   | SETL of
-      { dest : operand
+      { dest : Sop.t
       ; size : Size.primitive
       }
   | SETLE of
-      { dest : operand
+      { dest : Sop.t
       ; size : Size.primitive
       }
   | SETG of
-      { dest : operand
+      { dest : Sop.t
       ; size : Size.primitive
       }
   | SETGE of
-      { dest : operand
+      { dest : Sop.t
       ; size : Size.primitive
       }
   | AND of
       { (* bitwise and *)
-        src : operand
-      ; dest : operand
+        src : Sop.t
+      ; dest : Sop.t
       ; size : Size.primitive
       }
   | OR of
       { (* bitwise and *)
-        src : operand
-      ; dest : operand
+        src : Sop.t
+      ; dest : Sop.t
       ; size : Size.primitive
       }
   | XOR of
-      { src : operand
-      ; dest : operand
+      { src : Sop.t
+      ; dest : Sop.t
       ; size : Size.primitive
       }
   | SAL of
       { (* Inst size is same as dest. 
-         * Immediate is 8bit, memory/register(%cl) is 16bit *)
-        src : operand
-      ; dest : operand
+         * Immediate is 8bit, Mem/register(%cl) is 16bit *)
+        src : Sop.t
+      ; dest : Sop.t
       ; size : Size.primitive
       }
   | SAR of
       { (* Inst size is same as dest. 
-         * Immediate is 8bit, memory/register(%cl) is 16bit *)
-        src : operand
-      ; dest : operand
+         * Immediate is 8bit, Mem/register(%cl) is 16bit *)
+        src : Sop.t
+      ; dest : Sop.t
       ; size : Size.primitive
       }
   | Fcall of
@@ -164,13 +180,11 @@ type fdefn =
 
 type program = fdefn list
 
-let get_size (operand : operand) : Size.primitive = operand.size
-
-let pp_operand (oprd : operand) =
+let pp_Sop (oprd : Sop.t) =
   match oprd.data with
-  | Imm n -> "$" ^ Int64.to_string n
-  | Reg r -> Register.reg_to_str' r oprd.size
-  | Mem m -> Memory.mem_to_str m
+  | Op.Imm n -> "$" ^ Int64.to_string n
+  | Op.Reg r -> Register.reg_to_str' r oprd.size
+  | Op.Addr addr -> Addr.pp addr
 ;;
 
 let pp_inst (size : Size.primitive) =
@@ -182,7 +196,7 @@ let pp_inst (size : Size.primitive) =
   | `VOID -> ""
 ;;
 
-let pp_inst' (operand : operand) = pp_inst operand.size
+let pp_inst' (operand : Sop.t) = pp_inst operand.size
 
 let pp_scope = function
   | `C0 -> Symbol.c0_prefix
@@ -194,13 +208,13 @@ let pp_scope = function
 let format = function
   (* We use AT&T x86 convention to generate x86 assembly code. *)
   | Add add ->
-    sprintf "add%s %s, %s" (pp_inst add.size) (pp_operand add.src) (pp_operand add.dest)
+    sprintf "add%s %s, %s" (pp_inst add.size) (pp_Sop add.src) (pp_Sop add.dest)
   | Sub sub ->
-    sprintf "sub%s %s, %s" (pp_inst sub.size) (pp_operand sub.src) (pp_operand sub.dest)
+    sprintf "sub%s %s, %s" (pp_inst sub.size) (pp_Sop sub.src) (pp_Sop sub.dest)
   | Mul mul ->
-    sprintf "imul%s %s, %s" (pp_inst mul.size) (pp_operand mul.src) (pp_operand mul.dest)
-  | Div div -> sprintf "idiv%s %s" (pp_inst div.size) (pp_operand div.src)
-  | Mod m -> sprintf "div %s" (pp_operand m.src)
+    sprintf "imul%s %s, %s" (pp_inst mul.size) (pp_Sop mul.src) (pp_Sop mul.dest)
+  | Div div -> sprintf "idiv%s %s" (pp_inst div.size) (pp_Sop div.src)
+  | Mod m -> sprintf "div %s" (pp_Sop m.src)
   | Cvt cvt ->
     (match cvt.size with
     | `VOID | `BYTE -> failwith "nothing to extend for byte/void"
@@ -208,24 +222,24 @@ let format = function
     | `DWORD -> "cdq"
     | `QWORD -> "cqo")
   | Cast cast ->
-    let src_str = pp_operand cast.src in
-    let dest_str = pp_operand cast.dest in
-    let dest_size = get_size cast.dest in
-    let src_size = get_size cast.src in
+    let src_str = pp_Sop cast.src in
+    let dest_str = pp_Sop cast.dest in
+    let dest_size = cast.dest.size in
+    let src_size = cast.src.size in
     if Size.compare (src_size :> Size.t) (dest_size :> Size.t) = 0
     then failwith "cast oprd size match";
     if Size.compare (src_size :> Size.t) (dest_size :> Size.t) < 0
     then (
       match cast.dest.data with
-      | Reg _ -> sprintf "movsxd %s, %s" src_str dest_str
-      | Mem _ -> sprintf "mov%s %s, %s" (pp_inst src_size) src_str dest_str
+      | Op.Reg _ -> sprintf "movsxd %s, %s" src_str dest_str
+      | Op.Addr _ -> sprintf "mov%s %s, %s" (pp_inst src_size) src_str dest_str
       | _ -> failwith "cast dest illegal")
     else (
-      let dest_str = pp_operand { cast.dest with size = cast.src.size } in
+      let dest_str = pp_Sop { cast.dest with size = cast.src.size } in
       sprintf "mov%s %s, %s" (pp_inst src_size) src_str dest_str)
   | Mov mv ->
-    let src_str = pp_operand mv.src in
-    let dest_str = pp_operand mv.dest in
+    let src_str = pp_Sop mv.src in
+    let dest_str = pp_Sop mv.dest in
     let () =
       if Size.compare (mv.src.size :> Size.t) (mv.dest.size :> Size.t) <> 0
       then
@@ -236,22 +250,21 @@ let format = function
           dest_str
       else ()
     in
-    let size = get_size mv.dest in
+    let size = mv.dest.size in
     (match mv.src.data, mv.dest.data with
-    | Imm _, _ | Mem _, _ | Reg _, Reg _ | Reg _, Mem _ ->
+    | Imm _, _ | Addr _, _ | Reg _, Reg _ | Reg _, Addr _ ->
       sprintf "mov%s %s, %s" (pp_inst size) src_str dest_str
     | Reg _, Imm _ -> failwith "invalid move")
   | Ret -> "ret"
   | Push push ->
     (match push.var.data with
-    | Reg r -> sprintf "push %s" (pp_operand { data = Reg r; size = `QWORD })
-    | Mem m -> sprintf "push %s" (pp_operand { data = Mem m; size = `QWORD })
-    | Imm i -> sprintf "push %s" (pp_operand { data = Imm i; size = `QWORD }))
+    | Reg r -> sprintf "push %s" (pp_Sop { data = Reg r; size = `QWORD })
+    | Addr m -> sprintf "push %s" (pp_Sop { data = Addr m; size = `QWORD })
+    | Imm i -> sprintf "push %s" (pp_Sop { data = Imm i; size = `QWORD }))
   | Pop pop ->
     let oprd = { pop.var with size = `QWORD } in
-    sprintf "pop %s" (pp_operand oprd)
-  | Cmp cmp ->
-    sprintf "cmp%s %s, %s" (pp_inst' cmp.lhs) (pp_operand cmp.rhs) (pp_operand cmp.lhs)
+    sprintf "pop %s" (pp_Sop oprd)
+  | Cmp cmp -> sprintf "cmp%s %s, %s" (pp_inst' cmp.lhs) (pp_Sop cmp.rhs) (pp_Sop cmp.lhs)
   | LAHF -> "lahf"
   | SAHF -> "sahf"
   | Label l -> Label.content l
@@ -262,21 +275,20 @@ let format = function
   | JLE jle -> sprintf "jle %s" (Label.name jle)
   | JG jg -> sprintf "jg %s" (Label.name jg)
   | JGE jge -> sprintf "jge %s" (Label.name jge)
-  | SETE sete -> sprintf "sete %s" (pp_operand sete.dest)
-  | SETNE setne -> sprintf "setne %s" (pp_operand setne.dest)
-  | SETL setl -> sprintf "setl %s" (pp_operand setl.dest)
-  | SETLE setle -> sprintf "setle %s" (pp_operand setle.dest)
-  | SETG setg -> sprintf "setg %s" (pp_operand setg.dest)
-  | SETGE setge -> sprintf "setge %s" (pp_operand setge.dest)
-  | AND a ->
-    sprintf "and%s %s, %s" (pp_inst a.size) (pp_operand a.src) (pp_operand a.dest)
-  | OR a -> sprintf "or%s %s, %s" (pp_inst a.size) (pp_operand a.src) (pp_operand a.dest)
+  | SETE sete -> sprintf "sete %s" (pp_Sop sete.dest)
+  | SETNE setne -> sprintf "setne %s" (pp_Sop setne.dest)
+  | SETL setl -> sprintf "setl %s" (pp_Sop setl.dest)
+  | SETLE setle -> sprintf "setle %s" (pp_Sop setle.dest)
+  | SETG setg -> sprintf "setg %s" (pp_Sop setg.dest)
+  | SETGE setge -> sprintf "setge %s" (pp_Sop setge.dest)
+  | AND a -> sprintf "and%s %s, %s" (pp_inst a.size) (pp_Sop a.src) (pp_Sop a.dest)
+  | OR a -> sprintf "or%s %s, %s" (pp_inst a.size) (pp_Sop a.src) (pp_Sop a.dest)
   | XOR xor ->
-    sprintf "xor%s %s, %s" (pp_inst' xor.dest) (pp_operand xor.src) (pp_operand xor.dest)
+    sprintf "xor%s %s, %s" (pp_inst' xor.dest) (pp_Sop xor.src) (pp_Sop xor.dest)
   | SAR sar ->
-    sprintf "sar%s %s, %s" (pp_inst sar.size) (pp_operand sar.src) (pp_operand sar.dest)
+    sprintf "sar%s %s, %s" (pp_inst sar.size) (pp_Sop sar.src) (pp_Sop sar.dest)
   | SAL sal ->
-    sprintf "sal%s %s, %s" (pp_inst sal.size) (pp_operand sal.src) (pp_operand sal.dest)
+    sprintf "sal%s %s, %s" (pp_inst sal.size) (pp_Sop sal.src) (pp_Sop sal.dest)
   | Fcall fcall ->
     sprintf "call %s%s" (pp_scope fcall.scope) (Symbol.name fcall.func_name)
   | Fname fname -> sprintf "%s%s:" (Symbol.pp_scope fname.scope) fname.name

@@ -126,7 +126,7 @@ let[@warning "-8"] gen_ret_rev (Src.Ret ret) (exit_label : Label.t) =
   Dest.Jump { target = exit_label; line } :: mov
 ;;
 
-let param_map (base : Int64.t) (idx : int) : Dest.Op.t =
+let param_map (idx : int) : Dest.Op.t =
   let open Base.Int64 in
   match idx with
   | 0 -> Dest.Op.of_reg RDI
@@ -135,7 +135,7 @@ let param_map (base : Int64.t) (idx : int) : Dest.Op.t =
   | 3 -> Dest.Op.of_reg RCX
   | 4 -> Dest.Op.of_reg R8
   | 5 -> Dest.Op.of_reg R9
-  | _ -> Dest.Op.of_af (base + Size.type_size_byte `QWORD)
+  | _ -> Dest.Op.of_af (Int64.of_int idx - 5L)
 ;;
 
 let set_size (operand : Dest.Sop.t) (size : Size.primitive) : Dest.Sop.t =
@@ -182,23 +182,19 @@ let[@warning "-8"] gen_fcall_rev (Src.Fcall fcall) =
   let args = List.map fcall.args ~f:(fun arg -> trans_operand arg) in
   let x86_regs = (RAX :: caller_saved) @ parameters in
   let defines = List.map x86_regs ~f:(fun r -> Dest.Op.of_reg r) in
-  let base = ref 0L in
   let uses =
-    List.mapi fcall.args ~f:(fun idx arg ->
-        let size = get_size arg in
-        let op = param_map !base idx in
-        base := if idx < 6 then 0L else Base.Int64.( + ) !base (Size.type_size_byte size);
+    List.mapi fcall.args ~f:(fun idx _ ->
+        let op = param_map idx in
         op)
   in
   let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
-  base := 0L;
   let params =
     List.mapi fcall.args ~f:(fun idx arg ->
         let src = trans_operand arg in
         let size = get_size' src in
         if idx < 6
         then (
-          let dest = param_map !base idx in
+          let dest = param_map idx in
           let defines = [ dest ] in
           let uses = [ src.data ] in
           let line = ({ defines; uses; live_out = []; move = true } : Dest.line) in
@@ -390,9 +386,8 @@ let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
 (* Generate assigning parameter passing code. Parameters are passed through
  * registers(first 6 parameters) or memories(rest parameters) during function call. *)
 let gen_pars (pars : St.t list) : Dest.instr list =
-  let base = ref 0L in
   List.mapi pars ~f:(fun idx par ->
-      let src = param_map !base idx in
+      let src = param_map idx in
       let dest = par.data |> Op.of_temp |> Sop.wrap par.size in
       let defines = [ dest.data ] in
       if idx < 6
@@ -411,7 +406,6 @@ let gen_pars (pars : St.t list) : Dest.instr list =
         in
         let load = Mov { dest = temp_sop; src = temp_mem; line = line_load } in
         let line = { defines; uses = [ temp_sop.data ]; live_out = []; move = true } in
-        base := Base.Int64.( + ) !base (Size.type_size_byte `QWORD);
         [ load; Mov { dest; src = temp_sop; line } ]))
   |> List.concat
 ;;

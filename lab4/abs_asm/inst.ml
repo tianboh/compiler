@@ -18,21 +18,18 @@ module Op = struct
     | Temp of Temp.t
     | Reg of Register.t
     | Above_frame of Int64.t
-    | Below_frame of Int64.t
 
   let pp = function
     | Imm n -> "$" ^ Int64.to_string n
     | Temp t -> Temp.name t
     | Reg r -> Register.pp r
     | Above_frame af -> sprintf "%Ld(%%rbp)" af
-    | Below_frame bf -> sprintf "-%Ld(%%rbp)" bf
   ;;
 
   let of_imm i = Imm i
   let of_temp t = Temp t
   let of_reg (reg : Register.t) = Reg reg
   let of_af af = Above_frame af
-  let of_bf bf = Below_frame bf
 end
 
 module Sop : Var.Sized.Sized_Interface with type i = Op.t = Var.Sized.Wrapper (Op)
@@ -155,7 +152,7 @@ let to_int_list (ops : Op.t list) : int list =
       match x with
       | Temp t -> t.id :: acc
       | Reg r -> Register.get_idx r :: acc
-      | Above_frame _ | Below_frame _ | Imm _ -> acc)
+      | Above_frame _ | Imm _ -> acc)
 ;;
 
 let pp_binop = function

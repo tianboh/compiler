@@ -159,8 +159,7 @@ module Lazy = struct
   let trans_operand (operand : Abs_asm.Sop.t) =
     match operand.data with
     | Abs_asm.Op.Temp t -> IG.Vertex.Set.of_list [ IG.Vertex.T.Temp t ]
-    | Abs_asm.Op.Imm _ | Abs_asm.Op.Above_frame _ | Abs_asm.Op.Below_frame _ ->
-      IG.Vertex.Set.empty
+    | Abs_asm.Op.Imm _ | Abs_asm.Op.Above_frame _ -> IG.Vertex.Set.empty
     | Abs_asm.Op.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r ]
   ;;
 
@@ -301,7 +300,7 @@ let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest
         | Some u' ->
           (match u' with
           | Reg r -> Register.get_idx r :: acc
-          | Spill m -> Spill.get_idx m :: acc))
+          | Spill m -> Spill.get_idx16 m :: acc))
   in
   let nbr_int_s = Int.Set.of_list nbr_int_l in
   let black_set = Int.Set.of_list nbr_black_list in

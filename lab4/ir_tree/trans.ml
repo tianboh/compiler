@@ -436,51 +436,68 @@ let[@warning "-8"] trans_asnop acc (TST.Assign asn_tst) need_check (env : env)
     match lhs with
     | Temp var -> [], Sexp.wrap size (Exp.of_t var)
     | Mem mem ->
-      let dest : St.t = St.wrap size (Temp.create ()) in
+      let dest = St.wrap size (Temp.create ()) in
       let stm = [ Tree.Load { src = mem; dest } ] in
       stm, St.to_Sexp dest
   in
-  let p_ip =
-    match asn_tst.op with
-    (* Pure, w.o. effect *)
-    | `Asn | `Plus_asn | `Minus_asn | `Times_asn | `And_asn | `Hat_asn | `Or_asn -> `Pure
-    (* Impure, probably w. effect *)
-    | `Div_asn | `Mod_asn | `Left_shift_asn | `Right_shift_asn -> `Impure
-  in
-  let (op : Tree.binop) =
-    match asn_tst.op with
-    | `Plus_asn -> Plus
-    | `Minus_asn -> Minus
-    | `Times_asn -> Times
-    | `And_asn -> And
-    | `Hat_asn -> Xor
-    | `Or_asn -> Or
-    | `Div_asn -> Divided_by
-    | `Mod_asn -> Modulo
-    | `Left_shift_asn -> Left_shift
-    | `Right_shift_asn -> Right_shift
-  in
-  match lhs with
-  | Temp t ->
-    let dest : St.t = St.wrap size t in
-    (match p_ip with
-    | `Pure ->
-      let src = Sexp.wrap size (Exp.of_binop op (St.to_Sexp dest) rhs) in
+  (* handles pure assign = *)
+  let _trans_assign () =
+    match lhs with
+    | Temp t ->
+      let dest = St.wrap size t in
+      let src = rhs in
       (Tree.Move { dest; src } :: List.rev v_stms) @ acc, env
-    | `Impure ->
-      (Tree.Effect { dest; lhs = St.to_Sexp dest; rhs; op } :: List.rev v_stms) @ acc, env)
-  | Mem dest ->
-    let src, src_stm =
-      match p_ip with
-      | `Pure -> Sexp.wrap size (Exp.of_binop op lhs_temp rhs), []
+    | Mem dest ->
+      let src, src_stm = rhs, [] in
+      ( (((Tree.Store { dest; src } :: src_stm) @ load_stm) @ List.rev v_stms)
+        @ List.rev dest_stms
+        @ acc
+      , env )
+  in
+  (* handles assign with op, like +=, *=, etc. *)
+  let _trans_assign' p_ip op =
+    match lhs with
+    | Temp t ->
+      let dest = St.wrap size t in
+      (match p_ip with
+      | `Pure ->
+        let src = Sexp.wrap size (Exp.of_binop op (St.to_Sexp dest) rhs) in
+        (Tree.Move { dest; src } :: List.rev v_stms) @ acc, env
       | `Impure ->
-        let t = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
-        St.to_Sexp t, [ Tree.Effect { dest = t; lhs = St.to_Sexp t; rhs; op } ]
+        ( (Tree.Effect { dest; lhs = St.to_Sexp dest; rhs; op } :: List.rev v_stms) @ acc
+        , env ))
+    | Mem dest ->
+      let src, src_stm =
+        match p_ip with
+        | `Pure -> Sexp.wrap size (Exp.of_binop op lhs_temp rhs), []
+        | `Impure ->
+          let t = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
+          St.to_Sexp t, [ Tree.Effect { dest = t; lhs = St.to_Sexp t; rhs; op } ]
+      in
+      ( (((Tree.Store { dest; src } :: src_stm) @ load_stm) @ List.rev v_stms)
+        @ List.rev dest_stms
+        @ acc
+      , env )
+  in
+  match asn_tst.op with
+  | `Asn -> _trans_assign ()
+  | _ ->
+    let p_ip, (op : Tree.binop) =
+      match asn_tst.op with
+      (* Pure, w.o. effect *)
+      | `Plus_asn -> `Pure, Plus
+      | `Minus_asn -> `Pure, Minus
+      | `Times_asn -> `Pure, Times
+      | `And_asn -> `Pure, And
+      | `Hat_asn -> `Pure, Xor
+      | `Or_asn -> `Pure, Or
+      (* Impure, probably w. effect *)
+      | `Div_asn -> `Impure, Divided_by
+      | `Mod_asn -> `Impure, Modulo
+      | `Left_shift_asn -> `Impure, Left_shift
+      | `Right_shift_asn -> `Impure, Right_shift
     in
-    ( (((Tree.Store { dest; src } :: src_stm) @ load_stm) @ List.rev v_stms)
-      @ List.rev dest_stms
-      @ acc
-    , env )
+    _trans_assign' p_ip op
 ;;
 
 (* env.vars keep trakcs from variable name to temporary. Two things keep in mind

@@ -4,7 +4,6 @@ module Quad = Quads.Inst
 module Abs = Abs_asm.Inst
 module X86 = X86_asm.Inst
 module Register = Var.X86_reg.Logic
-module Memory = Var.Memory
 module Symbol = Util.Symbol
 module Temp = Var.Temp
 

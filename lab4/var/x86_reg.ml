@@ -223,7 +223,8 @@ module Spill = struct
   ;;
 
   let pp (s : t) : string = sprintf "s%s" (Int.to_string s.id)
-  let get_idx (s : t) : int = s.id
+  let get_idx16 (s : t) : int = s.id
+  let get_idx0 (s : t) : int = s.id - 16
   let get_tot () = IntSet.length !set
   let reset () = set := IntSet.empty
 end
