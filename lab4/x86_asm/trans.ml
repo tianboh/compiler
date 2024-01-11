@@ -39,40 +39,29 @@ module Label = Util.Label
 module IG = Regalloc.Interference_graph
 module Regalloc = Regalloc.Driver
 
+let frame_size = ref 0
+
 let trans_operand (operand : Src.Sop.t) (reg_alloc_info : Regalloc.dest IG.Vertex.Map.t)
-    : Dest.instr list * Dest.Sop.t
+    : Dest.Sop.t
   =
   let size = operand.size in
   match operand.data with
   | Temp t ->
     let dest = IG.Vertex.Map.find_exn reg_alloc_info (IG.Vertex.T.Temp t) in
     (match dest with
-    | Regalloc.Reg r -> [], Dest.Op.of_reg r |> Dest.Sop.wrap size
+    | Regalloc.Reg r -> Dest.Op.of_reg r |> Dest.Sop.wrap size
     | Regalloc.Spill s ->
-      let size = `QWORD in
-      let scale = 8L in
       let id = Reg_spill.get_idx0 s in
-      let base = Reg_hard.wrap size Reg_logic.RSP in
-      let rbp = Reg_logic.RBP in
-      let rbp' = Reg_hard.wrap size rbp in
-      let dest = rbp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-      let src = id |> Int64.of_int |> Dest.Op.of_imm |> Dest.Sop.wrap size in
-      ( [ Dest.Mov { dest; src; size } ]
-      , Dest.Op.of_addr base (Some rbp') (Some scale) None |> Dest.Sop.wrap size ))
-  | Imm i -> [], Dest.Op.of_imm i |> Dest.Sop.wrap size
-  | Reg r -> [], Dest.Op.of_reg r |> Dest.Sop.wrap size
+      id |> Int64.of_int |> Dest.Op.of_stack |> Dest.Sop.wrap size)
+  | Imm i -> Dest.Op.of_imm i |> Dest.Sop.wrap size
+  | Reg r -> Dest.Op.of_reg r |> Dest.Sop.wrap size
   | Above_frame af ->
-    let size = `QWORD in
     let spill_tot = Reg_spill.get_tot () in
-    let idx = Base.Int64.( + ) (Int64.of_int spill_tot) af in
-    let scale = 8L in
-    let rbp = Reg_logic.RBP in
-    let rbp' = Reg_hard.wrap `QWORD rbp in
-    let base = Reg_hard.wrap size Reg_logic.RSP in
-    let dest = rbp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-    let src = idx |> Dest.Op.of_imm |> Dest.Sop.wrap size in
-    ( [ Dest.Mov { dest; src; size } ]
-    , Dest.Op.of_addr base (Some rbp') (Some scale) None |> Dest.Sop.wrap size )
+    let push_bias = 1 in
+    let align_biase = if spill_tot % 2 = 0 then 0 else 1 in
+    let base = spill_tot + push_bias + align_biase in
+    let idx = Base.Int64.( + ) (Int64.of_int base) af in
+    idx |> Dest.Op.of_stack |> Dest.Sop.wrap size
 ;;
 
 let trans_mem (mem : Src.Mem.t) : Dest.Mem.t =
@@ -98,7 +87,7 @@ let abort_label = Util.Label.Handler.sigabrt
 (* Now we provide safe instruction to avoid source and destination are both memory. *)
 let safe_mov (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
-  | Dest.Op.Addr _, Dest.Op.Addr _ ->
+  | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
     [ Dest.Mov { dest = swap; src; size }; Dest.Mov { dest; src = swap; size } ]
   | _ -> [ Mov { dest; src; size } ]
@@ -110,7 +99,7 @@ let safe_cast (dest : Dest.Sop.t) (src : Dest.Sop.t) =
   then []
   else (
     match dest.data, src.data with
-    | Dest.Op.Addr _, Dest.Op.Addr _ ->
+    | Dest.Op.Stack _, Dest.Op.Stack _ ->
       let size = src.size in
       let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
       [ Dest.Mov { dest = swap; src; size }; Dest.Cast { dest; src = swap } ]
@@ -119,7 +108,7 @@ let safe_cast (dest : Dest.Sop.t) (src : Dest.Sop.t) =
 
 let safe_add (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
-  | Dest.Op.Addr _, Dest.Op.Addr _ ->
+  | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
     [ Dest.Mov { dest = swap; src; size }; Dest.Add { dest; src = swap; size } ]
   | _ -> [ Dest.Add { dest; src; size } ]
@@ -127,7 +116,7 @@ let safe_add (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
 
 let safe_sub (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
-  | Dest.Op.Addr _, Dest.Op.Addr _ ->
+  | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
     [ Dest.Mov { dest = swap; src; size }; Dest.Sub { dest; src = swap; size } ]
   | _ -> [ Sub { dest; src; size } ]
@@ -135,7 +124,7 @@ let safe_sub (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
 
 let safe_and (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
-  | Dest.Op.Addr _, Dest.Op.Addr _ ->
+  | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
     [ Dest.Mov { dest = swap; src; size }; Dest.AND { dest; src = swap; size } ]
   | _ -> [ AND { dest; src; size } ]
@@ -143,7 +132,7 @@ let safe_and (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
 
 let safe_or (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
-  | Dest.Op.Addr _, Dest.Op.Addr _ ->
+  | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
     [ Dest.Mov { dest = swap; src; size }; Dest.OR { dest; src = swap; size } ]
   | _ -> [ OR { dest; src; size } ]
@@ -151,7 +140,7 @@ let safe_or (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
 
 let safe_xor (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
-  | Dest.Op.Addr _, Dest.Op.Addr _ ->
+  | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
     [ Dest.Mov { dest = swap; src; size }; Dest.XOR { dest; src = swap; size } ]
   | _ -> [ XOR { dest; src; size } ]
@@ -161,7 +150,7 @@ let safe_xor (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
  * So we can move src to ecx without store ecx value. *)
 let safe_sal (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match src.data with
-  | Reg _ | Dest.Op.Addr _ ->
+  | Reg _ | Dest.Op.Stack _ | Dest.Op.Addr _ ->
     let ecx = Reg_logic.RCX |> Dest.Op.of_reg |> Dest.Sop.wrap `BYTE in
     (* when src is register/memory, SAL can only use %cl to shift. *)
     Dest.Cast { dest = ecx; src } :: [ SAL { dest; src = ecx; size } ]
@@ -172,18 +161,18 @@ let safe_sal (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
  * So we can move src to ecx without store ecx value. *)
 let safe_sar (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match src.data with
-  | Reg _ | Dest.Op.Addr _ ->
+  | Reg _ | Dest.Op.Stack _ | Dest.Op.Addr _ ->
     let ecx = Reg_logic.RCX |> Dest.Op.of_reg |> Dest.Sop.wrap `BYTE in
     (* when src is register/memory, SAR can only use %cl to shift. *)
     Dest.Cast { dest = ecx; src } :: [ SAR { dest; src = ecx; size } ]
   | Imm _ -> [ SAR { dest; src; size = `BYTE } ]
 ;;
 
-let safe_ret (size : Size.primitive) =
-  (* insts = [ "mov %rbp, %rsp"; "pop %rbp"; "ret" ] *)
-  let rbp = Reg_logic.RBP |> Dest.Op.of_reg |> Dest.Sop.wrap size in
+let safe_ret () =
+  let size = `QWORD in
   let rsp = Reg_logic.RSP |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-  [ Dest.Mov { dest = rsp; src = rbp; size }; Dest.Pop { var = rbp }; Dest.Ret ]
+  let fsize = !frame_size |> Int64.of_int |> Dest.Op.of_imm |> Dest.Sop.wrap size in
+  [ Dest.Add { dest = rsp; src = fsize; size = `QWORD }; Dest.Ret ]
 ;;
 
 (* Prepare for conditional jump. *)
@@ -194,7 +183,7 @@ let safe_cmp
     (swap : Dest.Sop.t)
   =
   match lhs.data, rhs.data with
-  | Dest.Op.Addr _, Dest.Op.Addr _ ->
+  | Dest.Op.Stack _, Dest.Op.Stack _ ->
     [ Dest.Mov { dest = swap; src = lhs; size }; Dest.Cmp { lhs = swap; rhs; size } ]
   | _ -> [ Dest.Cmp { lhs; rhs; size } ]
 ;;
@@ -276,45 +265,45 @@ let rec _codegen_w_reg_rev
   match inst_list with
   | [] -> res
   | h :: t ->
-    (* let () = printf "%s\n" (Src.format h) in *)
+    (* printf "src:%s\n" (Src.pp_inst h); *)
     (match h with
     | Binop bin_op ->
-      let dest_insts, dest = trans_operand bin_op.dest reg_alloc_info in
-      let lhs_insts, lhs = trans_operand bin_op.lhs reg_alloc_info in
-      let rhs_insts, rhs = trans_operand bin_op.rhs reg_alloc_info in
+      let dest = trans_operand bin_op.dest reg_alloc_info in
+      let lhs = trans_operand bin_op.lhs reg_alloc_info in
+      let rhs = trans_operand bin_op.rhs reg_alloc_info in
       let insts = gen_x86_inst_bin bin_op.op dest lhs rhs reg_swap in
-      let insts_rev = List.rev (dest_insts @ lhs_insts @ rhs_insts @ insts) in
+      let insts_rev = List.rev insts in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Cast cast ->
       let dest_oprd = Src.St.to_Sop cast.dest in
       let src_oprd = Src.St.to_Sop cast.src in
-      let dest_insts, dest = trans_operand dest_oprd reg_alloc_info in
-      let src_insts, src = trans_operand src_oprd reg_alloc_info in
+      let dest = trans_operand dest_oprd reg_alloc_info in
+      let src = trans_operand src_oprd reg_alloc_info in
       let insts = safe_cast dest src in
-      let insts_rev = List.rev (dest_insts @ src_insts @ insts) in
+      let insts_rev = List.rev insts in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Mov mov ->
-      let dest_insts, dest = trans_operand mov.dest reg_alloc_info in
-      let src_insts, src = trans_operand mov.src reg_alloc_info in
+      let dest = trans_operand mov.dest reg_alloc_info in
+      let src = trans_operand mov.src reg_alloc_info in
       let size = dest.size in
       let insts = safe_mov dest src size in
-      let insts_rev = List.rev (dest_insts @ src_insts @ insts) in
+      let insts_rev = List.rev insts in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Ret _ ->
-      let insts = safe_ret `QWORD in
+      let insts = safe_ret () in
       let insts_rev = List.rev insts in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Label l -> _codegen_w_reg_rev (Dest.Label l.label :: res) t reg_alloc_info reg_swap
     | Jump jp -> _codegen_w_reg_rev (Dest.Jump jp.target :: res) t reg_alloc_info reg_swap
     | CJump cjp ->
-      let lhs_insts, lhs = trans_operand cjp.lhs reg_alloc_info in
-      let rhs_insts, rhs = trans_operand cjp.rhs reg_alloc_info in
+      let lhs = trans_operand cjp.lhs reg_alloc_info in
+      let rhs = trans_operand cjp.rhs reg_alloc_info in
       let size = lhs.size in
       let target_true = cjp.target_true in
       let target_false = cjp.target_false in
       let swap = reg_swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
       let cmp_inst = safe_cmp lhs rhs size swap in
-      let cmp_inst_rev = List.rev (lhs_insts @ rhs_insts @ cmp_inst) in
+      let cmp_inst_rev = List.rev cmp_inst in
       let cjp_inst =
         match cjp.op with
         | Equal_eq -> Dest.JE target_true
@@ -332,13 +321,13 @@ let rec _codegen_w_reg_rev
         reg_alloc_info
         reg_swap
     | Push push ->
-      let var_insts, var = trans_operand push.var reg_alloc_info in
-      let inst_rev = Dest.Push { var } :: var_insts in
-      _codegen_w_reg_rev (inst_rev @ res) t reg_alloc_info reg_swap
+      let var = trans_operand push.var reg_alloc_info in
+      let inst_rev = Dest.Push { var } in
+      _codegen_w_reg_rev (inst_rev :: res) t reg_alloc_info reg_swap
     | Pop pop ->
-      let var_insts, var = trans_operand pop.var reg_alloc_info in
-      let inst_rev = Dest.Pop { var } :: var_insts in
-      _codegen_w_reg_rev (inst_rev @ res) t reg_alloc_info reg_swap
+      let var = trans_operand pop.var reg_alloc_info in
+      let inst_rev = Dest.Pop { var } in
+      _codegen_w_reg_rev (inst_rev :: res) t reg_alloc_info reg_swap
     | Fcall fcall ->
       let scope = fcall.scope in
       let func_name = fcall.func_name in
@@ -349,32 +338,30 @@ let rec _codegen_w_reg_rev
       let size = load.src.size in
       let src_oprd = Dest.Mem.to_Sop src in
       let dest_oprd = Src.St.to_Sop load.dest in
-      let dest_insts, dest = trans_operand dest_oprd reg_alloc_info in
+      let dest = trans_operand dest_oprd reg_alloc_info in
       let insts_rev =
         match dest.data with
-        | Dest.Op.Addr _ ->
+        | Dest.Op.Stack _ ->
           let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
           [ Dest.Mov { dest; src = swap; size }
           ; Dest.Mov { dest = swap; src = src_oprd; size }
           ]
-          @ dest_insts
-        | _ -> Dest.Mov { dest; src = src_oprd; size } :: dest_insts
+        | _ -> [ Dest.Mov { dest; src = src_oprd; size } ]
       in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Store store ->
       let dest = trans_mem store.dest in
       let dest_oprd = Dest.Mem.to_Sop dest in
-      let src_insts, src = trans_operand store.src reg_alloc_info in
+      let src = trans_operand store.src reg_alloc_info in
       let size = src.size in
       let insts_rev =
         match src.data with
-        | Dest.Op.Addr _ ->
+        | Dest.Op.Stack _ ->
           let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
           [ Dest.Mov { dest = dest_oprd; src = swap; size }
           ; Dest.Mov { dest = swap; src; size }
           ]
-          @ src_insts
-        | _ -> Dest.Mov { dest = dest_oprd; src; size } :: src_insts
+        | _ -> [ Dest.Mov { dest = dest_oprd; src; size } ]
       in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Directive _ | Comment _ -> _codegen_w_reg_rev res t reg_alloc_info reg_swap)
@@ -382,9 +369,126 @@ let rec _codegen_w_reg_rev
 
 let abort_handler = [ Dest.Label abort_label; Dest.Abort ]
 
+(* Transform operand with stack to address. *)
+let rec transform (insts_rev : Dest.instr list) (acc : Dest.instr list) : Dest.instr list =
+  let helper (sop : Dest.Sop.t) : Dest.instr list * Dest.Sop.t =
+    match sop.data with
+    | Dest.Op.Stack s ->
+      let reg_size = `QWORD in
+      let base = Reg_logic.RSP |> Reg_hard.wrap reg_size in
+      let index = Reg_logic.RBP |> Reg_hard.wrap reg_size in
+      let addr = Dest.Op.of_addr base (Some index) (Some 8L) None in
+      let mem = Dest.Sop.wrap sop.size addr in
+      let dest = Reg_logic.RBP |> Dest.Op.of_reg |> Dest.Sop.wrap reg_size in
+      let src = s |> Dest.Op.of_imm |> Dest.Sop.wrap reg_size in
+      [ Mov { dest; src; size = reg_size } ], mem
+    | _ -> [], sop
+  in
+  match insts_rev with
+  | [] -> acc
+  | h :: t ->
+    let acc =
+      match h with
+      | Add add ->
+        let src_inst, src = helper add.src in
+        let dest_inst, dest = helper add.dest in
+        src_inst @ dest_inst @ [ Dest.Add { add with dest; src } ] @ acc
+      | Sub sub ->
+        let src_inst, src = helper sub.src in
+        let dest_inst, dest = helper sub.dest in
+        src_inst @ dest_inst @ [ Dest.Sub { sub with dest; src } ] @ acc
+      | Mul mul ->
+        let src_inst, src = helper mul.src in
+        let dest_inst, dest = helper mul.dest in
+        src_inst @ dest_inst @ [ Dest.Mul { mul with dest; src } ] @ acc
+      | Div div ->
+        let src_inst, src = helper div.src in
+        src_inst @ [ Dest.Div { div with src } ] @ acc
+      | Mod m ->
+        let src_inst, src = helper m.src in
+        src_inst @ [ Dest.Mod { m with src } ] @ acc
+      | Cast cast ->
+        let src_inst, src = helper cast.src in
+        let dest_inst, dest = helper cast.dest in
+        src_inst @ dest_inst @ [ Dest.Cast { dest; src } ] @ acc
+      | Mov mov ->
+        let src_inst, src = helper mov.src in
+        let dest_inst, dest = helper mov.dest in
+        src_inst @ dest_inst @ [ Dest.Mov { mov with dest; src } ] @ acc
+      | Cvt cvt -> Cvt cvt :: acc
+      | Ret -> Ret :: acc
+      | Pop pop ->
+        let var_inst, var = helper pop.var in
+        var_inst @ [ Dest.Pop { var } ] @ acc
+      | Push push ->
+        let var_inst, var = helper push.var in
+        var_inst @ [ Dest.Push { var } ] @ acc
+      | Cmp cmp ->
+        let lhs_inst, lhs = helper cmp.lhs in
+        let rhs_inst, rhs = helper cmp.rhs in
+        lhs_inst @ rhs_inst @ [ Dest.Cmp { cmp with lhs; rhs } ] @ acc
+      | LAHF -> LAHF :: acc
+      | SAHF -> SAHF :: acc
+      | Label l -> Label l :: acc
+      | Jump j -> Jump j :: acc
+      | JE je -> JE je :: acc
+      | JNE jne -> JNE jne :: acc
+      | JL jl -> JL jl :: acc
+      | JLE jle -> JLE jle :: acc
+      | JG jg -> JG jg :: acc
+      | JGE jge -> JGE jge :: acc
+      | SETE sete ->
+        let dest_inst, dest = helper sete.dest in
+        dest_inst @ [ Dest.SETE { sete with dest } ] @ acc
+      | SETNE setne ->
+        let dest_inst, dest = helper setne.dest in
+        dest_inst @ [ Dest.SETNE { setne with dest } ] @ acc
+      | SETL setl ->
+        let dest_inst, dest = helper setl.dest in
+        dest_inst @ [ Dest.SETL { setl with dest } ] @ acc
+      | SETLE setle ->
+        let dest_inst, dest = helper setle.dest in
+        dest_inst @ [ Dest.SETLE { setle with dest } ] @ acc
+      | SETG setg ->
+        let dest_inst, dest = helper setg.dest in
+        dest_inst @ [ Dest.SETG { setg with dest } ] @ acc
+      | SETGE setge ->
+        let dest_inst, dest = helper setge.dest in
+        dest_inst @ [ Dest.SETGE { setge with dest } ] @ acc
+      | AND a ->
+        let src_inst, src = helper a.src in
+        let dest_inst, dest = helper a.dest in
+        src_inst @ dest_inst @ [ Dest.AND { a with dest; src } ] @ acc
+      | OR o ->
+        let src_inst, src = helper o.src in
+        let dest_inst, dest = helper o.dest in
+        src_inst @ dest_inst @ [ Dest.OR { o with dest; src } ] @ acc
+      | XOR x ->
+        let src_inst, src = helper x.src in
+        let dest_inst, dest = helper x.dest in
+        src_inst @ dest_inst @ [ Dest.XOR { x with dest; src } ] @ acc
+      | SAL sal ->
+        let src_inst, src = helper sal.src in
+        let dest_inst, dest = helper sal.dest in
+        src_inst @ dest_inst @ [ Dest.SAL { sal with dest; src } ] @ acc
+      | SAR sar ->
+        let src_inst, src = helper sar.src in
+        let dest_inst, dest = helper sar.dest in
+        src_inst @ dest_inst @ [ Dest.SAR { sar with dest; src } ] @ acc
+      | Fcall fcall -> Fcall fcall :: acc
+      | Abort -> Abort :: acc
+      | Fname f -> Fname f :: acc
+      | GDB g -> GDB g :: acc
+      | Directive d -> Directive d :: acc
+      | Comment c -> Comment c :: acc
+    in
+    transform t acc
+;;
+
 let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) option list)
     : Dest.instr list
   =
+  frame_size := 0;
   let size = `QWORD in
   let reg_alloc =
     List.fold reg_alloc_info ~init:IG.Vertex.Map.empty ~f:(fun acc x ->
@@ -395,17 +499,15 @@ let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) opti
           | temp, reg -> IG.Vertex.Map.set acc ~key:temp ~data:reg))
   in
   let reg_swap = Reg_logic.R15 in
-  let res = _codegen_w_reg_rev [] fdefn.body reg_alloc reg_swap |> List.rev in
-  let mem_cnt = 8 * Reg_spill.get_tot () in
-  let mem_cnt = if mem_cnt % 16 = 0 then mem_cnt else mem_cnt + 8 in
+  let mem_cnt = 8 * (1 + Reg_spill.get_tot ()) in
+  let mem_cnt = if mem_cnt % 16 = 8 then mem_cnt else mem_cnt + 8 in
   let mem_cnt_oprd = mem_cnt |> Int64.of_int |> Dest.Op.of_imm |> Dest.Sop.wrap size in
-  (* store rbp and rsp at the beginning of each function *)
-  let rbp = rbp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
+  frame_size := mem_cnt;
+  let res_rev = _codegen_w_reg_rev [] fdefn.body reg_alloc reg_swap in
+  let res = transform res_rev [] in
   let rsp = rsp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
   let scope = (fdefn.scope :> [ `C0 | `Internal | `External ]) in
   [ Dest.Fname { name = fdefn.func_name; scope }
-  ; Dest.Push { var = rbp }
-  ; Dest.Mov { dest = rbp; src = rsp; size }
   ; Dest.Sub { src = mem_cnt_oprd; dest = rsp; size }
   ]
   @ res

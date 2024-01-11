@@ -15,16 +15,20 @@ module Op = struct
     | Imm of Int64.t
     | Reg of Register.t
     | Addr of Addr.t
+    (* Stack memory do not appear in the eventual program *)
+    | Stack of Int64.t
 
   let pp = function
     | Imm i -> Int64.to_string i
     | Reg r -> Register.pp r
     | Addr addr -> Addr.pp addr
+    | Stack s -> sprintf "(%%rsp, %Ld, 8)" s
   ;;
 
   let of_imm i = Imm i
   let of_reg r = Reg r
   let of_addr b i s d = Addr (Addr.of_bisd b i s d)
+  let of_stack s = Stack s
 end
 
 module Sop = Var.Sized.Wrapper (Op)
@@ -185,6 +189,7 @@ let pp_Sop (oprd : Sop.t) =
   | Op.Imm n -> "$" ^ Int64.to_string n
   | Op.Reg r -> Register.reg_to_str' r oprd.size
   | Op.Addr addr -> Addr.pp addr
+  | Op.Stack s -> Op.pp (Op.Stack s)
 ;;
 
 let pp_inst (size : Size.primitive) =
@@ -254,13 +259,15 @@ let format = function
     (match mv.src.data, mv.dest.data with
     | Imm _, _ | Addr _, _ | Reg _, Reg _ | Reg _, Addr _ ->
       sprintf "mov%s %s, %s" (pp_inst size) src_str dest_str
-    | Reg _, Imm _ -> failwith "invalid move")
+    | Reg _, Imm _ -> failwith "invalid move"
+    | _ -> failwith "stack memory should not appear in the program")
   | Ret -> "ret"
   | Push push ->
     (match push.var.data with
     | Reg r -> sprintf "push %s" (pp_Sop { data = Reg r; size = `QWORD })
     | Addr m -> sprintf "push %s" (pp_Sop { data = Addr m; size = `QWORD })
-    | Imm i -> sprintf "push %s" (pp_Sop { data = Imm i; size = `QWORD }))
+    | Imm i -> sprintf "push %s" (pp_Sop { data = Imm i; size = `QWORD })
+    | Stack _ -> failwith "stack memory do not appear in the program")
   | Pop pop ->
     let oprd = { pop.var with size = `QWORD } in
     sprintf "pop %s" (pp_Sop oprd)

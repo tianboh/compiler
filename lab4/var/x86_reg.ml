@@ -19,6 +19,10 @@ module Logic = struct
     | RDI
     | RBP
     | RSP
+    (* Stack pointer. Address pointed to is USED! Check following examples.
+     * Push decrements %rsp and then copies the operand to be tompost on the stack. 
+     * The pop instruction takes one operand, the destination register. 
+     * Pop copies the topmost value to destination and then increments %rsp *)
     | R8
     | R9
     | R10
@@ -226,6 +230,11 @@ module Spill = struct
   let pp (s : t) : string = sprintf "s%s" (Int.to_string s.id)
   let get_idx16 (s : t) : int = s.id
   let get_idx0 (s : t) : int = s.id - 16
-  let get_tot () = IntSet.length !set
+
+  let get_tot () =
+    let tot = IntSet.length !set in
+    tot
+  ;;
+
   let reset () = set := IntSet.empty
 end

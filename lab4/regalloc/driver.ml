@@ -210,14 +210,24 @@ module Lazy = struct
       | Jump _ | Label _ | Directive _ | Comment _ -> collect_vertex t res)
   ;;
 
-  (* BUG: traverse program and use define info to generate mem/reg. *)
   let gen_result_dummy vertex_set =
+    let cnt = ref 16 in
+    let cache = ref Int.Map.empty in
     let vertex_list = IG.Vertex.Set.to_list vertex_set in
     List.map vertex_list ~f:(fun vtx ->
         let dest =
           match vtx with
           | IG.Vertex.T.Reg r -> Reg r
-          | IG.Vertex.T.Temp t -> Spill { id = t.id }
+          | IG.Vertex.T.Temp t ->
+            if Int.Map.mem !cache t.id
+            then (
+              let id = Int.Map.find_exn !cache t.id in
+              Spill (Spill.of_int id))
+            else (
+              let id = !cnt in
+              cache := Int.Map.set !cache ~key:t.id ~data:!cnt;
+              cnt := !cnt + 1;
+              Spill (Spill.of_int id))
         in
         match dest with
         | Spill _ -> Some (vtx, dest)
@@ -354,11 +364,9 @@ let rec gen_result (color : dest IG.Vertex.Map.t) prog =
 ;;
 
 let regalloc (fdefn : Abs_asm.fdefn) : (IG.Vertex.t * dest) option list =
-  Spill.reset ();
-  if Temp.count () > threshold
-  then (
-    let vertex_set = Lazy.collect_vertex fdefn.body IG.Vertex.Set.empty in
-    Lazy.gen_result_dummy vertex_set)
+  let vertex_set = Lazy.collect_vertex fdefn.body IG.Vertex.Set.empty in
+  if IG.Vertex.Set.length vertex_set > threshold
+  then Lazy.gen_result_dummy vertex_set
   else (
     let reginfo_instrs = Program.gen_regalloc_info fdefn.body in
     let adj = Helper.build_graph reginfo_instrs IG.Vertex.Map.empty in
