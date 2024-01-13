@@ -90,13 +90,22 @@ let safe_mov (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
 (* Now we provide safe instruction to avoid source and destination are both memory. *)
 let safe_cast (dest : Dest.Sop.t) (src : Dest.Sop.t) =
   if Size.compare (dest.size :> Size.t) (src.size :> Size.t) = 0
-  then []
+  then [ Dest.Mov { dest; src; size = dest.size } ]
   else (
     match dest.data, src.data with
     | Dest.Op.Stack _, Dest.Op.Stack _ ->
       let size = src.size in
       let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-      [ Dest.Mov { dest = swap; src; size }; Dest.Cast { dest; src = swap } ]
+      let swap_ext = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap dest.size in
+      [ Dest.Mov { dest = swap; src; size }
+      ; Dest.Cast { dest = swap_ext; src = swap }
+      ; Dest.Mov { dest; src = swap_ext; size = dest.size }
+      ]
+    | Dest.Op.Stack _, Dest.Op.Reg r ->
+      let r_ext = r |> Dest.Op.of_reg |> Dest.Sop.wrap dest.size in
+      [ Dest.Cast { dest = r_ext; src = Dest.Op.of_reg r |> Dest.Sop.wrap src.size }
+      ; Dest.Mov { dest; src = r_ext; size = dest.size }
+      ]
     | _ -> [ Dest.Cast { dest; src } ])
 ;;
 
@@ -147,7 +156,7 @@ let safe_sal (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   | Reg _ | Dest.Op.Stack _ | Dest.Op.Addr _ ->
     let ecx = Reg_logic.RCX |> Dest.Op.of_reg |> Dest.Sop.wrap `BYTE in
     (* when src is register/memory, SAL can only use %cl to shift. *)
-    Dest.Cast { dest = ecx; src } :: [ SAL { dest; src = ecx; size } ]
+    [ Dest.Cast { dest = ecx; src }; SAL { dest; src = ecx; size } ]
   | Imm _ -> [ SAL { dest; src; size = `BYTE } ]
 ;;
 
@@ -158,7 +167,7 @@ let safe_sar (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   | Reg _ | Dest.Op.Stack _ | Dest.Op.Addr _ ->
     let ecx = Reg_logic.RCX |> Dest.Op.of_reg |> Dest.Sop.wrap `BYTE in
     (* when src is register/memory, SAR can only use %cl to shift. *)
-    Dest.Cast { dest = ecx; src } :: [ SAR { dest; src = ecx; size } ]
+    [ Dest.Cast { dest = ecx; src }; SAR { dest; src = ecx; size } ]
   | Imm _ -> [ SAR { dest; src; size = `BYTE } ]
 ;;
 

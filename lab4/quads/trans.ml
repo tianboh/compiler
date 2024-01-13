@@ -242,7 +242,7 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
   | Tree.Cast cast ->
     let dest = St.wrap cast.dest.size cast.dest.data in
     let temp = Temp.create () |> St.wrap cast.src.size in
-    let move = munch_exp temp cast.src in
+    let move = munch_exp_acc temp cast.src [] in
     Quads.Cast { dest; src = temp } :: move
   | Tree.Move mv ->
     let size, data = mv.dest.size, mv.dest.data in

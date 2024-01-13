@@ -179,7 +179,7 @@ let check_null (base : Sexp.t) : Tree.stm list =
 let check_bound (base : Sexp.t) (index : Sexp.t) : Tree.stm list * Tree.stm list =
   let zero = Sexp.wrap index.size (Exp.of_int 0L) in
   let null_check = check_null base in
-  let mem_header : Mem.t = Addr.of_bisd base None None (Some (-8L)) |> Mem.wrap `DWORD in
+  let mem_header : Mem.t = Addr.of_bisd base None None (Some (-8L)) |> Mem.wrap `QWORD in
   let arr_size_t = Temp.create () |> Exp.of_t |> Sexp.wrap index.size in
   let arr_size_s = Sexp.to_St arr_size_t in
   let load = [ Tree.Load { src = mem_header; dest = arr_size_s } ] in
@@ -317,7 +317,7 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func =
     Tree.Fcall { dest = Some (Sexp.to_St ptr_c0); func_name; args; scope = `External }
   in
   let header = Mem.wrap size_8 (Addr.of_bisd ptr_c0 None None None) in
-  let store_size = Tree.Store { dest = header; src = nitems } in
+  let store_size = Tree.Store { dest = header; src = { nitems with size = size_8 } } in
   let ptr_c = Temp.create () |> Exp.of_t |> Sexp.wrap size_8 |> Sexp.to_St in
   let c_addr =
     Addr.of_bisd ptr_c0 None None (Some 8L) |> Exp.of_bisd |> Sexp.wrap size_8
@@ -375,7 +375,9 @@ and trans_nth need_check (nth : TST.nth TST.typed) env : Tree.stm list * Sexp.t 
   check_base_size base;
   check_index_size index_exp;
   let index = Temp.create () |> Exp.of_t |> Sexp.wrap `QWORD in
-  let index_stm = Tree.Cast { dest = Sexp.to_St index; src = index_exp } :: index_stm in
+  let index_stm =
+    index_stm @ [ Tree.Cast { dest = Sexp.to_St index; src = index_exp } ]
+  in
   let scale = sizeof_dtype nth.dtype env |> Size.type_size_byte in
   if is_large nth.dtype
   then
