@@ -80,8 +80,6 @@ let rax = Reg_logic.RAX
 let rdx = Reg_logic.RDX
 let rbp = Reg_logic.RBP
 let rsp = Reg_logic.RSP
-
-(* let shift_maximum_bit = Int64.of_int_exn 31 inclusive *)
 let abort_label = Util.Label.Handler.sigabrt
 
 (* Now we provide safe instruction to avoid source and destination are both memory. *)
@@ -376,12 +374,10 @@ let rec transform (insts_rev : Dest.instr list) (acc : Dest.instr list) : Dest.i
     | Dest.Op.Stack s ->
       let reg_size = `QWORD in
       let base = Reg_logic.RSP |> Reg_hard.wrap reg_size in
-      let index = Reg_logic.RBP |> Reg_hard.wrap reg_size in
-      let addr = Dest.Op.of_addr base (Some index) (Some 8L) None in
+      let disp = Base.Int64.( * ) 8L s in
+      let addr = Dest.Op.of_addr base None None (Some disp) in
       let mem = Dest.Sop.wrap sop.size addr in
-      let dest = Reg_logic.RBP |> Dest.Op.of_reg |> Dest.Sop.wrap reg_size in
-      let src = s |> Dest.Op.of_imm |> Dest.Sop.wrap reg_size in
-      [ Mov { dest; src; size = reg_size } ], mem
+      [], mem
     | _ -> [], sop
   in
   match insts_rev with

@@ -195,7 +195,7 @@ module Logic = struct
   ;;
 
   let special_use' = function
-    | 6 | 7 | 15 -> true
+    | 7 | 15 -> true
     | _ -> false
   ;;
 end

@@ -163,6 +163,26 @@ let gen_release (rsp : Dest.Sop.t) (num_par : int) (align_size : int) =
   Dest.Binop { op = Dest.Plus; dest = rsp; lhs = rsp; rhs; line }
 ;;
 
+let gen_param_pass (params : Src.Sop.t list) : Dest.instr list =
+  List.mapi params ~f:(fun idx arg ->
+      let src = trans_operand arg in
+      let size = get_size' src in
+      if idx < 6
+      then (
+        let dest = param_map idx in
+        let defines = [ dest ] in
+        let uses = [ src.data ] in
+        let line = { defines; uses; live_out = []; move = true } in
+        let mov = Dest.Mov { dest = Dest.Sop.wrap size dest; src; line } in
+        mov)
+      else (
+        let defines = [] in
+        let uses = [ src.data ] in
+        let line = { defines; uses; live_out = []; move = false } in
+        let push = Dest.Push { var = src; line } in
+        push))
+;;
+
 let gen_fret (dest : Dest.Sop.t) =
   let defines, uses = [ dest.data ], [ Dest.Op.of_reg RAX ] in
   let line : Dest.line = { defines; uses; live_out = []; move = true } in
@@ -182,43 +202,26 @@ let[@warning "-8"] gen_fcall_rev (Src.Fcall fcall) =
   let args = List.map fcall.args ~f:(fun arg -> trans_operand arg) in
   let x86_regs = (RAX :: caller_saved) @ parameters in
   let defines = List.map x86_regs ~f:(fun r -> Dest.Op.of_reg r) in
-  let uses =
-    List.mapi fcall.args ~f:(fun idx _ ->
-        let op = param_map idx in
-        op)
-  in
-  let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
-  let params =
-    List.mapi fcall.args ~f:(fun idx arg ->
-        let src = trans_operand arg in
-        let size = get_size' src in
-        if idx < 6
-        then (
-          let dest = param_map idx in
-          let defines = [ dest ] in
-          let uses = [ src.data ] in
-          let line = ({ defines; uses; live_out = []; move = true } : Dest.line) in
-          let mov = Dest.Mov { dest = { data = dest; size }; src; line } in
-          mov)
-        else (
-          let defines = [] in
-          let uses = [ src.data ] in
-          let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
-          let push = Dest.Push { var = src; line } in
-          push))
-  in
-  let rsp = RSP |> Sreg.wrap `QWORD in
+  let uses = List.mapi fcall.args ~f:(fun idx _ -> param_map idx) in
+  let line = { defines; uses; live_out = []; move = false } in
+  let par_insts = gen_param_pass fcall.args in
   let fcall = Dest.Fcall { func_name; args; line; scope = fcall.scope } in
-  let align = gen_align rsp in
-  let num_par = List.length params in
+  let num_par = List.length par_insts in
   let need_align = num_par > 6 && num_par % 2 = 1 in
-  let insts = if need_align then (fcall :: params) @ [ align ] else fcall :: params in
   let insts =
     match dest with
-    | None -> insts
+    | None -> fcall :: par_insts
     | Some dest ->
       let ret = gen_fret dest in
-      ret :: insts
+      ret :: fcall :: par_insts
+  in
+  let insts =
+    if need_align
+    then (
+      let rsp = RSP |> Sreg.wrap `QWORD in
+      let align = gen_align rsp in
+      insts @ [ align ])
+    else insts
   in
   let align_size = if need_align then 8 else 0 in
   let rsp_oprd = RSP |> Dest.Op.of_reg |> Dest.Sop.wrap `QWORD in
