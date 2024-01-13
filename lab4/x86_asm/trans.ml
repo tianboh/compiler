@@ -39,8 +39,6 @@ module Label = Util.Label
 module IG = Regalloc.Interference_graph
 module Regalloc = Regalloc.Driver
 
-let frame_size = ref 0
-
 let trans_operand (operand : Src.Sop.t) (reg_alloc_info : Regalloc.dest IG.Vertex.Map.t)
     : Dest.Sop.t
   =
@@ -51,17 +49,15 @@ let trans_operand (operand : Src.Sop.t) (reg_alloc_info : Regalloc.dest IG.Verte
     (match dest with
     | Regalloc.Reg r -> Dest.Op.of_reg r |> Dest.Sop.wrap size
     | Regalloc.Spill s ->
-      let id = Reg_spill.get_idx0 s in
-      id |> Int64.of_int |> Dest.Op.of_stack |> Dest.Sop.wrap size)
+      let id = Reg_spill.get_idx1 s in
+      -id |> Int64.of_int |> Dest.Op.of_stack Reg_logic.RBP |> Dest.Sop.wrap size)
   | Imm i -> Dest.Op.of_imm i |> Dest.Sop.wrap size
   | Reg r -> Dest.Op.of_reg r |> Dest.Sop.wrap size
   | Above_frame af ->
-    let spill_tot = Reg_spill.get_tot () in
+    (* bias for push %rbp at callee *)
     let push_bias = 1 in
-    let align_biase = if spill_tot % 2 = 0 then 0 else 1 in
-    let base = spill_tot + push_bias + align_biase in
-    let idx = Base.Int64.( + ) (Int64.of_int base) af in
-    idx |> Dest.Op.of_stack |> Dest.Sop.wrap size
+    let idx = Base.Int64.( + ) (Int64.of_int push_bias) af in
+    idx |> Dest.Op.of_stack Reg_logic.RBP |> Dest.Sop.wrap size
 ;;
 
 let trans_mem (mem : Src.Mem.t) : Dest.Mem.t =
@@ -169,8 +165,8 @@ let safe_sar (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
 let safe_ret () =
   let size = `QWORD in
   let rsp = Reg_logic.RSP |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-  let fsize = !frame_size |> Int64.of_int |> Dest.Op.of_imm |> Dest.Sop.wrap size in
-  [ Dest.Add { dest = rsp; src = fsize; size = `QWORD }; Dest.Ret ]
+  let rbp = Reg_logic.RBP |> Dest.Op.of_reg |> Dest.Sop.wrap size in
+  [ Dest.Mov { dest = rsp; src = rbp; size }; Pop { var = rbp }; Dest.Ret ]
 ;;
 
 (* Prepare for conditional jump. *)
@@ -373,8 +369,8 @@ let rec transform (insts_rev : Dest.instr list) (acc : Dest.instr list) : Dest.i
     match sop.data with
     | Dest.Op.Stack s ->
       let reg_size = `QWORD in
-      let base = Reg_logic.RSP |> Reg_hard.wrap reg_size in
-      let disp = Base.Int64.( * ) 8L s in
+      let base = Reg_logic.RBP |> Reg_hard.wrap reg_size in
+      let disp = Base.Int64.( * ) 8L s.index in
       let addr = Dest.Op.of_addr base None None (Some disp) in
       let mem = Dest.Sop.wrap sop.size addr in
       [], mem
@@ -484,7 +480,6 @@ let rec transform (insts_rev : Dest.instr list) (acc : Dest.instr list) : Dest.i
 let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) option list)
     : Dest.instr list
   =
-  frame_size := 0;
   let size = `QWORD in
   let reg_alloc =
     List.fold reg_alloc_info ~init:IG.Vertex.Map.empty ~f:(fun acc x ->
@@ -495,16 +490,18 @@ let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) opti
           | temp, reg -> IG.Vertex.Map.set acc ~key:temp ~data:reg))
   in
   let reg_swap = Reg_logic.R15 in
-  let mem_cnt = 8 * (1 + Reg_spill.get_tot ()) in
-  let mem_cnt = if mem_cnt % 16 = 8 then mem_cnt else mem_cnt + 8 in
+  let mem_cnt = 8 * Reg_spill.get_tot () in
+  let mem_cnt = if mem_cnt % 16 = 0 then mem_cnt else mem_cnt + 8 in
   let mem_cnt_oprd = mem_cnt |> Int64.of_int |> Dest.Op.of_imm |> Dest.Sop.wrap size in
-  frame_size := mem_cnt;
   let res_rev = _codegen_w_reg_rev [] fdefn.body reg_alloc reg_swap in
   let res = transform res_rev [] in
   let rsp = rsp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
+  let rbp = rbp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
   let scope = (fdefn.scope :> [ `C0 | `Internal | `External ]) in
   [ Dest.Fname { name = fdefn.func_name; scope }
-  ; Dest.Sub { src = mem_cnt_oprd; dest = rsp; size }
+  ; Push { var = rbp }
+  ; Mov { dest = rbp; src = rsp; size }
+  ; Sub { src = mem_cnt_oprd; dest = rsp; size }
   ]
   @ res
 ;;

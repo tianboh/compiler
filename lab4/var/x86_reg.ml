@@ -195,7 +195,7 @@ module Logic = struct
   ;;
 
   let special_use' = function
-    | 7 | 15 -> true
+    | 6 | 7 | 15 -> true
     | _ -> false
   ;;
 end
@@ -230,6 +230,7 @@ module Spill = struct
   let pp (s : t) : string = sprintf "s%s" (Int.to_string s.id)
   let get_idx16 (s : t) : int = s.id
   let get_idx0 (s : t) : int = s.id - 16
+  let get_idx1 (s : t) : int = s.id - 15
 
   let get_tot () =
     let tot = IntSet.length !set in

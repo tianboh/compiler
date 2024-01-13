@@ -16,19 +16,22 @@ module Op = struct
     | Reg of Register.t
     | Addr of Addr.t
     (* Stack memory do not appear in the eventual program *)
-    | Stack of Int64.t
+    | Stack of
+        { index : Int64.t
+        ; reg : Register.t
+        }
 
   let pp = function
     | Imm i -> Int64.to_string i
     | Reg r -> Register.pp r
     | Addr addr -> Addr.pp addr
-    | Stack s -> sprintf "(%%rsp, %Ld, 8)" s
+    | Stack s -> sprintf "(%s, %Ld, 8)" (Register.reg_to_str' s.reg `QWORD) s.index
   ;;
 
   let of_imm i = Imm i
   let of_reg r = Reg r
   let of_addr b i s d = Addr (Addr.of_bisd b i s d)
-  let of_stack s = Stack s
+  let of_stack reg index = Stack { index; reg }
 end
 
 module Sop = Var.Sized.Wrapper (Op)
