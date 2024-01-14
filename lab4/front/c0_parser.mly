@@ -142,6 +142,8 @@ gdecl :
       { Cst.Sdecl { struct_name = var } }
   | Struct; var = VIdent; L_brace; fields = field_list; R_brace;  Semicolon
       { Cst.Sdefn { struct_name = var; fields = fields; } }
+  | Struct; var = TIdent; L_brace; fields = field_list; R_brace;  Semicolon
+      { Cst.Sdefn { struct_name = var; fields = fields; } }
 
 field : 
   | t = dtype; var = id_or_type; Semicolon
