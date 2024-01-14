@@ -120,6 +120,19 @@ let is_big t =
   | _ -> false
 ;;
 
+let tc_big (dtype : AST.dtype) : unit =
+  match dtype with
+  | `Struct _ -> failwith "function return cannot be big type"
+  | _ -> ()
+;;
+
+let rec tc_void (dtype : AST.dtype) : unit =
+  match dtype with
+  | `Void -> failwith "cannot declare void type"
+  | `Pointer p -> tc_void p
+  | _ -> ()
+;;
+
 (* Check match between variable and assign operator. 
  * For now, only check assign with operation, like +=, -=, |=, >>= etc.
  * These assign operator should only deal with integer. *)
@@ -169,6 +182,8 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
     | `Equal_eq | `Not_eq ->
       let lhs = tc_exp binop.lhs env in
       let rhs = tc_exp binop.rhs env in
+      tc_big lhs.dtype;
+      tc_big rhs.dtype;
       if type_cmp lhs.dtype rhs.dtype && not (type_cmp lhs.dtype `Void)
       then { data = `Binop { op = binop.op; lhs; rhs }; dtype = `Bool }
       else error ~msg:"Polyeq operands type mismatch" loc
@@ -302,6 +317,7 @@ let rec tc_stm (ast : AST.mstm) (env : env) (func_name : Symbol.t) : TST.stm * e
   | AST.Declare decl_ast -> tc_declare (AST.Declare decl_ast) loc env func_name
   | AST.Sexp sexp ->
     let tsexp = tc_exp sexp env in
+    tc_big tsexp.dtype;
     TST.Sexp tsexp, env
   | AST.Assert aexp ->
     let tasrt = tc_exp aexp env in
@@ -351,6 +367,8 @@ and[@warning "-8"] tc_assign (AST.Assign asn_ast) (env : env) loc : TST.stm * en
   let asn_tst = TST.Assign { name; value; op = asn_ast.op } in
   let var_type = name.dtype in
   let val_type = value.dtype in
+  tc_big var_type;
+  tc_big val_type;
   if (not (type_cmp val_type var_type)) || type_cmp val_type `Void
   then error ~msg:(sprintf "var type and exp type mismatch/exp type void") loc;
   if not (op_cmp var_type asn_ast.op) then error ~msg:"operand and operator mismatch" None;
@@ -404,7 +422,8 @@ and[@warning "-8"] tc_declare (AST.Declare decl) loc env func_name =
   let decl_type, decl_name, tail = decl.t, decl.name, decl.tail in
   if type_cmp decl_type `Void
   then error ~msg:(sprintf "cannot declare var with void") None;
-  if is_big decl_type then error ~msg:(sprintf "cannot declare big type") None;
+  tc_big decl_type;
+  tc_void decl_type;
   if Map.mem env.vars decl_name then error ~msg:(sprintf "Redeclare a variable ") loc;
   let vars', value =
     match decl.value with
@@ -576,9 +595,11 @@ let rec _typecheck (ast : AST.gdecl list) (tst : TST.program) env =
     let env = { env with vars = Map.empty } in
     (match h with
     | Fdecl fdecl ->
+      tc_big fdecl.ret_type;
       let env = tc_fdecl (Fdecl fdecl) env in
       _typecheck t tst env
     | Fdefn fdefn ->
+      tc_big fdefn.ret_type;
       let fdefn_tst, env = tc_fdefn (Fdefn fdefn) env in
       _typecheck t (fdefn_tst :: tst) env
     | Typedef _ -> _typecheck t tst env
