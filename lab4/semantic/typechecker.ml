@@ -475,10 +475,7 @@ let tc_sdecl (sname : Symbol.t) (env : env) : env =
   let s = { fields = []; state = Decl; order = 0 } in
   match Map.find env.structs sname with
   | None -> { env with structs = Map.add_exn env.structs ~key:sname ~data:s }
-  | Some s ->
-    if phys_equal s.state Defn
-    then error ~msg:"cannot decl struct after defined" None
-    else env
+  | Some _ -> env
 ;;
 
 let tc_sdefn (sname : Symbol.t) (fields : AST.field list) (env : env) : env =
