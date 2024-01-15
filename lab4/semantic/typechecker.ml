@@ -129,7 +129,7 @@ let tc_big (dtype : AST.dtype) : unit =
 let rec tc_void (dtype : AST.dtype) : unit =
   match dtype with
   | `Void -> failwith "cannot declare void type"
-  | `Pointer p -> tc_void p
+  | `Pointer t | `Array t -> tc_void t
   | _ -> ()
 ;;
 
@@ -270,6 +270,12 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
   in
   let[@warning "-8"] tc_alloc_arr (AST.Alloc_arr alloc_arr) : TST.texp =
     let nitems = tc_exp alloc_arr.e env in
+    (match alloc_arr.t with
+    | `Int | `Bool | `Pointer _ | `Array _ -> ()
+    | `Void | `NULL -> error ~msg:"cannot alloc_arr void/null." loc
+    | `Struct s ->
+      let s' = Map.find_exn env.structs s in
+      if not (phys_equal s'.state Defn) then error ~msg:"alloc_arr undefined struct" loc);
     match nitems.dtype with
     | `Int ->
       { data = `Alloc_arr { etype = alloc_arr.t; nitems }; dtype = `Array alloc_arr.t }
@@ -347,9 +353,13 @@ and trans_lvalue (lv : AST.lvalue) (env : env) : TST.texp =
     | _ -> failwith "deref expect a pointer")
   | LVNth lvnth ->
     let tarr = trans_lvalue (Mark.data lvnth.arr) env in
-    let index = tc_exp lvnth.index env in
     (match tarr.dtype with
-    | `Array arr -> { data = `Nth { arr = tarr; index }; dtype = arr }
+    | `Array arr ->
+      let index = tc_exp lvnth.index env in
+      (match index.dtype with
+      | `Int -> ()
+      | _ -> failwith "expect array index to be int.");
+      { data = `Nth { arr = tarr; index }; dtype = arr }
     | _ -> failwith "array access expect array type")
 
 (* Check following
@@ -420,8 +430,6 @@ and tc_while cond body loc env func_name =
  * as return type for a function. *)
 and[@warning "-8"] tc_declare (AST.Declare decl) loc env func_name =
   let decl_type, decl_name, tail = decl.t, decl.name, decl.tail in
-  if type_cmp decl_type `Void
-  then error ~msg:(sprintf "cannot declare var with void") None;
   tc_big decl_type;
   tc_void decl_type;
   if Map.mem env.vars decl_name then error ~msg:(sprintf "Redeclare a variable ") loc;
