@@ -50,6 +50,8 @@ type ldest =
   | Mem of Mem.t
   | Temp of Temp.t
 
+let alignment = ref Map.empty
+
 (* Return the alignment requirement for data type
  * Struct alignment depends on the strictest(largest) field *)
 let rec align (dtype : TST.dtype) (env : env) : Size.t =
@@ -61,12 +63,19 @@ let rec align (dtype : TST.dtype) (env : env) : Size.t =
   | `Pointer _ -> `QWORD
   | `Array _ -> `QWORD
   | `Struct sname ->
-    let s = Map.find_exn env.structs sname in
-    let m = Map.map s.fields ~f:(fun field -> align field.dtype env) in
-    let l = Map.data m in
-    (match List.max_elt l ~compare:Size.compare with
-    | Some s -> s
-    | None -> `VOID)
+    if Map.mem !alignment sname
+    then Map.find_exn !alignment sname
+    else (
+      let s = Map.find_exn env.structs sname in
+      let m = Map.map s.fields ~f:(fun field -> align field.dtype env) in
+      let l = Map.data m in
+      let ret =
+        match List.max_elt l ~compare:Size.compare with
+        | Some s -> s
+        | None -> `VOID
+      in
+      alignment := Map.set !alignment ~key:sname ~data:ret;
+      ret)
 ;;
 
 (* Only struct is large type in C0, others are stored on stack
@@ -298,10 +307,29 @@ let trans_alloc (alloc : TST.alloc) env =
   [ Tree.Fcall { dest = Some ptr; func_name; args; scope = `External } ], St.to_Sexp ptr
 ;;
 
-let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func =
+(* alloc size should >= 0 *)
+let check_alloc_arr (size : Sexp.t) : Tree.stm list =
+  let lhs, op, rhs = size, Tree.Greater_eq, Sexp.wrap `DWORD (Exp.of_int 0L) in
+  check_index_size size;
+  let target_true = Label.label (Some "arr_size_legal") in
+  let target_false = Label.label (Some "arr_size_illegal") in
+  [ Tree.CJump { lhs; op; rhs; target_true; target_false }
+  ; Tree.Label target_false
+  ; Tree.Fcall
+      { dest = None
+      ; func_name = Symbol.Fname.raise
+      ; args = [ Sexp.wrap `DWORD (Exp.of_int Symbol.Fname.usr2) ]
+      ; scope = `Internal
+      }
+  ; Tree.Label target_true
+  ]
+;;
+
+let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func need_check =
   (* C0 array has 8 byte header to store the array length. But it only take DWORD for the size.
    * To access it, use base + disp. Base is the start addr for array. *)
   let stms, (nitems : Sexp.t) = trans_func alloc_arr.nitems env in
+  let check = if need_check then check_alloc_arr nitems else [] in
   let size_4 = nitems.size in
   let esize = sizeof_dtype alloc_arr.etype env |> Size.type_size_byte in
   let func_name = Symbol.Fname.calloc in
@@ -323,7 +351,7 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func =
     Addr.of_bisd ptr_c0 None None (Some 8L) |> Exp.of_bisd |> Sexp.wrap size_8
   in
   let move = Tree.Move { dest = ptr_c; src = c_addr } in
-  stms @ [ alloc; store_size; move ], St.to_Sexp ptr_c
+  stms @ check @ [ alloc; store_size; move ], St.to_Sexp ptr_c
 ;;
 
 let trans_mem
@@ -350,17 +378,13 @@ let[@warning "-8"] rec trans_exp (need_check : bool) (exp_tst : TST.texp) (env :
     trans_dot need_check ({ data = dot; dtype = exp_tst.dtype } : TST.dot TST.typed) env
   | `Nth nth ->
     trans_nth need_check ({ data = nth; dtype = exp_tst.dtype } : TST.nth TST.typed) env
-  | `Deref deref ->
-    let base_stm, base = trans_exp need_check deref.ptr env in
-    check_base_size base;
-    let load, dest = trans_mem base None None None size in
-    let check = if need_check then check_null base else [] in
-    base_stm @ check @ load, dest
+  | `Deref deref -> trans_deref need_check deref.ptr env size
   | `Binop binop -> trans_exp_bin binop env (trans_exp need_check)
   | `Terop terop -> trans_terop terop env (trans_exp need_check)
   | `Fcall fcall -> trans_fcall fcall env (trans_exp need_check)
   | `Alloc alloc -> trans_alloc alloc env
-  | `Alloc_arr alloc_arr -> trans_alloc_arr alloc_arr env (trans_exp need_check)
+  | `Alloc_arr alloc_arr ->
+    trans_alloc_arr alloc_arr env (trans_exp need_check) need_check
   | `Var id ->
     let var = Map.find_exn env.vars id in
     [], Sexp.wrap size (Exp.of_t var.temp)
@@ -368,6 +392,13 @@ let[@warning "-8"] rec trans_exp (need_check : bool) (exp_tst : TST.texp) (env :
   | `True -> [], Sexp.wrap size (Exp.of_int 1L)
   | `False -> [], Sexp.wrap size (Exp.of_int 0L)
   | `NULL -> [], Sexp.wrap size (Exp.of_int 0L)
+
+and trans_deref need_check ptr env size =
+  let base_stm, base = trans_exp need_check ptr env in
+  check_base_size base;
+  let load, dest = trans_mem base None None None size in
+  let check = if need_check then check_null base else [] in
+  base_stm @ check @ load, dest
 
 and trans_nth need_check (nth : TST.nth TST.typed) env : Tree.stm list * Sexp.t =
   let base_stm, base = trans_exp need_check nth.data.arr env in
@@ -379,15 +410,15 @@ and trans_nth need_check (nth : TST.nth TST.typed) env : Tree.stm list * Sexp.t 
     index_stm @ [ Tree.Cast { dest = Sexp.to_St index; src = index_exp } ]
   in
   let scale = sizeof_dtype nth.dtype env |> Size.type_size_byte in
+  let base_check, bound_check = if need_check then check_bound base index else [], [] in
   if is_large nth.dtype
   then
-    ( base_stm @ index_stm
+    ( base_stm @ base_check @ index_stm @ bound_check
     , Addr.of_bisd base (Some index) (Some scale) None |> Exp.of_bisd |> Sexp.wrap `QWORD
     )
   else (
     let size = sizeof_dtype' nth.dtype in
     let load, dest = trans_mem base (Some index) (Some scale) None size in
-    let base_check, bound_check = if need_check then check_bound base index else [], [] in
     base_stm @ base_check @ index_stm @ bound_check @ load, dest)
 
 and trans_dot need_check (dot : TST.dot TST.typed) env : Tree.stm list * Sexp.t =
@@ -404,12 +435,12 @@ and trans_dot need_check (dot : TST.dot TST.typed) env : Tree.stm list * Sexp.t 
     | _ -> failwith "hmmm, should not happen"
   in
   check_base_size base;
+  let check = if need_check then check_null base else [] in
   if is_large dot.dtype
-  then base_stm, Sexp.wrap `QWORD (Exp.of_binop Plus base offset)
+  then base_stm @ check, Sexp.wrap `QWORD (Exp.of_binop Plus base offset)
   else (
     let size = sizeof_dtype' dot.dtype in
     let load, dest = trans_mem base (Some offset) (Some 1L) None size in
-    let check = if need_check then check_null base else [] in
     base_stm @ check @ load, dest)
 ;;
 
