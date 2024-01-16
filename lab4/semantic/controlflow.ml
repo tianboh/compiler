@@ -195,7 +195,7 @@ let rec cf_stm (ast : AST.mstm) (env : env) : env =
     cf_lvalue asn_ast.name env asn_ast.op;
     (match Mark.data asn_ast.name with
     | Ident var -> { env with var_def = Set.add env.var_def var }
-    | LVDot _ | LVDeref _ | LVNth _ -> env)
+    | LVDot _ | LVNth _ | LVDeref _ -> env)
   | If if_ast ->
     cf_exp if_ast.cond env;
     let env1 = cf_stm if_ast.true_stm env in

@@ -381,7 +381,7 @@ and trans_nth need_check (nth : TST.nth TST.typed) env : Tree.stm list * Sexp.t 
   let scale = sizeof_dtype nth.dtype env |> Size.type_size_byte in
   if is_large nth.dtype
   then
-    ( base_stm
+    ( base_stm @ index_stm
     , Addr.of_bisd base (Some index) (Some scale) None |> Exp.of_bisd |> Sexp.wrap `QWORD
     )
   else (
