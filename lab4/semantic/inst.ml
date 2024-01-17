@@ -7,6 +7,7 @@
  *
  * Forward compatible fragment of C0
  *)
+[@@@warning "-30"]
 
 open Core
 module Symbol = Util.Symbol
@@ -30,6 +31,11 @@ type binop =
   | `Less
   | `Less_eq
   | `Not_eq
+  ]
+
+type postop =
+  [ `Plus_plus
+  | `Minus_minus
   ]
 
 type asnop =
@@ -68,6 +74,7 @@ type exp =
   | `False
   | `Binop of binexp
   | `Terop of terexp
+  | `Postop of postexp
   | `Fcall of fcall
   | `Dot of dot
   | `Deref of deref
@@ -87,6 +94,11 @@ and terexp =
   { cond : texp
   ; true_exp : texp
   ; false_exp : texp
+  }
+
+and postexp =
+  { operand : texp
+  ; op : postop
   }
 
 and fcall =
@@ -177,16 +189,6 @@ module Print = struct
     | `Struct s -> "struct " ^ Symbol.name s
   ;;
 
-  (* let rec pp_dtype' = function
-    | `Int -> "int"
-    | `Bool -> "bool"
-    | `Void -> "void"
-    | `Pointer ptr -> pp_dtype ptr
-    | `Array arr -> pp_dtype arr ^ "[]"
-    | `NULL -> "NULL"
-    | `Struct s -> "struct " ^ Symbol.name s
-  ;; *)
-
   let pp_binop = function
     | `Plus -> "+"
     | `Minus -> "-"
@@ -207,6 +209,11 @@ module Print = struct
     | `Not_eq -> "!="
   ;;
 
+  let pp_postop = function
+    | `Plus_plus -> "++"
+    | `Minus_minus -> "--"
+  ;;
+
   let rec pp_exp : exp -> string = function
     | `Var id -> Symbol.name id
     | `Const_int c -> Int32.to_string c
@@ -220,6 +227,7 @@ module Print = struct
         (pp_texp terop.cond)
         (pp_texp terop.true_exp)
         (pp_texp terop.false_exp)
+    | `Postop pop -> sprintf "%s%s" (pp_texp pop.operand) (pp_postop pop.op)
     | `Fcall (fcall : fcall) ->
       sprintf
         "%s(%s)"

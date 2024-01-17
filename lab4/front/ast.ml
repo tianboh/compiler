@@ -54,6 +54,11 @@ type asnop =
   | `Right_shift_asn
   ]
 
+type postop =
+  [ `Plus_plus
+  | `Minus_minus
+  ]
+
 type dtype =
   [ `Int
   | `Bool
@@ -92,6 +97,10 @@ and exp =
       { cond : mexp
       ; true_exp : mexp
       ; false_exp : mexp
+      }
+  | Postop of
+      { operand : mexp
+      ; op : postop
       }
   | Fcall of
       { func_name : Symbol.t
@@ -219,6 +228,11 @@ module Print = struct
     | `Not_eq -> "!="
   ;;
 
+  let pp_postop = function
+    | `Plus_plus -> "++"
+    | `Minus_minus -> "--"
+  ;;
+
   let rec pp_exp = function
     | Var id -> Symbol.name id
     | Const_int c -> Int32.to_string c
@@ -232,6 +246,7 @@ module Print = struct
         (pp_mexp terop.cond)
         (pp_mexp terop.true_exp)
         (pp_mexp terop.false_exp)
+    | Postop postop -> sprintf "%s%s" (pp_mexp postop.operand) (pp_postop postop.op)
     | Fcall fcall ->
       sprintf
         "%s(%s)"

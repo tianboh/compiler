@@ -74,6 +74,7 @@ type asnop =
   | Right_shift_asn
 
 type exp =
+  | Par of mexp (* Parenthesis *)
   | Var of Symbol.t
   | Const_int of Int32.t
   | True
@@ -85,6 +86,10 @@ type exp =
       }
   | Unop of
       { op : unop
+      ; operand : mexp
+      }
+  | Postop of
+      { op : postop
       ; operand : mexp
       }
   | Terop of
@@ -175,9 +180,7 @@ and control =
   | Assert of mexp
 
 and mstm = stm Mark.t
-
 and mstms = mstm list
-
 and block = mstms
 
 type param =
@@ -246,6 +249,11 @@ module Print = struct
     | Dash_mark -> "~"
   ;;
 
+  let pp_postop = function
+    | Plus_plus -> "++"
+    | Minus_minus -> "--"
+  ;;
+
   let pp_asnop = function
     | Asn -> "="
     | Plus_asn -> "+="
@@ -261,11 +269,14 @@ module Print = struct
   ;;
 
   let rec pp_exp = function
+    | Par par -> sprintf "(%s)" (pp_mexp par)
     | Var id -> Symbol.name id
     | Const_int c -> Int32.to_string c
     | True -> "True"
     | False -> "False"
     | Unop unop -> sprintf "%s(%s)" (pp_unop unop.op) (pp_mexp unop.operand)
+    | Postop postop ->
+      sprintf "operand:%s, op:%s" (pp_mexp postop.operand) (pp_postop postop.op)
     | Binop binop ->
       sprintf "(%s %s %s)" (pp_mexp binop.lhs) (pp_binop binop.op) (pp_mexp binop.rhs)
     | Terop ter_exp ->

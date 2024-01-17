@@ -210,6 +210,12 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
         else { data = `Terop { cond; true_exp; false_exp }; dtype = true_exp.dtype }
       else error ~msg:"Terop true & false exp type mismatch" loc
   in
+  let[@warning "-8"] tc_pop (AST.Postop pop) : TST.texp =
+    let operand = tc_exp pop.operand env in
+    let op = pop.op in
+    let data : TST.postexp = { operand; op } in
+    { data = `Postop data; dtype = operand.dtype }
+  in
   let[@warning "-8"] tc_fcall (AST.Fcall fcall) : TST.texp =
     let func_name = fcall.func_name in
     if Map.mem env.vars func_name || not (Map.mem env.funcs func_name)
@@ -288,6 +294,7 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
   | False -> { data = `False; dtype = `Bool }
   | Binop binop -> tc_binop (Binop binop)
   | Terop terop -> tc_terop (Terop terop)
+  | Postop pop -> tc_pop (Postop pop)
   | Fcall fcall -> tc_fcall (Fcall fcall)
   | EDot edot -> tc_edot (EDot edot)
   | EDeref ederef -> tc_ederef (EDeref ederef)

@@ -81,6 +81,12 @@ let elab_asnop (asnop : Cst.asnop) : Ast.asnop =
   | Right_shift_asn -> `Right_shift_asn
 ;;
 
+let[@warning "-27"] elab_postop (op : Cst.postop) : Ast.postop =
+  match op with
+  | Plus_plus -> `Plus_plus
+  | Minus_minus -> `Minus_minus
+;;
+
 (* 
  * CST exp -> AST exp
  * 1) Remove unary op in AST, including -, !, and ~
@@ -88,6 +94,7 @@ let elab_asnop (asnop : Cst.asnop) : Ast.asnop =
  * in AST, including && and ||
  *)
 let rec elab_exp = function
+  | Cst.Par par -> elab_exp (Mark.data par)
   | Cst.Var var ->
     if Symbol.Map.mem !ct2pt var then error ~msg:"exp name conflict with typename" None;
     Ast.Var var
@@ -96,6 +103,13 @@ let rec elab_exp = function
   | Cst.False -> Ast.False
   | Cst.Binop binop -> elab_binop binop.op binop.lhs binop.rhs
   | Cst.Unop unop -> elab_unop unop.op unop.operand
+  | Cst.Postop postop ->
+    (match Mark.data postop.operand with
+    | Cst.Deref _ -> failwith "deref with postop is ambiguous"
+    | _ ->
+      let operand = elab_mexp postop.operand in
+      let op = elab_postop postop.op in
+      Ast.Postop { operand; op })
   | Cst.Terop terop -> elab_terop terop.cond terop.true_exp terop.false_exp
   | Cst.Fcall fcall ->
     Ast.Fcall { func_name = fcall.func_name; args = List.map fcall.args ~f:elab_mexp }
@@ -165,13 +179,14 @@ and elab_terop (cond : Cst.mexp) (true_exp : Cst.mexp) (false_exp : Cst.mexp) : 
 ;;
 
 let rec elab_lvalue = function
+  | Cst.Par par -> elab_lvalue (Mark.data par)
   | Cst.Var var ->
     if Symbol.Map.mem !ct2pt var then error ~msg:"exp name conflict with typename" None;
     Ast.Ident var
   | Cst.Const_int _ -> failwith "lvalue not accept int const"
   | Cst.True | Cst.False -> failwith "lvalue not accept boolean const"
-  | Cst.Binop _ | Cst.Unop _ | Cst.Terop _ ->
-    failwith "lvalue not accept binop, unop, terop"
+  | Cst.Binop _ | Cst.Unop _ | Cst.Terop _ | Cst.Postop _ ->
+    failwith "lvalue not accept binop, unop, terop, postop"
   | Cst.Fcall _ -> failwith "lvalue not accept fcall"
   | Cst.Dot dot ->
     Ast.LVDot { struct_obj = elab_mlvalue dot.struct_obj; field = dot.field }

@@ -381,6 +381,7 @@ let[@warning "-8"] rec trans_exp (need_check : bool) (exp_tst : TST.texp) (env :
   | `Deref deref -> trans_deref need_check deref.ptr env size
   | `Binop binop -> trans_exp_bin binop env (trans_exp need_check)
   | `Terop terop -> trans_terop terop env (trans_exp need_check)
+  | `Postop pop -> trans_postop need_check pop env
   | `Fcall fcall -> trans_fcall fcall env (trans_exp need_check)
   | `Alloc alloc -> trans_alloc alloc env
   | `Alloc_arr alloc_arr ->
@@ -442,9 +443,18 @@ and trans_dot need_check (dot : TST.dot TST.typed) env : Tree.stm list * Sexp.t 
     let size = sizeof_dtype' dot.dtype in
     let load, dest = trans_mem base (Some offset) (Some 1L) None size in
     base_stm @ check @ load, dest)
-;;
 
-let trans_lvalue (lvalue : TST.texp) (env : env) (need_check : bool)
+and trans_postop need_check (pop : TST.postexp) (env : env) =
+  let one : TST.texp = { data = `Const_int Int32.one; dtype = `Int } in
+  let assign =
+    match pop.op with
+    | `Plus_plus -> TST.Assign { name = pop.operand; value = one; op = `Plus_asn }
+    | `Minus_minus -> TST.Assign { name = pop.operand; value = one; op = `Minus_asn }
+  in
+  let stms = trans_asnop_rev [] assign need_check env in
+  List.rev stms, Exp.of_void () |> Sexp.wrap `VOID
+
+and trans_lvalue (lvalue : TST.texp) (env : env) (need_check : bool)
     : Tree.stm list * ldest
   =
   match lvalue.data with
@@ -457,10 +467,9 @@ let trans_lvalue (lvalue : TST.texp) (env : env) (need_check : bool)
     | Tree.Load load -> stms, Mem load.src
     | _ -> failwith "need load!")
   | _ -> failwith "should not appear as lvalue"
-;;
 
-let[@warning "-8"] trans_asnop acc (TST.Assign asn_tst) need_check (env : env)
-    : Tree.stm list * env
+and[@warning "-8"] trans_asnop_rev acc (TST.Assign asn_tst) need_check (env : env)
+    : Tree.stm list
   =
   let size = sizeof_dtype' asn_tst.value.dtype in
   let dest_stms, lhs = trans_lvalue asn_tst.name env need_check in
@@ -479,13 +488,12 @@ let[@warning "-8"] trans_asnop acc (TST.Assign asn_tst) need_check (env : env)
     | Temp t ->
       let dest = St.wrap size t in
       let src = rhs in
-      (Tree.Move { dest; src } :: List.rev v_stms) @ acc, env
+      (Tree.Move { dest; src } :: List.rev v_stms) @ acc
     | Mem dest ->
       let src, src_stm = rhs, [] in
-      ( (((Tree.Store { dest; src } :: src_stm) @ load_stm) @ List.rev v_stms)
-        @ List.rev dest_stms
-        @ acc
-      , env )
+      (((Tree.Store { dest; src } :: src_stm) @ load_stm) @ List.rev v_stms)
+      @ List.rev dest_stms
+      @ acc
   in
   (* handles assign with op, like +=, *=, etc. *)
   let _trans_assign' p_ip op =
@@ -495,10 +503,9 @@ let[@warning "-8"] trans_asnop acc (TST.Assign asn_tst) need_check (env : env)
       (match p_ip with
       | `Pure ->
         let src = Sexp.wrap size (Exp.of_binop op (St.to_Sexp dest) rhs) in
-        (Tree.Move { dest; src } :: List.rev v_stms) @ acc, env
+        (Tree.Move { dest; src } :: List.rev v_stms) @ acc
       | `Impure ->
-        ( (Tree.Effect { dest; lhs = St.to_Sexp dest; rhs; op } :: List.rev v_stms) @ acc
-        , env ))
+        (Tree.Effect { dest; lhs = St.to_Sexp dest; rhs; op } :: List.rev v_stms) @ acc)
     | Mem dest ->
       let src, src_stm =
         match p_ip with
@@ -507,10 +514,9 @@ let[@warning "-8"] trans_asnop acc (TST.Assign asn_tst) need_check (env : env)
           let t = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
           St.to_Sexp t, [ Tree.Effect { dest = t; lhs = St.to_Sexp t; rhs; op } ]
       in
-      ( (((Tree.Store { dest; src } :: src_stm) @ load_stm) @ List.rev v_stms)
-        @ List.rev dest_stms
-        @ acc
-      , env )
+      (((Tree.Store { dest; src } :: src_stm) @ load_stm) @ List.rev v_stms)
+      @ List.rev dest_stms
+      @ acc
   in
   match asn_tst.op with
   | `Asn -> _trans_assign ()
@@ -546,7 +552,7 @@ let rec trans_stm_rev
     : Tree.stm list * env
   =
   match tst with
-  | TST.Assign asn_tst -> trans_asnop acc (TST.Assign asn_tst) need_check env
+  | TST.Assign asn_tst -> trans_asnop_rev acc (TST.Assign asn_tst) need_check env, env
   | TST.If if_TST ->
     (* 
      *  CJump cond label_true, label_false

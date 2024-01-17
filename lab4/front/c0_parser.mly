@@ -102,7 +102,8 @@ let mark
 %left Left_shift Right_shift
 %left Plus Minus
 %left Star Slash Percent
-%right Negative Deref Excalmation_mark Dash_mark Plus_plus Minus_minus
+%right Negative Excalmation_mark Dash_mark Plus_plus Minus_minus
+%right Deref
 %nonassoc Explicit_parenthesis Arr_sub L_bracket R_bracket Arrow Dot 
 (* Else shift-reduce conflict solution reference
  * https://stackoverflow.com/questions/12731922/reforming-the-grammar-to-remove-shift-reduce-conflict-in-if-then-else*)
@@ -117,153 +118,148 @@ let mark
 
 id_or_type : 
   | vid = VIdent;
-      { vid }
+    { vid }
   | tid = TIdent;
-      { tid }
+    { tid }
 
 program :
   | Eof;
-      { [] }
+    { [] }
   | gdecl = gdecl; prog = program;
-      { gdecl :: prog }
+    { gdecl :: prog }
 
 gdecl :
   | ret_type = dtype; func_name = VIdent; pars = param_list; Semicolon;
-      { if !Env.is_header 
-        then Cst.Fdecl {ret_type = ret_type; func_name; par_type = pars; scope=`External}
-        else Cst.Fdecl {ret_type = ret_type; func_name; par_type = pars; scope=`C0} }
+    { if !Env.is_header 
+      then Cst.Fdecl {ret_type = ret_type; func_name; par_type = pars; scope=`External}
+      else Cst.Fdecl {ret_type = ret_type; func_name; par_type = pars; scope=`C0} }
   | ret_type = dtype; func_name = VIdent; pars = param_list; blk = block;
-      { if !Env.is_header 
-        then Cst.Fdefn {ret_type = ret_type; func_name; par_type = pars; blk = blk; scope=`External} 
-        else Cst.Fdefn {ret_type = ret_type; func_name; par_type = pars; blk = blk; scope=`C0} }
+    { if !Env.is_header 
+      then Cst.Fdefn {ret_type = ret_type; func_name; par_type = pars; blk = blk; scope=`External} 
+      else Cst.Fdefn {ret_type = ret_type; func_name; par_type = pars; blk = blk; scope=`C0} }
   | Typedef; t = dtype; var = midrule(var = VIdent {Env.add_type var; var}); Semicolon
-      { Cst.Typedef {t = t; t_var = var} }
+    { Cst.Typedef {t = t; t_var = var} }
   | Struct; var = VIdent; Semicolon
-      { Cst.Sdecl { struct_name = var } }
+    { Cst.Sdecl { struct_name = var } }
   | Struct; var = VIdent; L_brace; fields = field_list; R_brace;  Semicolon
-      { Cst.Sdefn { struct_name = var; fields = fields; } }
+    { Cst.Sdefn { struct_name = var; fields = fields; } }
   | Struct; var = TIdent; L_brace; fields = field_list; R_brace;  Semicolon
-      { Cst.Sdefn { struct_name = var; fields = fields; } }
+    { Cst.Sdefn { struct_name = var; fields = fields; } }
 
 field : 
   | t = dtype; var = id_or_type; Semicolon
-      { {t = t; i = var} : Cst.field }
+    { {t = t; i = var} : Cst.field }
 
 field_list :
   | 
-      { [] }
+    { [] }
   |  field = field; fields = field_list
-      { field :: fields }
+    { field :: fields }
 
 param : 
   | t = dtype; var = VIdent;
-      { {t = t; i = var} : Cst.param }
+    { {t = t; i = var} : Cst.param }
 
 param_list_follow:
   | 
-      { [] }
+    { [] }
   | Comma; par = param; pars = param_list_follow;
-      { par :: pars }
+    { par :: pars }
 
 param_list : 
   | L_paren; R_paren;
-      { [] }
+    { [] }
   | L_paren; par = param; pars = param_list_follow ; R_paren;
-      { par :: pars }
+    { par :: pars }
 
 block : 
    | L_brace;
      body = mstms;
      R_brace;
-      { body }
+    { body }
 
 (* This higher-order rule produces a marked result of whatever the
  * rule passed as argument will produce.
  *)
 m(x) :
   | x = x;
-      (* $startpos(s) and $endpos(s) are menhir's replacements for
-       * Parsing.symbol_start_pos and Parsing.symbol_end_pos, but,
-       * unfortunately, they can only be called from productions. *)
-      { mark x $startpos(x) $endpos(x) }
+    (* $startpos(s) and $endpos(s) are menhir's replacements for
+      * Parsing.symbol_start_pos and Parsing.symbol_end_pos, but,
+      * unfortunately, they can only be called from productions. *)
+    { mark x $startpos(x) $endpos(x) }
 
 dtype : 
   | Int;
-      { `Int }
+    { `Int }
   | Bool;
-      { `Bool }
+    { `Bool }
   | Void;
-      { `Void }
+    { `Void }
   | ident = TIdent;
-      { `Ctype ident }
+    { `Ctype ident }
   | t = dtype; Star;
-      { `Pointer t }
+    { `Pointer t }
   | t = dtype; L_bracket; R_bracket
-      { `Array t }
+    { `Array t }
   | Struct; var = id_or_type;
-      { `Struct var }
+    { `Struct var }
       
 
 decl :
   | t = dtype; ident = VIdent;
-      { Cst.New_var { t = t; name = ident } }
+    { Cst.New_var { t = t; name = ident } }
   | t = dtype; ident = VIdent; Assign; e = m(exp);
-      { Cst.Init { t = t; name = ident; value = e } }
+    { Cst.Init { t = t; name = ident; value = e } }
 
 mstms :
   | (* empty *)
-      { [] }
+    { [] }
   | hd = m(stm); tl = mstms;
-      { hd :: tl }
+    { hd :: tl }
 
 stm :
   | s = simp; Semicolon;
-      { Cst.Simp s }
+    { Cst.Simp s }
   | c = control;
-      { Cst.Control c }
+    { Cst.Control c }
   | b = block;
-      { Cst.Block b }
+    { Cst.Block b }
 
 simp :
   | lhs = m(exp); op = asnop; rhs = m(exp); 
-      { Cst.Assign { name = lhs; value = rhs; op = op } }
-  | lhs = m(exp); op = postop;
-      { let rhs = Mark.naked (Cst.Const_int Int32.one) in
-        match op with 
-        | Cst.Plus_plus -> Cst.Assign { name = lhs; op = Cst.Plus_asn; value = rhs}
-        | Cst.Minus_minus -> Cst.Assign { name = lhs; op = Cst.Minus_asn; value = rhs } }
+    { Cst.Assign { name = lhs; value = rhs; op = op } }
   | d = decl;
-      { Cst.Declare d }
+    { Cst.Declare d }
   | e = m(exp); 
-      { Cst.Sexp e }
+    { Cst.Sexp e }
 
 simpopt : 
   |
-      { None }
+    { None }
   | simp_ = m(simp);
-      { Some simp_ }
+    { Some simp_ }
 
 elseopt : 
   | %prec None
-      { None }
+    { None }
   | Else; else_ = m(stm);
-      { Some else_ }
+    { Some else_ }
 
 control : 
   | If; L_paren; e = m(exp); R_paren; true_stm = m(stm); false_stm = elseopt;
-      { Cst.If {cond = e; true_stm = true_stm; false_stm = false_stm} }
+    { Cst.If {cond = e; true_stm = true_stm; false_stm = false_stm} }
   | While; L_paren; e = m(exp); R_paren; s = m(stm);
-      { Cst.While {cond = e; body = s} }
+    { Cst.While {cond = e; body = s} }
   | For; L_paren; init = simpopt; Semicolon; e = m(exp); Semicolon; iter = simpopt; R_paren; s = m(stm);
-      { Cst.For {init = init; cond = e; iter = iter; body = s} }
+    { Cst.For {init = init; cond = e; iter = iter; body = s} }
   | Return; e = expopt; Semicolon;
-      { Cst.Return e }
+    { Cst.Return e }
   | Assert; L_paren; e = m(exp); R_paren; Semicolon;
-      { Cst.Assert e }
+    { Cst.Assert e }
 
 exp :
-  | L_paren; e = exp; R_paren;
-    { e }
+  | L_paren; e = m(exp); R_paren;
+    { Cst.Par e }
   | c = int_const;
     { Cst.Const_int c }
   | True;
@@ -287,17 +283,19 @@ exp :
   | fname = VIdent; arg_list = arg_list;
     { Cst.Fcall {func_name = fname; args = arg_list} }
   | struct_obj = m(exp); Dot; ident = VIdent; 
-      { Cst.Dot { struct_obj = struct_obj; field = ident } }
+    { Cst.Dot { struct_obj = struct_obj; field = ident } }
   | ptr = m(exp); Arrow; ident = id_or_type; 
-      { Cst.Arrow { struct_ptr = ptr; field = ident } }
+    { Cst.Arrow { struct_ptr = ptr; field = ident } }
   | Alloc; L_paren; t = dtype; R_paren;
-      { Cst.Alloc {t = t} }
-  | Star; lv = m(exp); 
-      { Cst.Deref {ptr = lv} }
+    { Cst.Alloc {t = t} }
+  | Star; lv = m(exp); %prec  Deref
+    { Cst.Deref {ptr = lv} }
   | Alloc_array; L_paren; t = dtype; Comma; e = m(exp); R_paren;
-      { Cst.Alloc_arr {t = t; e = e} }
+    { Cst.Alloc_arr {t = t; e = e} }
   | arr = m(exp); L_bracket; e = m(exp); R_bracket; 
-      { Cst.Nth { arr = arr; index = e } }
+    { Cst.Nth { arr = arr; index = e } }
+  | e = m(exp); op = postop;
+    { Cst.Postop { op = op; operand = e} }
 
 arg_list : 
   | L_paren; R_paren;
@@ -307,9 +305,9 @@ arg_list :
 
 arg_list_follow : 
   |
-      { [] }
+    { [] }
   | Comma; e = m(exp); arg_list_follow = arg_list_follow;
-      { e :: arg_list_follow }
+    { e :: arg_list_follow }
   
 expopt :
   | 
@@ -319,9 +317,9 @@ expopt :
 
 int_const :
   | c = Dec_const;
-      { c }
+    { c }
   | c = Hex_const;
-      { c }
+    { c }
 
 (* See the menhir documentation for %inline.
  * This allows us to factor out binary operators while still
@@ -376,27 +374,27 @@ postop :
 
 asnop :
   | Assign
-      { Cst.Asn }
+    { Cst.Asn }
   | Plus_eq
-      { Cst.Plus_asn }
+    { Cst.Plus_asn }
   | Minus_eq
-      { Cst.Minus_asn }
+    { Cst.Minus_asn }
   | Star_eq
-      { Cst.Times_asn }
+    { Cst.Times_asn }
   | Slash_eq
-      { Cst.Div_asn }
+    { Cst.Div_asn }
   | Percent_eq
-      { Cst.Mod_asn }
+    { Cst.Mod_asn }
   | And_eq
-      { Cst.And_asn }
+    { Cst.And_asn }
   | Hat_eq
-      { Cst.Hat_asn }
+    { Cst.Hat_asn }
   | Or_eq
-      { Cst.Or_asn }
+    { Cst.Or_asn }
   | Left_shift_eq
-      { Cst.Left_shift_asn }
+    { Cst.Left_shift_asn }
   | Right_shift_eq
-      { Cst.Right_shift_asn }
+    { Cst.Right_shift_asn }
   ;
 
 %%
