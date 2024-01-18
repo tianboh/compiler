@@ -659,6 +659,7 @@ let padding (dtype : TST.dtype) (offset : Int64.t) (env : env) : Int64.t =
 
 let trans_struct (s : TC.c0_struct) (env : env) : c0_struct =
   let ( + ) = Base.Int64.( + ) in
+  let ( > ) = Base.Int64.( > ) in
   let fields, size =
     List.fold s.fields ~init:(Map.empty, 0L) ~f:(fun acc field ->
         let map, offset = acc in
@@ -669,6 +670,9 @@ let trans_struct (s : TC.c0_struct) (env : env) : c0_struct =
         let field = { dtype; offset; size = fsize } in
         let fsize_64 = Size.type_size_byte fsize in
         let offset_next = offset + fsize_64 in
+        let offset_next =
+          if offset_next > Int64.of_int32_exn Int32.max_value then 0L else offset_next
+        in
         Map.set map ~key:fname ~data:field, offset_next)
   in
   { fields; size = Size.byte_to_size size }
