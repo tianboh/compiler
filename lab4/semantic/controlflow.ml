@@ -73,7 +73,6 @@ let rec use (exp : AST.mexp) (var : Symbol.t) : bool =
   | Var var' -> phys_equal var' var
   | Binop binop -> use binop.lhs var || use binop.rhs var
   | Terop terop -> use terop.cond var || use terop.true_exp var || use terop.false_exp var
-  | Postop pop -> use pop.operand var
   | Fcall fcall -> List.fold fcall.args ~init:false ~f:(fun acc arg -> acc || use arg var)
   | EDot dot -> use dot.struct_obj var
   | EDeref deref -> use deref.ptr var
@@ -139,7 +138,6 @@ let rec cf_exp (exp : AST.mexp) (env : env) : unit =
   | Binop binop ->
     cf_exp binop.lhs env;
     cf_exp binop.rhs env
-  | Postop pop -> cf_exp pop.operand env
   | Terop terop ->
     cf_exp terop.cond env;
     cf_exp terop.true_exp env;

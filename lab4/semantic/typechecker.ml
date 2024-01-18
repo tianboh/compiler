@@ -157,6 +157,20 @@ let tc_signature params1 params2 func_name =
       then error ~msg:(sprintf "%s redeclared param type mismatch" func_name_s) None)
 ;;
 
+let rec is_lvalue (exp : AST.mexp) env : bool =
+  match Mark.data exp with
+  | Var var ->
+    let var' = Map.find_exn env.vars var in
+    let dtype = var'.dtype in
+    (match dtype with
+    | `Int | `Bool | `Array _ | `Struct _ -> true
+    | _ -> false)
+  | EDot t -> is_lvalue t.struct_obj env
+  | EDeref t -> is_lvalue t.ptr env
+  | ENth t -> is_lvalue t.arr env
+  | _ -> false
+;;
+
 (* tc_exp will check if an expression is valid
  * including whether the operand and operator consistent. 
  * It will return the type of expression if pass the check.
@@ -204,17 +218,17 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
       let true_exp = tc_exp terop.true_exp env in
       let false_exp = tc_exp terop.false_exp env in
       if type_cmp true_exp.dtype false_exp.dtype
-      then
-        if type_cmp true_exp.dtype `Void || is_big true_exp.dtype
+      then (
+        let dtype =
+          match true_exp.dtype, false_exp.dtype with
+          | `NULL, _ -> false_exp.dtype
+          | _, `NULL -> true_exp.dtype
+          | _, _ -> true_exp.dtype
+        in
+        if type_cmp dtype `Void || is_big dtype
         then error ~msg:"exp type cannot be void" None
-        else { data = `Terop { cond; true_exp; false_exp }; dtype = true_exp.dtype }
+        else { data = `Terop { cond; true_exp; false_exp }; dtype })
       else error ~msg:"Terop true & false exp type mismatch" loc
-  in
-  let[@warning "-8"] tc_pop (AST.Postop pop) : TST.texp =
-    let operand = tc_exp pop.operand env in
-    let op = pop.op in
-    let data : TST.postexp = { operand; op } in
-    { data = `Postop data; dtype = operand.dtype }
   in
   let[@warning "-8"] tc_fcall (AST.Fcall fcall) : TST.texp =
     let func_name = fcall.func_name in
@@ -294,7 +308,6 @@ let rec tc_exp (exp : AST.mexp) (env : env) : TST.texp =
   | False -> { data = `False; dtype = `Bool }
   | Binop binop -> tc_binop (Binop binop)
   | Terop terop -> tc_terop (Terop terop)
-  | Postop pop -> tc_pop (Postop pop)
   | Fcall fcall -> tc_fcall (Fcall fcall)
   | EDot edot -> tc_edot (EDot edot)
   | EDeref ederef -> tc_ederef (EDeref ederef)
@@ -338,36 +351,44 @@ let rec tc_stm (ast : AST.mstm) (env : env) (func_name : Symbol.t) : TST.stm * e
     then TST.Assert tasrt, env
     else error ~msg:"assert exp type expect bool" loc
 
-and trans_lvalue (lv : AST.lvalue) (env : env) : TST.texp =
+and tc_lvalue (lv : AST.lvalue) (env : env) : TST.texp =
+  let rec _tc_lvalue (lv : AST.lvalue) (check_defn : bool) : TST.texp =
+    match lv with
+    | Ident name ->
+      let var = Map.find_exn env.vars name in
+      let dtype = var.dtype in
+      (match var.state with
+      | Defn -> ()
+      | Decl -> if check_defn then failwith "expect var to be defined" else ());
+      { data = `Var name; dtype }
+    | LVDot lvdot ->
+      let struct_obj = _tc_lvalue (Mark.data lvdot.struct_obj) check_defn in
+      let stype = struct_obj.dtype in
+      (match stype with
+      | `Struct sname ->
+        let s = Map.find_exn env.structs sname in
+        let dtype = dtype_of_field s lvdot.field in
+        { data = `Dot { struct_obj; field = lvdot.field }; dtype }
+      | _ -> failwith "dot access expect a struct type")
+    | LVDeref lvderef ->
+      let tptr = _tc_lvalue (Mark.data lvderef.ptr) check_defn in
+      (match tptr.dtype with
+      | `Pointer ptr -> { data = `Deref { ptr = tptr }; dtype = ptr }
+      | _ -> failwith "deref expect a pointer")
+    | LVNth lvnth ->
+      let tarr = _tc_lvalue (Mark.data lvnth.arr) check_defn in
+      (match tarr.dtype with
+      | `Array arr ->
+        let index = tc_exp lvnth.index env in
+        (match index.dtype with
+        | `Int -> ()
+        | _ -> failwith "expect array index to be int.");
+        { data = `Nth { arr = tarr; index }; dtype = arr }
+      | _ -> failwith "array access expect array type")
+  in
   match lv with
-  | Ident name ->
-    let var = Map.find_exn env.vars name in
-    let dtype = var.dtype in
-    { data = `Var name; dtype }
-  | LVDot lvdot ->
-    let struct_obj = trans_lvalue (Mark.data lvdot.struct_obj) env in
-    let stype = struct_obj.dtype in
-    (match stype with
-    | `Struct sname ->
-      let s = Map.find_exn env.structs sname in
-      let dtype = dtype_of_field s lvdot.field in
-      { data = `Dot { struct_obj; field = lvdot.field }; dtype }
-    | _ -> failwith "dot access expect a struct type")
-  | LVDeref lvderef ->
-    let tptr = trans_lvalue (Mark.data lvderef.ptr) env in
-    (match tptr.dtype with
-    | `Pointer ptr -> { data = `Deref { ptr = tptr }; dtype = ptr }
-    | _ -> failwith "deref expect a pointer")
-  | LVNth lvnth ->
-    let tarr = trans_lvalue (Mark.data lvnth.arr) env in
-    (match tarr.dtype with
-    | `Array arr ->
-      let index = tc_exp lvnth.index env in
-      (match index.dtype with
-      | `Int -> ()
-      | _ -> failwith "expect array index to be int.");
-      { data = `Nth { arr = tarr; index }; dtype = arr }
-    | _ -> failwith "array access expect array type")
+  | Ident _ -> _tc_lvalue lv false
+  | LVDot _ | LVDeref _ | LVNth _ -> _tc_lvalue lv true
 
 (* Check following
  * 1) Whether variable name exist in env
@@ -379,7 +400,7 @@ and trans_lvalue (lv : AST.lvalue) (env : env) : TST.texp =
  *)
 and[@warning "-8"] tc_assign (AST.Assign asn_ast) (env : env) loc : TST.stm * env =
   (* Check if variable is in env before assignment. *)
-  let name = trans_lvalue (Mark.data asn_ast.name) env in
+  let name = tc_lvalue (Mark.data asn_ast.name) env in
   let value = tc_exp asn_ast.value env in
   let asn_tst = TST.Assign { name; value; op = asn_ast.op } in
   let var_type = name.dtype in
@@ -391,8 +412,12 @@ and[@warning "-8"] tc_assign (AST.Assign asn_ast) (env : env) loc : TST.stm * en
   if not (op_cmp var_type asn_ast.op) then error ~msg:"operand and operator mismatch" None;
   match Mark.data asn_ast.name with
   | Ident ident ->
-    let env_vars = Map.set env.vars ~key:ident ~data:{ dtype = var_type; state = Defn } in
-    asn_tst, { env with vars = env_vars }
+    (match val_type with
+    | `NULL -> asn_tst, env
+    | _ ->
+      let data = { dtype = var_type; state = Defn } in
+      let env_vars = Map.set env.vars ~key:ident ~data in
+      asn_tst, { env with vars = env_vars })
   | LVDot _ | LVDeref _ | LVNth _ -> asn_tst, env
 
 and tc_return mexp env func_name =

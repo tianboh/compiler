@@ -141,6 +141,8 @@ gdecl :
     { Cst.Typedef {t = t; t_var = var} }
   | Struct; var = VIdent; Semicolon
     { Cst.Sdecl { struct_name = var } }
+  | Struct; var = TIdent; Semicolon
+    { Cst.Sdecl { struct_name = var } }
   | Struct; var = VIdent; L_brace; fields = field_list; R_brace;  Semicolon
     { Cst.Sdefn { struct_name = var; fields = fields; } }
   | Struct; var = TIdent; L_brace; fields = field_list; R_brace;  Semicolon
@@ -232,6 +234,8 @@ simp :
     { Cst.Declare d }
   | e = m(exp); 
     { Cst.Sexp e }
+  | e = m(exp); op = postop;
+    { Cst.Postop { op = op; operand = e} }
 
 simpopt : 
   |
@@ -284,6 +288,8 @@ exp :
     { Cst.Fcall {func_name = fname; args = arg_list} }
   | struct_obj = m(exp); Dot; ident = VIdent; 
     { Cst.Dot { struct_obj = struct_obj; field = ident } }
+  | struct_obj = m(exp); Dot; ident = TIdent; 
+    { Cst.Dot { struct_obj = struct_obj; field = ident } }
   | ptr = m(exp); Arrow; ident = id_or_type; 
     { Cst.Arrow { struct_ptr = ptr; field = ident } }
   | Alloc; L_paren; t = dtype; R_paren;
@@ -294,8 +300,6 @@ exp :
     { Cst.Alloc_arr {t = t; e = e} }
   | arr = m(exp); L_bracket; e = m(exp); R_bracket; 
     { Cst.Nth { arr = arr; index = e } }
-  | e = m(exp); op = postop;
-    { Cst.Postop { op = op; operand = e} }
 
 arg_list : 
   | L_paren; R_paren;

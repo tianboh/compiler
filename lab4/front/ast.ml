@@ -98,10 +98,6 @@ and exp =
       ; true_exp : mexp
       ; false_exp : mexp
       }
-  | Postop of
-      { operand : mexp
-      ; op : postop
-      }
   | Fcall of
       { func_name : Symbol.t
       ; args : mexp list
@@ -246,7 +242,6 @@ module Print = struct
         (pp_mexp terop.cond)
         (pp_mexp terop.true_exp)
         (pp_mexp terop.false_exp)
-    | Postop postop -> sprintf "%s%s" (pp_mexp postop.operand) (pp_postop postop.op)
     | Fcall fcall ->
       sprintf
         "%s(%s)"

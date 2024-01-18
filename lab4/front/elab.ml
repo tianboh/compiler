@@ -81,10 +81,10 @@ let elab_asnop (asnop : Cst.asnop) : Ast.asnop =
   | Right_shift_asn -> `Right_shift_asn
 ;;
 
-let[@warning "-27"] elab_postop (op : Cst.postop) : Ast.postop =
+let[@warning "-27"] elab_postop (op : Cst.postop) =
   match op with
-  | Plus_plus -> `Plus_plus
-  | Minus_minus -> `Minus_minus
+  | Plus_plus -> `Plus_asn
+  | Minus_minus -> `Minus_asn
 ;;
 
 (* 
@@ -103,13 +103,6 @@ let rec elab_exp = function
   | Cst.False -> Ast.False
   | Cst.Binop binop -> elab_binop binop.op binop.lhs binop.rhs
   | Cst.Unop unop -> elab_unop unop.op unop.operand
-  | Cst.Postop postop ->
-    (match Mark.data postop.operand with
-    | Cst.Deref _ -> failwith "deref with postop is ambiguous"
-    | _ ->
-      let operand = elab_mexp postop.operand in
-      let op = elab_postop postop.op in
-      Ast.Postop { operand; op })
   | Cst.Terop terop -> elab_terop terop.cond terop.true_exp terop.false_exp
   | Cst.Fcall fcall ->
     Ast.Fcall { func_name = fcall.func_name; args = List.map fcall.args ~f:elab_mexp }
@@ -183,11 +176,6 @@ let rec elab_lvalue = function
   | Cst.Var var ->
     if Symbol.Map.mem !ct2pt var then error ~msg:"exp name conflict with typename" None;
     Ast.Ident var
-  | Cst.Const_int _ -> failwith "lvalue not accept int const"
-  | Cst.True | Cst.False -> failwith "lvalue not accept boolean const"
-  | Cst.Binop _ | Cst.Unop _ | Cst.Terop _ | Cst.Postop _ ->
-    failwith "lvalue not accept binop, unop, terop, postop"
-  | Cst.Fcall _ -> failwith "lvalue not accept fcall"
   | Cst.Dot dot ->
     Ast.LVDot { struct_obj = elab_mlvalue dot.struct_obj; field = dot.field }
   | Cst.Arrow arrow ->
@@ -195,6 +183,11 @@ let rec elab_lvalue = function
     Ast.LVDot { struct_obj; field = arrow.field }
   | Cst.Deref deref -> Ast.LVDeref { ptr = elab_mlvalue deref.ptr }
   | Cst.Nth nth -> Ast.LVNth { arr = elab_mlvalue nth.arr; index = elab_mexp nth.index }
+  | Cst.Const_int _ -> failwith "lvalue not accept int const"
+  | Cst.True | Cst.False -> failwith "lvalue not accept boolean const"
+  | Cst.Binop _ | Cst.Unop _ | Cst.Terop _ ->
+    failwith "lvalue not accept binop, unop, terop"
+  | Cst.Fcall _ -> failwith "lvalue not accept fcall"
   | Cst.NULL -> failwith "lvalue not accept NULL"
   | Cst.Alloc _ | Cst.Alloc_arr _ -> failwith "cannot alloc at lvalue"
 
@@ -244,6 +237,14 @@ and elab_simp (simp : Cst.simp) (src_span : Mark.src_span option) (tail : Cst.ms
     let asn_ast = Ast.Assign { name; value; op } in
     Mark.mark' asn_ast src_span, tail
   | Cst.Sexp exp -> Mark.mark' (Ast.Sexp (elab_mexp exp)) src_span, tail
+  | Cst.Postop postop ->
+    (match Mark.data postop.operand with
+    | Cst.Deref _ -> failwith "deref with postop is ambiguous"
+    | _ ->
+      let name = elab_mlvalue postop.operand in
+      let value : Ast.mexp = Mark.naked (Ast.Const_int (Int32.of_int_exn 1)) in
+      let op = elab_postop postop.op in
+      Mark.mark' (Ast.Assign { name; value; op }) src_span, tail)
 
 and elab_declare (decl : Cst.decl) (src_span : Mark.src_span option) (tail : Cst.mstms) =
   match decl with

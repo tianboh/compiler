@@ -88,10 +88,6 @@ type exp =
       { op : unop
       ; operand : mexp
       }
-  | Postop of
-      { op : postop
-      ; operand : mexp
-      }
   | Terop of
       { cond : mexp
       ; true_exp : mexp
@@ -157,6 +153,10 @@ and simp =
       }
   | Declare of decl
   | Sexp of mexp
+  | Postop of
+      { op : postop
+      ; operand : mexp
+      }
 
 and msimp = simp Mark.t
 
@@ -275,8 +275,6 @@ module Print = struct
     | True -> "True"
     | False -> "False"
     | Unop unop -> sprintf "%s(%s)" (pp_unop unop.op) (pp_mexp unop.operand)
-    | Postop postop ->
-      sprintf "operand:%s, op:%s" (pp_mexp postop.operand) (pp_postop postop.op)
     | Binop binop ->
       sprintf "(%s %s %s)" (pp_mexp binop.lhs) (pp_binop binop.op) (pp_mexp binop.rhs)
     | Terop ter_exp ->
@@ -322,6 +320,8 @@ module Print = struct
       sprintf "%s %s %s;" (pp_mexp asn.name) (pp_asnop asn.op) (pp_mexp asn.value)
     | Declare d -> pp_decl d
     | Sexp e -> "Sexp " ^ pp_mexp e ^ ";"
+    | Postop postop ->
+      sprintf "operand:%s, op:%s" (pp_mexp postop.operand) (pp_postop postop.op)
   ;;
 
   let rec pp_stm = function
