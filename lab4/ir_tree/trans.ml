@@ -414,13 +414,13 @@ and trans_nth need_check (nth : TST.nth TST.typed) env : Tree.stm list * Sexp.t 
   let base_check, bound_check = if need_check then check_bound base index else [], [] in
   if is_large nth.dtype
   then
-    ( base_stm @ base_check @ index_stm @ bound_check
+    ( base_stm @ index_stm @ base_check @ bound_check
     , Addr.of_bisd base (Some index) (Some scale) None |> Exp.of_bisd |> Sexp.wrap `QWORD
     )
   else (
     let size = sizeof_dtype' nth.dtype in
     let load, dest = trans_mem base (Some index) (Some scale) None size in
-    base_stm @ base_check @ index_stm @ bound_check @ load, dest)
+    base_stm @ index_stm @ base_check @ bound_check @ load, dest)
 
 and trans_dot need_check (dot : TST.dot TST.typed) env : Tree.stm list * Sexp.t =
   let s = Map.find_exn env.structs (get_struct_exn dot.data.struct_obj.dtype) in
@@ -455,13 +455,13 @@ and trans_postop need_check (pop : TST.postexp) (env : env) =
   List.rev stms, Exp.of_void () |> Sexp.wrap `VOID
 
 and trans_lvalue (lvalue : TST.texp) (env : env) (need_check : bool)
-    : Tree.stm list * Tree.stm list * ldest
+    : Tree.stm list * Tree.stm list * ldest * [ `Var | `Dot | `Deref | `Nth ]
   =
   let size = sizeof_dtype' lvalue.dtype in
   match lvalue.data with
   | `Var var ->
     let var = Map.find_exn env.vars var in
-    [], [], Temp var.temp
+    [], [], Temp var.temp, `Var
   | `Dot dot ->
     let base_stms, base =
       let s' = dot.struct_obj in
@@ -477,12 +477,15 @@ and trans_lvalue (lvalue : TST.texp) (env : env) (need_check : bool)
     let offset = Sexp.wrap `QWORD (Exp.of_int field.offset) in
     check_base_size base;
     let check = if need_check then check_null base else [] in
-    base_stms, check, Mem (Addr.of_bisd base (Some offset) (Some 1L) None |> Mem.wrap size)
+    ( base_stms
+    , check
+    , Mem (Addr.of_bisd base (Some offset) (Some 1L) None |> Mem.wrap size)
+    , `Dot )
   | `Deref deref ->
     let base_stms, base = trans_exp need_check deref.ptr env in
     check_base_size base;
     let check = if need_check then check_null base else [] in
-    base_stms, check, Mem (Addr.of_bisd base None None None |> Mem.wrap size)
+    base_stms, check, Mem (Addr.of_bisd base None None None |> Mem.wrap size), `Deref
   | `Nth nth ->
     let base_stm, base = trans_exp need_check nth.arr env in
     let index_stm, index_exp = trans_exp need_check nth.index env in
@@ -496,14 +499,15 @@ and trans_lvalue (lvalue : TST.texp) (env : env) (need_check : bool)
     let base_check, bound_check = if need_check then check_bound base index else [], [] in
     ( base_stm @ index_stm
     , base_check @ bound_check
-    , Mem (Addr.of_bisd base (Some index) (Some scale) None |> Mem.wrap size) )
+    , Mem (Addr.of_bisd base (Some index) (Some scale) None |> Mem.wrap size)
+    , `Nth )
   | _ -> failwith "should not appear as lvalue"
 
 and[@warning "-8"] trans_asnop_rev acc (TST.Assign asn_tst) need_check (env : env)
     : Tree.stm list
   =
   let size = sizeof_dtype' asn_tst.value.dtype in
-  let dest_stms, dest_check, lhs = trans_lvalue asn_tst.name env need_check in
+  let dest_stms, dest_check, lhs, ltype = trans_lvalue asn_tst.name env need_check in
   let v_stms, rhs = trans_exp need_check asn_tst.value env in
   let lhs_temp_stms, lhs_temp =
     match lhs with
@@ -521,9 +525,16 @@ and[@warning "-8"] trans_asnop_rev acc (TST.Assign asn_tst) need_check (env : en
       (Tree.Move { dest; src } :: List.rev v_stms) @ acc
     | Mem dest ->
       let src = rhs in
-      ((Tree.Store { dest; src } :: List.rev dest_check) @ List.rev v_stms)
-      @ List.rev dest_stms
-      @ acc
+      (match ltype with
+      | `Nth ->
+        (Tree.Store { dest; src } :: List.rev v_stms)
+        @ List.rev dest_check
+        @ List.rev dest_stms
+        @ acc
+      | `Deref | `Dot ->
+        ((Tree.Store { dest; src } :: List.rev dest_check) @ List.rev v_stms)
+        @ List.rev dest_stms
+        @ acc)
   in
   (* handles assign with op, like +=, *=, etc. *)
   let _trans_assign' p_ip op =

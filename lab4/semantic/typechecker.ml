@@ -357,9 +357,6 @@ and tc_lvalue (lv : AST.lvalue) (env : env) : TST.texp =
     | Ident name ->
       let var = Map.find_exn env.vars name in
       let dtype = var.dtype in
-      (match var.state with
-      | Defn -> ()
-      | Decl -> if check_defn then failwith "expect var to be defined" else ());
       { data = `Var name; dtype }
     | LVDot lvdot ->
       let struct_obj = _tc_lvalue (Mark.data lvdot.struct_obj) check_defn in
@@ -412,12 +409,9 @@ and[@warning "-8"] tc_assign (AST.Assign asn_ast) (env : env) loc : TST.stm * en
   if not (op_cmp var_type asn_ast.op) then error ~msg:"operand and operator mismatch" None;
   match Mark.data asn_ast.name with
   | Ident ident ->
-    (match val_type with
-    | `NULL -> asn_tst, env
-    | _ ->
-      let data = { dtype = var_type; state = Defn } in
-      let env_vars = Map.set env.vars ~key:ident ~data in
-      asn_tst, { env with vars = env_vars })
+    let data = { dtype = var_type; state = Defn } in
+    let env_vars = Map.set env.vars ~key:ident ~data in
+    asn_tst, { env with vars = env_vars }
   | LVDot _ | LVDeref _ | LVNth _ -> asn_tst, env
 
 and tc_return mexp env func_name =

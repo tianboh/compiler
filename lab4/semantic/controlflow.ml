@@ -155,20 +155,28 @@ let rec cf_exp (exp : AST.mexp) (env : env) : unit =
  * - define before use
  * dot, array access, deref only check identifier.
  *)
-let rec cf_lvalue (lvalue : AST.mlvalue) (env : env) (asnop : AST.asnop) : unit =
+let rec cf_lvalue
+    (lvalue : AST.mlvalue)
+    (env : env)
+    (asnop : AST.asnop)
+    (need_defn : bool)
+    : unit
+  =
   let loc = Mark.src_span lvalue in
   match Mark.data lvalue with
   | Ident var ->
     (match asnop with
     | `Asn ->
       if not (Set.mem env.var_decl var)
-      then error ~msg:(sprintf "var %s is defined before decl" (Symbol.name var)) loc
+      then error ~msg:(sprintf "var %s is defined before decl" (Symbol.name var)) loc;
+      if need_defn && not (Set.mem env.var_def var)
+      then error ~msg:(sprintf "var %s should be defined" (Symbol.name var)) loc
     | _ ->
       if not (Set.mem env.var_def var)
       then error ~msg:(sprintf "var %s is used before define" (Symbol.name var)) loc)
-  | LVDot dot -> cf_lvalue dot.struct_obj env asnop
-  | LVNth nth -> cf_lvalue nth.arr env asnop
-  | LVDeref deref -> cf_lvalue deref.ptr env asnop
+  | LVDot dot -> cf_lvalue dot.struct_obj env asnop true
+  | LVNth nth -> cf_lvalue nth.arr env asnop true
+  | LVDeref deref -> cf_lvalue deref.ptr env asnop true
 ;;
 
 (* On each control flow path through the program connecting 
@@ -192,7 +200,7 @@ let rec cf_stm (ast : AST.mstm) (env : env) : env =
   match Mark.data ast with
   | Assign asn_ast ->
     cf_exp asn_ast.value env;
-    cf_lvalue asn_ast.name env asn_ast.op;
+    cf_lvalue asn_ast.name env asn_ast.op false;
     (match Mark.data asn_ast.name with
     | Ident var -> { env with var_def = Set.add env.var_def var }
     | LVDot _ | LVNth _ | LVDeref _ -> env)
