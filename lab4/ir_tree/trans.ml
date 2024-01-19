@@ -455,32 +455,62 @@ and trans_postop need_check (pop : TST.postexp) (env : env) =
   List.rev stms, Exp.of_void () |> Sexp.wrap `VOID
 
 and trans_lvalue (lvalue : TST.texp) (env : env) (need_check : bool)
-    : Tree.stm list * ldest
+    : Tree.stm list * Tree.stm list * ldest
   =
+  let size = sizeof_dtype' lvalue.dtype in
   match lvalue.data with
   | `Var var ->
     let var = Map.find_exn env.vars var in
-    [], Temp var.temp
-  | `Dot _ | `Deref _ | `Nth _ ->
-    let stms, _ = trans_exp need_check lvalue env in
-    (match List.last_exn stms with
-    | Tree.Load load -> stms, Mem load.src
-    | _ -> failwith "need load!")
+    [], [], Temp var.temp
+  | `Dot dot ->
+    let base_stms, base =
+      let s' = dot.struct_obj in
+      match s'.data with
+      | `Deref deref -> trans_exp need_check deref.ptr env
+      | `Dot dot' -> trans_dot need_check { data = dot'; dtype = s'.dtype } env
+      | `Nth nth ->
+        trans_nth need_check ({ data = nth; dtype = s'.dtype } : TST.nth TST.typed) env
+      | _ -> failwith "hmmm, should not happen"
+    in
+    let s = Map.find_exn env.structs (get_struct_exn dot.struct_obj.dtype) in
+    let field = Map.find_exn s.fields dot.field in
+    let offset = Sexp.wrap `QWORD (Exp.of_int field.offset) in
+    check_base_size base;
+    let check = if need_check then check_null base else [] in
+    base_stms, check, Mem (Addr.of_bisd base (Some offset) (Some 1L) None |> Mem.wrap size)
+  | `Deref deref ->
+    let base_stms, base = trans_exp need_check deref.ptr env in
+    check_base_size base;
+    let check = if need_check then check_null base else [] in
+    base_stms, check, Mem (Addr.of_bisd base None None None |> Mem.wrap size)
+  | `Nth nth ->
+    let base_stm, base = trans_exp need_check nth.arr env in
+    let index_stm, index_exp = trans_exp need_check nth.index env in
+    check_base_size base;
+    check_index_size index_exp;
+    let index = Temp.create () |> Exp.of_t |> Sexp.wrap `QWORD in
+    let index_stm =
+      index_stm @ [ Tree.Cast { dest = Sexp.to_St index; src = index_exp } ]
+    in
+    let scale = sizeof_dtype lvalue.dtype env |> Size.type_size_byte in
+    let base_check, bound_check = if need_check then check_bound base index else [], [] in
+    ( base_stm @ index_stm
+    , base_check @ bound_check
+    , Mem (Addr.of_bisd base (Some index) (Some scale) None |> Mem.wrap size) )
   | _ -> failwith "should not appear as lvalue"
 
 and[@warning "-8"] trans_asnop_rev acc (TST.Assign asn_tst) need_check (env : env)
     : Tree.stm list
   =
   let size = sizeof_dtype' asn_tst.value.dtype in
-  let dest_stms, lhs = trans_lvalue asn_tst.name env need_check in
+  let dest_stms, dest_check, lhs = trans_lvalue asn_tst.name env need_check in
   let v_stms, rhs = trans_exp need_check asn_tst.value env in
-  let load_stm, lhs_temp =
+  let lhs_temp_stms, lhs_temp =
     match lhs with
     | Temp var -> [], Sexp.wrap size (Exp.of_t var)
     | Mem mem ->
       let dest = St.wrap size (Temp.create ()) in
-      let stm = [ Tree.Load { src = mem; dest } ] in
-      stm, St.to_Sexp dest
+      [ Tree.Load { src = mem; dest } ], St.to_Sexp dest
   in
   (* handles pure assign = *)
   let _trans_assign () =
@@ -490,8 +520,8 @@ and[@warning "-8"] trans_asnop_rev acc (TST.Assign asn_tst) need_check (env : en
       let src = rhs in
       (Tree.Move { dest; src } :: List.rev v_stms) @ acc
     | Mem dest ->
-      let src, src_stm = rhs, [] in
-      (((Tree.Store { dest; src } :: src_stm) @ load_stm) @ List.rev v_stms)
+      let src = rhs in
+      ((Tree.Store { dest; src } :: List.rev dest_check) @ List.rev v_stms)
       @ List.rev dest_stms
       @ acc
   in
@@ -509,12 +539,16 @@ and[@warning "-8"] trans_asnop_rev acc (TST.Assign asn_tst) need_check (env : en
     | Mem dest ->
       let src, src_stm =
         match p_ip with
-        | `Pure -> Sexp.wrap size (Exp.of_binop op lhs_temp rhs), []
+        | `Pure -> Sexp.wrap size (Exp.of_binop op lhs_temp rhs), lhs_temp_stms
         | `Impure ->
           let t = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
-          St.to_Sexp t, [ Tree.Effect { dest = t; lhs = St.to_Sexp t; rhs; op } ]
+          ( St.to_Sexp t
+          , [ Tree.Load { src = dest; dest = t }
+            ; Tree.Effect { dest = t; lhs = St.to_Sexp t; rhs; op }
+            ] )
       in
-      (((Tree.Store { dest; src } :: src_stm) @ load_stm) @ List.rev v_stms)
+      (((Tree.Store { dest; src } :: List.rev dest_check) @ List.rev src_stm)
+      @ List.rev v_stms)
       @ List.rev dest_stms
       @ acc
   in
