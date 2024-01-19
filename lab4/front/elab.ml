@@ -61,8 +61,16 @@ let rec elab_type (ctype : Cst.dtype) : Ast.dtype =
   | `Bool -> `Bool
   | `Void -> `Void
   | `Ctype c -> elab_type (Symbol.Map.find_exn !ct2pt c)
-  | `Pointer ptr -> `Pointer (elab_type ptr)
-  | `Array arr -> `Array (elab_type arr)
+  | `Pointer ptr ->
+    let p = elab_type ptr in
+    (match p with
+    | `Void -> failwith "pointer to void is invalid"
+    | _ -> `Pointer p)
+  | `Array arr ->
+    let p = elab_type arr in
+    (match p with
+    | `Void -> failwith "array to void is invalid"
+    | _ -> `Array (elab_type arr))
   | `Struct s -> `Struct s
 ;;
 
@@ -373,16 +381,17 @@ let[@warning "-8"] elab_fdefn (Cst.Fdefn fdenf) =
  * Type names may be defined only once *)
 let elab_typedef t t_var =
   let env' = !ct2pt in
-  let dest_type =
+  let rec helper t =
     match t with
     | `Ctype s -> Symbol.Map.find_exn env' s
     | `Int -> `Int
     | `Bool -> `Bool
     | `Void -> error ~msg:"dest type cannot be void" None
-    | `Pointer ptr -> `Pointer ptr
+    | `Pointer ptr -> `Pointer (helper ptr)
     | `Array arr -> `Array arr
     | `Struct s -> `Struct s
   in
+  let dest_type = helper t in
   if Symbol.Set.mem !func_env t_var then error None ~msg:"type name already exist";
   let env' =
     match Symbol.Map.add env' ~key:t_var ~data:dest_type with
