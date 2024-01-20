@@ -476,11 +476,12 @@ and trans_lvalue (lvalue : TST.texp) (env : env) (need_check : bool)
     let field = Map.find_exn s.fields dot.field in
     let offset = Sexp.wrap `QWORD (Exp.of_int field.offset) in
     check_base_size base;
-    let check = if need_check then check_null base else [] in
-    ( base_stms
-    , check
-    , Mem (Addr.of_bisd base (Some offset) (Some 1L) None |> Mem.wrap size)
-    , `Dot )
+    let base_check = if need_check then check_null base else [] in
+    let addr = Addr.of_bisd base (Some offset) (Some 1L) None in
+    let addr_check =
+      if need_check then check_null (addr |> Exp.of_bisd |> Sexp.wrap `QWORD) else []
+    in
+    base_stms @ base_check, addr_check, Mem (addr |> Mem.wrap size), `Dot
   | `Deref deref ->
     let base_stms, base = trans_exp need_check deref.ptr env in
     check_base_size base;
@@ -503,68 +504,78 @@ and trans_lvalue (lvalue : TST.texp) (env : env) (need_check : bool)
     , `Nth )
   | _ -> failwith "should not appear as lvalue"
 
-and[@warning "-8"] trans_asnop_rev acc (TST.Assign asn_tst) need_check (env : env)
+and[@warning "-8"] trans_assign_rev acc (TST.Assign asn_tst) need_check (env : env)
     : Tree.stm list
   =
   let size = sizeof_dtype' asn_tst.value.dtype in
   let dest_stms, dest_check, lhs, ltype = trans_lvalue asn_tst.name env need_check in
   let v_stms, rhs = trans_exp need_check asn_tst.value env in
-  let lhs_temp_stms, lhs_temp =
-    match lhs with
-    | Temp var -> [], Sexp.wrap size (Exp.of_t var)
-    | Mem mem ->
-      let dest = St.wrap size (Temp.create ()) in
-      [ Tree.Load { src = mem; dest } ], St.to_Sexp dest
-  in
-  (* handles pure assign = *)
-  let _trans_assign () =
-    match lhs with
-    | Temp t ->
-      let dest = St.wrap size t in
-      let src = rhs in
-      (Tree.Move { dest; src } :: List.rev v_stms) @ acc
-    | Mem dest ->
-      let src = rhs in
-      (match ltype with
-      | `Nth ->
-        (Tree.Store { dest; src } :: List.rev v_stms)
-        @ List.rev dest_check
-        @ List.rev dest_stms
-        @ acc
-      | `Deref | `Dot ->
-        ((Tree.Store { dest; src } :: List.rev dest_check) @ List.rev v_stms)
-        @ List.rev dest_stms
-        @ acc)
-  in
-  (* handles assign with op, like +=, *=, etc. *)
-  let _trans_assign' p_ip op =
-    match lhs with
-    | Temp t ->
-      let dest = St.wrap size t in
-      (match p_ip with
-      | `Pure ->
-        let src = Sexp.wrap size (Exp.of_binop op (St.to_Sexp dest) rhs) in
-        (Tree.Move { dest; src } :: List.rev v_stms) @ acc
-      | `Impure ->
-        (Tree.Effect { dest; lhs = St.to_Sexp dest; rhs; op } :: List.rev v_stms) @ acc)
-    | Mem dest ->
-      let src, src_stm =
-        match p_ip with
-        | `Pure -> Sexp.wrap size (Exp.of_binop op lhs_temp rhs), lhs_temp_stms
-        | `Impure ->
-          let t = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
-          ( St.to_Sexp t
-          , [ Tree.Load { src = dest; dest = t }
-            ; Tree.Effect { dest = t; lhs = St.to_Sexp t; rhs; op }
-            ] )
-      in
-      (((Tree.Store { dest; src } :: List.rev dest_check) @ List.rev src_stm)
-      @ List.rev v_stms)
+  match lhs with
+  | Temp t ->
+    let dest = St.wrap size t in
+    let src = rhs in
+    (Tree.Move { dest; src } :: List.rev v_stms) @ acc
+  | Mem dest ->
+    let src = rhs in
+    (match ltype with
+    | `Nth ->
+      (Tree.Store { dest; src } :: List.rev v_stms)
+      @ List.rev dest_check
       @ List.rev dest_stms
       @ acc
-  in
+    | `Deref | `Dot ->
+      ((Tree.Store { dest; src } :: List.rev dest_check) @ List.rev v_stms)
+      @ List.rev dest_stms
+      @ acc
+    | `Var -> failwith "should not happen")
+
+and[@warning "-8"] trans_assignop_rev
+    acc
+    (TST.Assign asn_tst)
+    need_check
+    (env : env)
+    p_ip
+    op
+    : Tree.stm list
+  =
+  let size = sizeof_dtype' asn_tst.value.dtype in
+  let dest_stms, dest_check, lhs, _ = trans_lvalue asn_tst.name env need_check in
+  let v_stms, rhs = trans_exp need_check asn_tst.value env in
+  match lhs with
+  | Temp t ->
+    let dest = St.wrap size t in
+    (match p_ip with
+    | `Pure ->
+      let src = Sexp.wrap size (Exp.of_binop op (St.to_Sexp dest) rhs) in
+      (Tree.Move { dest; src } :: List.rev v_stms) @ acc
+    | `Impure ->
+      (Tree.Effect { dest; lhs = St.to_Sexp dest; rhs; op } :: List.rev v_stms) @ acc)
+  | Mem mem ->
+    let src, src_stm =
+      match p_ip with
+      | `Pure ->
+        let dest = St.wrap size (Temp.create ()) in
+        let lhs_temp_stms, lhs_temp =
+          [ Tree.Load { src = mem; dest } ], St.to_Sexp dest
+        in
+        Sexp.wrap size (Exp.of_binop op lhs_temp rhs), dest_check @ lhs_temp_stms
+      | `Impure ->
+        let t = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
+        ( St.to_Sexp t
+        , dest_check
+          @ [ Tree.Load { src = mem; dest = t }
+            ; Tree.Effect { dest = t; lhs = St.to_Sexp t; rhs; op }
+            ] )
+    in
+    ((Tree.Store { dest = mem; src } :: List.rev src_stm) @ List.rev v_stms)
+    @ List.rev dest_stms
+    @ acc
+
+and[@warning "-8"] trans_asnop_rev acc (TST.Assign asn_tst) need_check (env : env)
+    : Tree.stm list
+  =
   match asn_tst.op with
-  | `Asn -> _trans_assign ()
+  | `Asn -> trans_assign_rev acc (TST.Assign asn_tst) need_check env
   | _ ->
     let p_ip, (op : Tree.binop) =
       match asn_tst.op with
@@ -581,7 +592,7 @@ and[@warning "-8"] trans_asnop_rev acc (TST.Assign asn_tst) need_check (env : en
       | `Left_shift_asn -> `Impure, Left_shift
       | `Right_shift_asn -> `Impure, Right_shift
     in
-    _trans_assign' p_ip op
+    trans_assignop_rev acc (TST.Assign asn_tst) need_check env p_ip op
 ;;
 
 (* env.vars keep trakcs from variable name to temporary. Two things keep in mind

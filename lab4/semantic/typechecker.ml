@@ -80,6 +80,8 @@ type c0_struct =
   ; order : int (* the earlier defined, the smaller the number *)
   }
 
+let sorder = ref 0 (* struct defined order *)
+
 type env =
   { vars : var Map.t (* variable decl/def tracker *)
   ; funcs : func Map.t (* function signature *)
@@ -546,13 +548,18 @@ let tc_sdefn (sname : Symbol.t) (fields : AST.field list) (env : env) : env =
          then error ~msg:"struct field name conflict" None
          else Set.add acc field.name)
       : Set.t);
-  let s = { fields; state = Defn; order = Map.length env.structs } in
+  let s = { fields; state = Defn; order = !sorder } in
+  (* printf "sdefn %s with order %d\n" (Symbol.name sname) s.order; *)
   match Map.find env.structs sname with
-  | None -> { env with structs = Map.add_exn env.structs ~key:sname ~data:s }
+  | None ->
+    sorder := !sorder + 1;
+    { env with structs = Map.add_exn env.structs ~key:sname ~data:s }
   | Some s' ->
     (match s'.state with
     | Defn -> error ~msg:"struct already defined" None
-    | Decl -> { env with structs = Map.set env.structs ~key:sname ~data:s })
+    | Decl ->
+      sorder := !sorder + 1;
+      { env with structs = Map.set env.structs ~key:sname ~data:s })
 ;;
 
 let pp_env env =
