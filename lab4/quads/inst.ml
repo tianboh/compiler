@@ -1,6 +1,8 @@
 (* L4 Compiler
  * Quad
  *
+ * Only have instr. More low-level compared with IR.
+ *
  * Author: Kaustuv Chaudhuri <kaustuv+@andrew.cmu.edu>
  * Modified By: Alex Vaynberg <alv@andrew.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>

@@ -23,6 +23,7 @@
  * Modified: Tianbo Hao  June 2023 
  *   - Provide L4 grammar.
  *   - Provide context dependent parser based on a smart lexer
+ *   - To avoid reduce conflict, use exp as lvalue instead.
  *
  * Converted to OCaml by Michael Duggan <md5i@cs.cmu.edu>
  *)

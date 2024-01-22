@@ -1,33 +1,37 @@
-# L3 Compiler
+# L4 Compiler
 
 ## Overview Workflow
 
-**l3 program** ——c0_lexer, c0_parser——> **CST** ——elaborate——> **AST** ——semantic analysis——> **AST** ——ir_tree_trans——> **IR trees** ——dominator tree——> **IR trees in SSA form** ——quads_trans——> **Quads**  ——abs_codegen——> **Abstract Assembly** ——dataflow graph, liveness analysis, register allocation, x86codegen——> **x86-64 machine code**
+**l4 program** ——c0_lexer, c0_parser——> **CST** ——elaborate——> **AST** ——semantic analysis——> **TST** ——ir_tree_trans——> **IR trees** ——quads_trans——> **Quads**  ——abs_codegen——> **Abstract Assembly** ——dataflow graph, liveness analysis, register allocation, x86 codegen——> **x86-64 machine code**
 
+## Lexer and Parser
+L4 grammar is context dependent because we have typedef syntax. Therefore, lexer needs to determine whether return a type identifier or variable identifier when reading an identifier. The custom defined type is recorded in a global set `env`. Lexer will check this set before returning the identifier.
 
 ## CST
-CST stands for Concret Syntax Tree, it is parsed from l3 source file. CST eliminate parenthesis and brackets compared with the actual syntax tree. However, the basic structure for CST and actual syntax tree is the same, for example, CST have if, while, for, block, postops etc.
+CST(Concrete Syntax Tree) is parsed from l4 source file. The basic structure for CST and actual syntax tree is the same, for example, CST have if, while, for, block, postops etc. Some may have slight difference to avoid conflict during parsing.
 
-## Elaboration and AST
-In order to make following analysis simpler, an elaboration pass is added after CST is constructed. The elaborated syntax tree is AST(Abstract Syntax Tree). This elaboration pass tries to simplify CST through
+Notice that, to avoid reduce-reduce conflict in parser, CST does not have corresponding lvalue type. CST uses exp as lvalue instead. This will be checked and transformed to specific lvalue in the AST.
+
+## AST
+In order to make following analysis simpler, an elaboration pass is added after CST is constructed. The elaborated syntax tree is AST(Abstract Syntax Tree). This elaboration pass simplifies CST through
 
 * for loops are elaborated into while loop.
 * Unary operations(negative, logical not, bitwise not) are elaborated into binary operations by identical value.
 * Logical operations are elaborated to ternary operation.
-* Bin assign operations (like +=, *=, etc.) are elaborated to binary operation.
+* Postop(++, --) is elaborated to += 1, -= 1.
 * Declare is elaborated to provide a namespace for the variable. So typecheck and controlflow check is much easier on AST.
-* Custom typenames are elaborated to primitive type
+* Custom typenames are elaborated to primitive type.
 
 Elaboration pass also provides simple checks for type definations because type alias is elaborated afterwards.
 
 * Type definitions cannot conflict with variable names.
 * Type definitions cannot conflict with function names.
-* Type definitions cannot alias void. 
-* Same type definition only declared once.
+* Type definitions cannot alias void(pointer to void, array of void, etc,.) because void can only appear as function return type.
+* Same type definition is only declared once.
 * No variable declaration at for loop iteration filed.
 
-## Semantic Analysis
-Semantic analysis checks variable and function semantic correctness on AST. Specifically, it checks
+## Semantic Analysis and TST
+Semantic analysis checks variable and function semantic correctness on AST, and then generates TST. Specifically, it checks
 
 * Variables are declared before defination, and all variables are defined before usage.
 * No variable can be declared more than once.
@@ -38,12 +42,37 @@ Semantic analysis checks variable and function semantic correctness on AST. Spec
 * Expressions are well typed. Including function call arguments, variable assignment, conditions, return etc. 
 * Control flow path with non-void return has proper returned.
 
+It will not check whether a field of struct is properly defined before use. It only checks whether this struct is declared before use. In other words, it only checks the highest level for dot, array access, and deref operations. Also, assign operation to deref lvalue will lead to extra check(make sure this lvalue is defined before deref).
+
+Assign NULL to a pointer will lead to variable defined. Though it is wrong, but this should be the scope of dynamic check at later phase, instead of static check here.
+
+Once semantic analysis is finished, it generates TST(Typed Syntax Tree). TST keeps track of type information on AST: each expression is attached with a type. This information helps to get size information in later phases.
+
+## Dynamic Semantic
+Memory access order and sanity check can be tricky. So C0 gives dynamic semantic to clarify this ambiguity. Check [concepts](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/13-dynamic-notes.pdf), [pointer, array](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/14-mutable-notes.pdf) and [struct](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/15-structs-notes.pdf) for details.
+
+Here are two simple examples to illustrate the importance of dynamic semantics.
+
+*p = 1/0
+
+This leads to div-by-zero error.
+
+and 
+
+**p = 1/0.
+
+This leads to illegal memory access error.
+
+The general idea for memory access is to evaluate from left to right. If lvalue is memory access, evaluate this address before assignment(in the last). However, notice that calculating address itself may lead to other errors. The reason why **p lead to illegal memory access is that *p should be evaluated first(not **p), and this leads to a illegal memory access error. This also explains why *p = 1/0 leads to div-by-zero error because p is legal and then 1/0 is measured. [Here(section 5)](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/14-mutable-notes.pdf) gives a more elaborated explanation for above two cases.
+
 ## IR tree
 The IR data structure provides assembly-like statements and expressions. High-level controlflow statements in AST, like while and if, are translated to low-level jump and conditional jump in IR. Ternary operation are also translated to statements with jump.
 
-Statements may have side effect and expressions are guaranteed to be effect-free. Some expressions(div, mod, shift) are transformed to effect statement, and the rest are pure as it is. New temporaries are created as destination of expressions with side-effect. 
+Statements may have side effect and expressions are guaranteed to be effect-free. Some expressions(div, mod, shift) are transformed to effect statement, and the rest are pure as it is. New temporaries are created as destination of expressions with side-effect. Expressions are attached with size information.
 
-Variables in AST are translated to temporary in IR. Boolean constant is replaced with integer(true for 1 and false for 0). 
+Variables in AST are translated to temporary in IR. Boolean constant is replaced with integer(true for 1 and false for 0). Notice that L4 provides pointer type, so expression may of size QWORD. In such case, IR provides cast instruction for them.
+
+Dot, array access and deref are transformed to memory access. IR provides load and store statements for them. Dynamic check statements are added before store and load.
 
 ## Dominator and SSA
 SSA is built on IR trees. SSA is composed with basic blocks, where each block start with a label and read until next label. SSA first build dominator trees based on [A Simple, Fast Dominance Algorithm](https://www.cs.rice.edu/~keith/EMBED/dom.pdf).
@@ -53,7 +82,7 @@ Then, use [SSA algorithm](https://pfalcon.github.io/ssabook/latest/book.pdf)(sec
 Notice that parallel copy in SSA deconstruction is not finished yet. This is still a ongoing task.
 
 ## Quads
-Quads is of assembly-like instructions. IR statements are translated to instructions using maximal munch algorithm. IR expressions are translated to binary/move instructions. 
+Quads is of assembly-like instructions. IR statements are translated to instructions using maximal munch algorithm. IR expressions are translated to binary/move instructions. Unlike IR expression, quads operand do not have nested expressions because maximal munch algorithm. This helpes to produce assembly like instructions.
 
 Quads provide operand of temporary and immediate. Quads is hardware-independent, so operands of register and memory are not provided.
 

@@ -4,7 +4,7 @@
  * defines/uses operand. Compared with Ir_tree Inst, this
  * layer has extra register type for operand. 
  *
- * For each function, we provide prologue and epilogue.
+ * For each function, provide prologue and epilogue.
  * prologue and epilogue will save and restore callee-saved
  * registers, rsp and rbp. Function return will jump to 
  * epilogue and then return to make sure frame is properly

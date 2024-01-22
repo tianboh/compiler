@@ -1,3 +1,12 @@
+(* L4 Compiler
+ * IR -> Quads 
+ *
+ * Each instruction do not have nested operand 
+ * after transformation.
+ *
+ * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
+ *)
+
 open Core
 module Tree = Ir_tree.Inst
 module Quads = Inst

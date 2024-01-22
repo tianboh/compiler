@@ -1,5 +1,11 @@
 (* L4 Compiler
  * IR Trees
+ *
+ * IR has two levels: statement and expression.
+ *
+ * Each exp is attached with size information.
+ * This helps to better adjust instruction size in
+ * x86 code generation.
  * 
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified: Alex Vaynberg <alv@andrew.cmu.edu>

@@ -6,6 +6,9 @@
  *  - array
  *  - pointer
  *
+ * Postop and assign with operation are treated differently.
+ * a += b is not a = a + b anymore, check lecture note 15 for more details.
+ *
  * Author: Alex Vaynberg
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
  * Modified: Anand Subramanian <asubrama@andrew.cmu.edu> Fall 2010

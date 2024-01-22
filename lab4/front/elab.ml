@@ -29,7 +29,9 @@
  *
  * Provide elab_lvalue for assignment.
  *
- * Forbide elab e1 asnop e2 as e1 = e1 op e2 for possible side effect.
+ * Elaborate postop to assign with operation.
+ *
+ * Provide check for lvalue during elaboration.
  *
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)

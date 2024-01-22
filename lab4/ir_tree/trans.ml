@@ -1,6 +1,9 @@
 (* L4 Compiler
  * TST -> IR Translator
  *
+ * Calculate memory address for dot, deref and array access
+ * Provide check before access real memory.
+ *
  * Author: Kaustuv Chaudhuri <kaustuv+@cs.cmu.edu>
  * Modified by: Alex Vaynberg <alv@andrew.cmu.edu>
  * Modified: Frank Pfenning <fp@cs.cmu.edu>
