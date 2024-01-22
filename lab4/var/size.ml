@@ -57,6 +57,13 @@ let compare (t1 : t) (t2 : t) : int =
   ret
 ;;
 
+let compare' (t1 : primitive) (t2 : primitive) : int =
+  let s1 = type_size_byte t1 in
+  let s2 = type_size_byte t2 in
+  let ret = Int64.to_int_exn (s1 - s2) in
+  ret
+;;
+
 let is_primitive (t : t) : bool =
   match t with
   | `CBYTE _ -> false

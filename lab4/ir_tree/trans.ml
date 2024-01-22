@@ -516,15 +516,22 @@ and[@warning "-8"] trans_assign_rev acc (TST.Assign asn_tst) need_check (env : e
     let src = rhs in
     (Tree.Move { dest; src } :: List.rev v_stms) @ acc
   | Mem dest ->
-    let src = rhs in
+    let src, cast =
+      if Size.compare' dest.size rhs.size <> 0
+      then (
+        let dest' = Temp.create () in
+        ( Exp.of_t dest' |> Sexp.wrap dest.size
+        , [ Tree.Cast { dest = St.wrap dest.size dest'; src = rhs } ] ))
+      else rhs, []
+    in
     (match ltype with
     | `Nth ->
-      (Tree.Store { dest; src } :: List.rev v_stms)
+      ((Tree.Store { dest; src } :: cast) @ List.rev v_stms)
       @ List.rev dest_check
       @ List.rev dest_stms
       @ acc
     | `Deref | `Dot ->
-      ((Tree.Store { dest; src } :: List.rev dest_check) @ List.rev v_stms)
+      (((Tree.Store { dest; src } :: cast) @ List.rev dest_check) @ List.rev v_stms)
       @ List.rev dest_stms
       @ acc
     | `Var -> failwith "should not happen")
