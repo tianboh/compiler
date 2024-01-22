@@ -438,7 +438,10 @@ and trans_dot need_check (dot : TST.dot TST.typed) env : Tree.stm list * Sexp.t 
   check_base_size base;
   let check = if need_check then check_null base else [] in
   if is_large dot.dtype
-  then base_stm @ check, Sexp.wrap `QWORD (Exp.of_binop Plus base offset)
+  then
+    if Int64.equal field.offset 0L
+    then base_stm, base
+    else base_stm @ check, Sexp.wrap `QWORD (Exp.of_binop Plus base offset)
   else (
     let size = sizeof_dtype' dot.dtype in
     let load, dest = trans_mem base (Some offset) (Some 1L) None size in
