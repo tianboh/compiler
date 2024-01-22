@@ -60,17 +60,17 @@ let rec elab_type (ctype : Cst.dtype) : Ast.dtype =
   | `Int -> `Int
   | `Bool -> `Bool
   | `Void -> `Void
-  | `Ctype c -> elab_type (Symbol.Map.find_exn !ct2pt c)
+  | `Ctype c -> Symbol.Map.find_exn !ct2pt c
   | `Pointer ptr ->
     let p = elab_type ptr in
     (match p with
     | `Void -> failwith "pointer to void is invalid"
     | _ -> `Pointer p)
   | `Array arr ->
-    let p = elab_type arr in
-    (match p with
+    let arr = elab_type arr in
+    (match arr with
     | `Void -> failwith "array to void is invalid"
-    | _ -> `Array (elab_type arr))
+    | _ -> `Array arr)
   | `Struct s -> `Struct s
 ;;
 
@@ -388,7 +388,7 @@ let elab_typedef t t_var =
     | `Bool -> `Bool
     | `Void -> error ~msg:"dest type cannot be void" None
     | `Pointer ptr -> `Pointer (helper ptr)
-    | `Array arr -> `Array arr
+    | `Array arr -> `Array (helper arr)
     | `Struct s -> `Struct s
   in
   let dest_type = helper t in
