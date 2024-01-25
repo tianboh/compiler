@@ -7,7 +7,7 @@ module Opt_level = struct
 
   let parse = function
     | "0" -> Result.Ok Opt_none
-    | "1" -> Result.Error (`Msg "Error: -O1 unimplemented (lab 2)")
+    | "1" -> Result.Ok Opt_none
     | "2" -> Result.Error (`Msg "Error: -O2 unimplemented (lab 5)")
     | arg -> Result.Error (`Msg ("Error: Unknown --opt arg: " ^ arg))
   ;;

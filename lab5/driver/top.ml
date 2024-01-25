@@ -19,8 +19,6 @@ module Parse = Front.Parse
 module Elab = Front.Elab
 module AST = Front.Ast
 module CST = Front.Cst
-module Typechecker = Semantic.Typechecker
-module Controlflow = Semantic.Controlflow
 module Dfana = Flow.Dfana
 module Symbol = Util.Symbol
 
@@ -36,6 +34,7 @@ type cmd_line_args =
   ; dump_conv : bool
   ; semcheck_only : bool
   ; regalloc_only : bool
+  ; unsafe : bool
   ; emit : Emit.t
   ; opt_level : Opt_level.t
   ; df_type : Df_analysis.t
@@ -96,6 +95,9 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   and regalloc_only =
     let doc = "Regalloc only for l1 checkpoint" in
     flag (Arg.info [ "r"; "regalloc-only" ] ~doc)
+  and unsafe =
+    let doc = "unsafe mode. do not check illegal memory access." in
+    flag (Arg.info [ "u"; "unsafe" ] ~doc)
   and emit =
     let doc = "[abs|x86-64] The type of assembly $(docv) to emit." in
     opt Emit.conv ~default:Emit.Quad (Arg.info [ "e"; "emit" ] ~doc ~docv:"TARGET")
@@ -133,6 +135,7 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
   ; dump_conv
   ; semcheck_only
   ; regalloc_only
+  ; unsafe
   ; emit
   ; opt_level
   ; df_type
@@ -166,7 +169,7 @@ let compile (cmd : cmd_line_args) : unit =
   if cmd.semcheck_only then exit 0;
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
-  let ir = Ir_tree.Trans.translate tst tc_env true in
+  let ir = Ir_tree.Trans.translate tst tc_env cmd.unsafe in
   (* let ir_ssa = List.map ir ~f:(fun ir -> Ssa.Trans.run ir) in *)
   say_if cmd.dump_ir (fun () ->
       List.map ir ~f:Ir_tree.Inst.Print.pp_fdefn |> String.concat ~sep:"\n");
