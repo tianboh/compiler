@@ -6,7 +6,7 @@
 
 .PHONY: lab*
 
-default: lab4
+default: lab5
 lab*: bin
 	$(MAKE) -C $@
 
