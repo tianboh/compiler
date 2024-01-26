@@ -109,8 +109,7 @@ type instr =
       }
   | Jump of { target : Label.t }
   | CJump of
-      { (*Jump if cond == 1*)
-        lhs : Sop.t
+      { lhs : Sop.t
       ; op : binop
       ; rhs : Sop.t
       ; target_true : Label.t

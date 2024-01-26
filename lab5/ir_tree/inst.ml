@@ -175,9 +175,7 @@ type stm =
   | Return of Sexp.t option
   | Jump of Label.t
   | CJump of
-      { (* Jump to target_true if lhs op rhs is true. 
-         * Otherwise to target_false *)
-        lhs : Sexp.t
+      { lhs : Sexp.t
       ; op : binop
       ; rhs : Sexp.t
       ; target_true : Label.t
