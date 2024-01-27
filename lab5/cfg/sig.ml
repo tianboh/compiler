@@ -19,6 +19,7 @@ module type InstrInterface = sig
   val is_assert : t -> bool
   val label : Label.t -> t
   val jump : Label.t -> t
+  val ret : unit -> t
   val get_label : t -> Label.t
 
   (* Given current instruction, current block label, and next instruction
@@ -50,10 +51,10 @@ module type CFGInterface = sig
   val get_exit : unit -> bb
 
   (* Return basic blocks. Add entry and exit block automatically. *)
-  val build_bb : i list -> i list -> bbmap -> bbmap
+  val build_bb : i list -> bbmap
 
   (* Get in and out edge for each label *)
-  val build_ino : i list -> map -> map
+  val build_ino : bbmap -> map * map
   val split_critical_edge : bbmap -> map -> map -> bbmap * map * map
   val postorder : set -> Label.t -> map -> Label.t list -> Label.t list
   val to_instrs : bbmap -> i list

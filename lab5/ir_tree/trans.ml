@@ -804,7 +804,7 @@ let rec trans_prog
     trans_prog t (fdefn_tree :: acc) env need_check
 ;;
 
-let translate (program : TST.program) (env : TC.env) (need_check : bool) : Tree.program =
+let translate (program : TST.program) (env : TC.env) (unsafe : bool) : Tree.program =
   let env = trans_structs env in
-  trans_prog program [] env need_check
+  trans_prog program [] env (not unsafe)
 ;;

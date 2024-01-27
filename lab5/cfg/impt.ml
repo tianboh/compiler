@@ -32,6 +32,28 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
   let get_exit () : bb = exit_bb
   let add_entry_exit (instrs : i list) = entry_bb.instrs @ instrs @ exit_bb.instrs
 
+  (* A basic block should end up with one of following possibilities
+   * 1) Jump or conditional jump
+   * 2) Return 
+   *)
+  let has_fall_through (instrs : i list) (pre_opt : i option) : bool =
+    let rec helper (instrs : i list) (pre_opt : i option) (res : bool) : bool =
+      match instrs with
+      | [] -> res
+      | h :: t ->
+        if I.is_label h
+        then (
+          match pre_opt with
+          | None -> if List.length t > 0 then helper t (Some h) res else false
+          | Some pre ->
+            if I.is_jump pre || I.is_return pre
+            then helper t (Some h) res
+            else helper t (Some h) true)
+        else helper t (Some h) res
+    in
+    helper instrs pre_opt false
+  ;;
+
   (* Eliminate fall through between block and block. 
    * Only use jump/cjump to go through blocks.
    * This helps to build control flow graph, and these 
@@ -44,7 +66,10 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
       then (
         let pre_opt = List.hd acc in
         match pre_opt with
-        | None -> eliminate_fall_through t (h :: acc)
+        | None ->
+          if List.length t > 0
+          then eliminate_fall_through t (h :: acc)
+          else I.ret () :: h :: acc
         | Some pre ->
           if I.is_jump pre || I.is_return pre
           then eliminate_fall_through t (h :: acc)
@@ -55,13 +80,48 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
       else eliminate_fall_through t (h :: acc)
   ;;
 
-  let rec build_bb (instrs : i list) (bb : i list) bbs : bbmap =
+  let rec _build_bb
+      (instrs : i list)
+      (bb_instrs : i list)
+      (bb_label : Label.t option)
+      (bbs : bbmap)
+      : bbmap
+    =
     match instrs with
-    | [] -> bbs
-    | h :: t -> failwith ""
+    | [] ->
+      (match bb_label with
+      | None -> bbs
+      | Some l ->
+        let bb = { label = l; instrs = List.rev bb_instrs } in
+        let bbs = Label.Map.set bbs ~key:l ~data:bb in
+        bbs)
+    | h :: t ->
+      if I.is_label h
+      then (
+        match bb_label with
+        | None -> _build_bb t [ h ] (Some (I.get_label h)) bbs
+        | Some l ->
+          let bb = { label = l; instrs = List.rev bb_instrs } in
+          let bbs = Label.Map.set bbs ~key:l ~data:bb in
+          _build_bb t [ h ] (Some l) bbs)
+      else _build_bb t (h :: bb_instrs) bb_label bbs
   ;;
 
-  let build_ino (instrs : i list) = failwith ""
+  let build_bb (instrs : i list) : bbmap =
+    if has_fall_through instrs None
+    then failwith "build_bb need to eliminate fall through edge first.";
+    let bb_instrs = [] in
+    let bb_label = None in
+    let bbs = Label.Map.empty in
+    _build_bb instrs bb_instrs bb_label bbs
+  ;;
+
+  let build_ino (bbs : bbmap) : map * map =
+    if has_fall_through instrs None
+    then failwith "build_ino need to eliminate fall through edge first.";
+    failwith ""
+  ;;
+
   let split_critical_edge (bbs : bbmap) (ins : map) (outs : map) = failwith ""
 
   let postorder (visited : set) (cur_label : Label.t) (outs : map) (acc : Label.t list) =

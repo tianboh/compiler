@@ -1,13 +1,16 @@
 module Opt_level = struct
-  type t = Opt_none
+  type t =
+    | Opt_none
+    | O1
 
   let show = function
     | Opt_none -> "O0"
+    | O1 -> "O1"
   ;;
 
   let parse = function
     | "0" -> Result.Ok Opt_none
-    | "1" -> Result.Ok Opt_none
+    | "1" -> Result.Ok O1
     | "2" -> Result.Error (`Msg "Error: -O2 unimplemented (lab 5)")
     | arg -> Result.Error (`Msg ("Error: Unknown --opt arg: " ^ arg))
   ;;
