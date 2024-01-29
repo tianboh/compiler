@@ -21,6 +21,7 @@ module AST = Front.Ast
 module CST = Front.Cst
 module Dfana = Flow.Dfana
 module Symbol = Util.Symbol
+module CFG_IR = Cfg.Impt.Wrapper (Ir_tree.Inst)
 
 (* Command line arguments *)
 type cmd_line_args =
@@ -170,18 +171,22 @@ let compile (cmd : cmd_line_args) : unit =
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Ir_tree.Trans.translate tst tc_env cmd.unsafe in
-  (* let ir = Ir_tree.Trans.translate tst tc_env true in *)
-  (* let ir_ssa = List.map ir ~f:(fun ir -> Ssa.Trans.run ir) in *)
+  let ir' =
+    List.map ir ~f:(fun fdefn ->
+        let instrs = CFG_IR.eliminate_fall_through fdefn.body in
+        let bbs = CFG_IR.build_bb instrs in
+        let _, outs = CFG_IR.build_ino bbs in
+        let porder = CFG_IR.postorder outs in
+        let topoorder = List.rev porder in
+        let body = CFG_IR.to_instrs bbs topoorder in
+        { fdefn with body })
+  in
   say_if cmd.dump_ir (fun () ->
       List.map ir ~f:Ir_tree.Inst.Print.pp_fdefn |> String.concat ~sep:"\n");
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
-  let quad = Quads.Trans.gen ir in
-  (* let assem_ps_ssa = Codegen.Optimize.optimize assem_ps_ssa in
-  let () = Codegen.Gen.Pseudo.print_insts assem_ps_ssa in *)
-  (* let stop = Unix.gettimeofday () in *)
-  (* let () = Printf.printf "Execution time assem_ps_ssa: %fs\n%!" (stop -. start) in *)
+  let quad = Quads.Trans.gen ir' in
   say_if cmd.dump_quad (fun () -> Quads.Inst.pp_program quad "");
   match cmd.emit with
   (* Output: abstract 3-address assem *)
@@ -197,10 +202,6 @@ let compile (cmd : cmd_line_args) : unit =
   | X86_64 ->
     let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
-    (* let start = Unix.gettimeofday () in *)
-    (* let stop = Unix.gettimeofday () in *)
-    (* let () = Printf.printf "Execution time gen_regalloc_info: %fs\n%!" (stop -. start) in *)
-    (* let start = Unix.gettimeofday () in *)
     let abs = Abs_asm.Trans.gen quad [] in
     say_if cmd.dump_conv (fun () -> Abs_asm.Inst.pp_program abs "");
     let progs =

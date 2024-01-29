@@ -23,11 +23,12 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
 
   let entry_label = Label.label (Some "entry")
   let exit_label = Label.label (Some "exit")
-  let entry_bb = { label = entry_label; instrs = [ I.label entry_label ] }
-  let exit_bb = { label = exit_label; instrs = [ I.label exit_label ] }
-  let get_entry () : bb = entry_bb
-  let get_exit () : bb = exit_bb
-  let add_entry_exit (instrs : i list) = entry_bb.instrs @ instrs @ exit_bb.instrs
+  let get_entry (bbs : bbmap) : bb = Label.Map.find_exn bbs entry_label
+  let get_exit (bbs : bbmap) : bb = Label.Map.find_exn bbs exit_label
+
+  let add_entry_exit (instrs : i list) =
+    (I.label entry_label :: instrs) @ [ I.label exit_label ]
+  ;;
 
   (* A basic block should end up with one of following possibilities
    * 1) Jump or conditional jump
@@ -55,26 +56,27 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
    * Only use jump/cjump to go through blocks.
    * This helps to build control flow graph, and these 
    * redundant jumps will be eliminated in optimization pass. *)
-  let rec eliminate_fall_through (instrs : i list) (acc : i list) : i list =
-    match instrs with
-    | [] -> List.rev acc
-    | h :: t ->
-      if I.is_label h
-      then (
-        let pre_opt = List.hd acc in
-        match pre_opt with
-        | None ->
-          if List.length t > 0
-          then eliminate_fall_through t (h :: acc)
-          else I.ret () :: h :: acc
-        | Some pre ->
-          if I.is_jump pre || I.is_cjump pre || I.is_return pre
-          then eliminate_fall_through t (h :: acc)
-          else (
-            let l = I.get_label h in
-            let jp = I.jump l in
-            eliminate_fall_through t (h :: jp :: acc)))
-      else eliminate_fall_through t (h :: acc)
+  let eliminate_fall_through (instrs : i list) : i list =
+    let rec helper (instrs : i list) (acc : i list) : i list =
+      match instrs with
+      | [] -> List.rev acc
+      | h :: t ->
+        if I.is_label h
+        then (
+          let pre_opt = List.hd acc in
+          match pre_opt with
+          | None ->
+            if List.length t > 0 then helper t (h :: acc) else I.ret () :: h :: acc
+          | Some pre ->
+            if I.is_jump pre || I.is_cjump pre || I.is_return pre
+            then helper t (h :: acc)
+            else (
+              let l = I.get_label h in
+              let jp = I.jump l in
+              helper t (h :: jp :: acc)))
+        else helper t (h :: acc)
+    in
+    helper instrs []
   ;;
 
   let rec _build_bb

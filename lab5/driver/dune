@@ -15,7 +15,8 @@
   abs_asm
   flow
   ssa
-  file)
+  file
+  cfg)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))

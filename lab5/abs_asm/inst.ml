@@ -145,6 +145,7 @@ type fdefn =
   }
 
 type program = fdefn list
+type t = instr
 
 let to_int_list (ops : Op.t list) : int list =
   List.fold ops ~init:[] ~f:(fun acc x ->
@@ -152,6 +153,66 @@ let to_int_list (ops : Op.t list) : int list =
       | Temp t -> t.id :: acc
       | Reg r -> Register.get_idx r :: acc
       | Above_frame _ | Imm _ -> acc)
+;;
+
+(* Functions for CFG interface *)
+let is_label = function
+  | Label _ -> true
+  | _ -> false
+;;
+
+let is_jump = function
+  | Jump _ -> true
+  | _ -> false
+;;
+
+let is_cjump = function
+  | CJump _ -> true
+  | _ -> false
+;;
+
+let is_return = function
+  | Ret _ -> true
+  | _ -> false
+;;
+
+let[@warning "-27"] is_assert (i : instr) : bool = false
+let empty_line () = { defines = []; uses = []; live_out = []; move = false }
+let label (l : Label.t) = Label { label = l; line = empty_line () }
+let jump (target : Label.t) : instr = Jump { target; line = empty_line () }
+let ret () : instr = Ret { line = empty_line () }
+
+let get_label (instr : instr) : Label.t =
+  match instr with
+  | Label l -> l.label
+  | _ -> failwith "expect instr to be label"
+;;
+
+(* Given jump/conditional jump, return target label list. *)
+let next (instr : instr) : Label.t list =
+  match instr with
+  | Jump jp -> [ jp.target ]
+  | CJump cjp -> [ cjp.target_false; cjp.target_true ]
+  | _ -> failwith "expect jump or cond jump"
+;;
+
+(* Replace target of Jump *)
+let replace_target (instr : instr) (target : Label.t) : instr =
+  match instr with
+  | Jump jp -> Jump { jp with target }
+  | _ -> failwith "expect jump for taget"
+;;
+
+(* Replace old target to new target for CJump *)
+let replace_ctarget (instr : instr) (old_target : Label.t) (new_target : Label.t) : instr =
+  match instr with
+  | CJump cjp ->
+    if Label.equal cjp.target_false old_target
+    then CJump { cjp with target_false = new_target }
+    else if Label.equal cjp.target_true old_target
+    then CJump { cjp with target_true = new_target }
+    else failwith "old target do not match to cond jump"
+  | _ -> failwith "expect cond jump to replace target"
 ;;
 
 let pp_binop = function

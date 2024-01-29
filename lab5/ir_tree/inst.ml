@@ -201,6 +201,66 @@ type fdefn =
   }
 
 type program = fdefn list
+type t = stm
+
+(* Functions for CFG interface *)
+let is_label = function
+  | Label _ -> true
+  | _ -> false
+;;
+
+let is_jump = function
+  | Jump _ -> true
+  | _ -> false
+;;
+
+let is_cjump = function
+  | CJump _ -> true
+  | _ -> false
+;;
+
+let is_return = function
+  | Return _ -> true
+  | _ -> false
+;;
+
+let[@warning "-27"] is_assert (i : stm) : bool = false
+let label (l : Label.t) = Label l
+let jump (target : Label.t) : stm = Jump target
+let ret () : stm = Return None
+
+let get_label (stm : stm) : Label.t =
+  match stm with
+  | Label l -> l
+  | _ -> failwith "expect instr to be label"
+;;
+
+(* Given jump/conditional jump, return target label list. *)
+let next (instr : stm) : Label.t list =
+  match instr with
+  | Jump jp -> [ jp ]
+  | CJump cjp -> [ cjp.target_false; cjp.target_true ]
+  | _ -> failwith "expect jump or cond jump"
+;;
+
+(* Replace target of Jump *)
+let replace_target (instr : stm) (target : Label.t) : stm =
+  match instr with
+  | Jump _ -> Jump target
+  | _ -> failwith "expect jump for taget"
+;;
+
+(* Replace old target to new target for CJump *)
+let replace_ctarget (instr : stm) (old_target : Label.t) (new_target : Label.t) : stm =
+  match instr with
+  | CJump cjp ->
+    if Label.equal cjp.target_false old_target
+    then CJump { cjp with target_false = new_target }
+    else if Label.equal cjp.target_true old_target
+    then CJump { cjp with target_true = new_target }
+    else failwith "old target do not match to cond jump"
+  | _ -> failwith "expect cond jump to replace target"
+;;
 
 module Print = struct
   let sprintf = Printf.sprintf

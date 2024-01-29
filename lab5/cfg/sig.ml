@@ -50,12 +50,12 @@ module type CFGInterface = sig
   type set = Label.Set.t
   type map = set Label.Map.t (* Graph: key: label, value: label set *)
 
-  val get_entry : unit -> bb
-  val get_exit : unit -> bb
+  val get_entry : bbmap -> bb
+  val get_exit : bbmap -> bb
 
   (* Return basic blocks. Add entry and exit block automatically. *)
   val build_bb : i list -> bbmap
-  val eliminate_fall_through : i list -> i list -> i list
+  val eliminate_fall_through : i list -> i list
 
   (* Get in and out edge for each label *)
   val build_ino : bbmap -> map * map
