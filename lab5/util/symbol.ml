@@ -46,10 +46,9 @@ let c0_prefix =
   | _ -> "_c0_"
 ;;
 
-(* There are three types of functions.
+(* There are two types of functions.
  * 1) C0 function. Generate from source file
  * 2) External. Declared in header file
- * 3) Internal. Compiler provided.
  * .globl provide C0 type function for linker. *)
 let pp_scope = function
   | `C0 -> c0_prefix

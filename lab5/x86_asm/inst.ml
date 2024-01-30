@@ -167,15 +167,9 @@ type instr =
       ; dest : Sop.t
       ; size : Size.primitive
       }
-  | Fcall of
-      { func_name : Symbol.t
-      ; scope : [ `C0 | `External ]
-      }
+  | Fcall of { func_name : Symbol.t }
   | Abort
-  | Fname of
-      { name : string
-      ; scope : [ `C0 | `External ]
-      }
+  | Fname of { name : string }
   | GDB of string
   | Directive of string
   | Comment of string
@@ -205,11 +199,6 @@ let pp_inst (size : Size.primitive) =
 ;;
 
 let pp_inst' (operand : Sop.t) = pp_inst operand.size
-
-let pp_scope = function
-  | `C0 -> Symbol.c0_prefix
-  | `External -> ""
-;;
 
 (* functions that format assembly output *)
 let format = function
@@ -298,9 +287,8 @@ let format = function
     sprintf "sar%s %s, %s" (pp_inst sar.size) (pp_Sop sar.src) (pp_Sop sar.dest)
   | SAL sal ->
     sprintf "sal%s %s, %s" (pp_inst sal.size) (pp_Sop sal.src) (pp_Sop sal.dest)
-  | Fcall fcall ->
-    sprintf "call %s%s" (pp_scope fcall.scope) (Symbol.name fcall.func_name)
-  | Fname fname -> sprintf "%s%s:" (Symbol.pp_scope fname.scope) fname.name
+  | Fcall fcall -> sprintf "call %s" (Symbol.name fcall.func_name)
+  | Fname fname -> sprintf "%s:" fname.name
   | Abort -> sprintf "call abort"
   | GDB gdb -> sprintf "%s" gdb
   | Directive dir -> sprintf "%s" dir

@@ -167,7 +167,6 @@ let check_null (base : Sexp.t) : Tree.stm list =
       { dest = None
       ; func_name = Symbol.Fname.raise
       ; args = [ Sexp.wrap `DWORD (Exp.of_int Symbol.Fname.usr2) ]
-      ; scope = `External
       }
   ; Tree.Label target_false
   ]
@@ -206,7 +205,6 @@ let check_bound (base : Sexp.t) (index : Sexp.t) : Tree.stm list * Tree.stm list
         { dest = None
         ; func_name = Symbol.Fname.raise
         ; args = [ Sexp.wrap `DWORD (Exp.of_int Symbol.Fname.usr2) ]
-        ; scope = `External
         }
     ; Tree.Label target2
     ]
@@ -272,15 +270,16 @@ let trans_fcall (fcall : TST.fcall) (env : env) trans_func =
   let func_name = fcall.func_name in
   let func = Map.find_exn env.funcs func_name in
   let scope = (func.scope :> [ `C0 | `External ]) in
+  let func_name = { func_name with name = Symbol.pp_scope scope ^ func_name.name } in
   let size = sizeof_dtype' func.ret_type in
   match size with
   | `VOID ->
-    let call = Tree.Fcall { dest = None; args; func_name; scope } in
+    let call = Tree.Fcall { dest = None; args; func_name } in
     let call_stms = args_stms @ [ call ] in
     call_stms, Sexp.wrap `VOID (Exp.of_void ())
   | _ ->
     let dest = Temp.create () |> Exp.of_t |> Sexp.wrap size |> Sexp.to_St in
-    let call = Tree.Fcall { dest = Some dest; args; func_name; scope } in
+    let call = Tree.Fcall { dest = Some dest; args; func_name } in
     let call_stms = args_stms @ [ call ] in
     call_stms, St.to_Sexp dest
 ;;
@@ -294,7 +293,7 @@ let trans_alloc (alloc : TST.alloc) env =
   let ptr : St.t = Temp.create () |> Exp.of_t |> Sexp.wrap `QWORD |> Sexp.to_St in
   let func_name = Symbol.Fname.calloc in
   let args = [ nitems; size_32 ] in
-  [ Tree.Fcall { dest = Some ptr; func_name; args; scope = `External } ], St.to_Sexp ptr
+  [ Tree.Fcall { dest = Some ptr; func_name; args } ], St.to_Sexp ptr
 ;;
 
 (* alloc size should >= 0 *)
@@ -309,7 +308,6 @@ let check_alloc_arr (size : Sexp.t) : Tree.stm list =
       { dest = None
       ; func_name = Symbol.Fname.raise
       ; args = [ Sexp.wrap `DWORD (Exp.of_int Symbol.Fname.usr2) ]
-      ; scope = `External
       }
   ; Tree.Label target_true
   ]
@@ -331,9 +329,7 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func need_check =
   in
   let size_8 = `QWORD in
   let ptr_c0 = Temp.create () |> Exp.of_t |> Sexp.wrap size_8 in
-  let alloc =
-    Tree.Fcall { dest = Some (Sexp.to_St ptr_c0); func_name; args; scope = `External }
-  in
+  let alloc = Tree.Fcall { dest = Some (Sexp.to_St ptr_c0); func_name; args } in
   let header = Mem.wrap size_8 (Addr.of_bisd ptr_c0 None None None) in
   let store_size = Tree.Store { dest = header; src = { nitems with size = size_8 } } in
   let ptr_c = Temp.create () |> Exp.of_t |> Sexp.wrap size_8 |> Sexp.to_St in
@@ -785,7 +781,11 @@ let rec trans_prog
   match program with
   | [] -> List.rev acc
   | fdefn :: t ->
-    let fdefn_tree = trans_fdefn fdefn.func_name fdefn.pars fdefn.blk env need_check in
+    let func = Map.find_exn env.funcs fdefn.func_name in
+    let func_name =
+      { fdefn.func_name with name = Symbol.pp_scope func.scope ^ fdefn.func_name.name }
+    in
+    let fdefn_tree = trans_fdefn func_name fdefn.pars fdefn.blk env need_check in
     trans_prog t (fdefn_tree :: acc) env need_check
 ;;
 

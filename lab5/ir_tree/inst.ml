@@ -170,7 +170,6 @@ type stm =
       { dest : St.t option
       ; func_name : Symbol.t
       ; args : Sexp.t list
-      ; scope : [ `C0 | `External ]
       }
   | Return of Sexp.t option
   | Jump of Label.t
@@ -280,14 +279,13 @@ module Print = struct
         (Exp.pp_binop eft.op)
         (pp eft.rhs)
     | Fcall c ->
-      let scope = Symbol.pp_scope c.scope in
       let func_name = Symbol.name c.func_name in
       let args = List.map (fun arg -> pp arg) c.args |> String.concat ", " in
       (match c.dest with
       | Some dest ->
         let dest = St.pp dest in
-        sprintf "%s <- %s%s(%s)" dest scope func_name args
-      | None -> sprintf "%s%s(%s)" scope func_name args)
+        sprintf "%s <- %s(%s)" dest func_name args
+      | None -> sprintf "%s(%s)" func_name args)
     | Return e ->
       (match e with
       | None -> "return\n"
@@ -312,7 +310,7 @@ module Print = struct
   ;;
 
   let pp_fdefn fdefn =
-    let func_name = Symbol.pp_scope `C0 ^ Symbol.name fdefn.func_name in
+    let func_name = Symbol.name fdefn.func_name in
     let pars_str = List.map (fun temp -> St.pp temp) fdefn.temps |> String.concat ", " in
     sprintf "%s(%s)\n" func_name pars_str ^ pp_stms fdefn.body
   ;;

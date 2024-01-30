@@ -184,8 +184,7 @@ and[@warning "-8"] munch_effect_rev (Tree.Effect eft) : Quads.instr list =
       let zero = Sop.wrap rhs_size (Op.of_int 0L) in
       let shift_bound = Sop.wrap rhs_size (Op.of_int Fname.shift_bound) in
       [ Quads.Label l4
-      ; Quads.Fcall
-          { func_name = Fname.raise; dest = None; args = [ sigfpe ]; scope = `External }
+      ; Quads.Fcall { func_name = Fname.raise; dest = None; args = [ sigfpe ] }
       ; Quads.Label l3
       ; Quads.Jump { target = l4 }
       ; Quads.Label l2
@@ -295,8 +294,7 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
     let sigabrt = Fname.abrt |> Quads.Op.of_int |> Quads.Sop.wrap size in
     let one = 1L |> Quads.Op.of_int |> Quads.Sop.wrap size in
     [ Quads.Label pass
-    ; Quads.Fcall
-        { func_name = Fname.raise; dest = None; args = [ sigabrt ]; scope = `External }
+    ; Quads.Fcall { func_name = Fname.raise; dest = None; args = [ sigabrt ] }
     ; Quads.Label fail
     ; Quads.CJump
         { lhs = St.to_Sop exp
@@ -322,7 +320,7 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
       | Some s -> Some { data = s.data; size = s.size }
     in
     let func_name = fcall.func_name in
-    let call = Quads.Fcall { func_name; args; dest; scope = fcall.scope } in
+    let call = Quads.Fcall { func_name; args; dest } in
     call :: args_stms_rev
   | Tree.Load load ->
     let base, index, scale, disp = Tree.Addr.get load.src.data in

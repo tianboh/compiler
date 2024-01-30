@@ -95,7 +95,6 @@ type instr =
       { func_name : Symbol.t
       ; dest : St.t option
       ; args : Sop.t list
-      ; scope : [ `C0 | `External ]
       }
   | Cast of
       { (* Do not generate new temporary. 
@@ -255,15 +254,13 @@ let pp_inst = function
     (match call.dest with
     | None ->
       sprintf
-        "%s%s(%s)"
-        (Symbol.pp_scope call.scope)
+        "%s(%s)"
         (Symbol.name call.func_name)
         (List.map call.args ~f:(fun arg -> Sop.pp arg) |> String.concat ~sep:", ")
     | Some dest ->
       sprintf
-        "%s <- %s%s(%s)"
+        "%s <- %s(%s)"
         (Temp.name' dest.data dest.size)
-        (Symbol.pp_scope call.scope)
         (Symbol.name call.func_name)
         (List.map call.args ~f:(fun arg -> Sop.pp arg) |> String.concat ~sep:", "))
   | Load load ->
@@ -279,7 +276,7 @@ let pp_fdefn (fdefn : fdefn) =
   let body_str =
     List.map fdefn.body ~f:(fun inst -> pp_inst inst) |> String.concat ~sep:"\n"
   in
-  let func_name = Symbol.pp_scope `C0 ^ Symbol.name fdefn.func_name in
+  let func_name = Symbol.name fdefn.func_name in
   sprintf "%s(%s)\n%s\n" func_name pars_str body_str
 ;;
 

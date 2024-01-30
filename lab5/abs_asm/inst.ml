@@ -83,7 +83,6 @@ type instr =
         func_name : Symbol.t
       ; args : Sop.t list
       ; line : line
-      ; scope : [ `C0 | `External ]
       }
   | Cast of
       { dest : St.t
@@ -266,8 +265,7 @@ let pp_inst inst =
   | Ret _ -> sprintf "return"
   | Fcall fcall ->
     sprintf
-      "fcall %s%s(%s)"
-      (Symbol.pp_scope fcall.scope)
+      "fcall %s(%s)"
       (Symbol.name fcall.func_name)
       (List.map fcall.args ~f:(fun arg -> Sop.pp arg) |> String.concat ~sep:", ")
   | Push push -> sprintf "push %s" (Sop.pp push.var)
@@ -290,7 +288,7 @@ let rec pp_program (program : fdefn list) res =
   match program with
   | [] -> res
   | h :: t ->
-    let func_name = Symbol.pp_scope `C0 ^ h.func_name in
+    let func_name = h.func_name in
     let fdefn_str = func_name ^ ":\n" ^ pp_insts h.body "" ^ "\n" in
     let res = res ^ fdefn_str in
     pp_program t res

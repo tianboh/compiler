@@ -38,6 +38,7 @@ module Reg_spill = Var.X86_reg.Spill
 module Label = Util.Label
 module IG = Regalloc.Interference_graph
 module Regalloc = Regalloc.Driver
+module Symbol = Util.Symbol
 
 let trans_operand (operand : Src.Sop.t) (reg_alloc_info : Regalloc.dest IG.Vertex.Map.t)
     : Dest.Sop.t
@@ -332,9 +333,8 @@ let rec _codegen_w_reg_rev
       let inst_rev = Dest.Pop { var } in
       _codegen_w_reg_rev (inst_rev :: res) t reg_alloc_info reg_swap
     | Fcall fcall ->
-      let scope = fcall.scope in
       let func_name = fcall.func_name in
-      let inst = Dest.Fcall { func_name; scope } in
+      let inst = Dest.Fcall { func_name } in
       _codegen_w_reg_rev (inst :: res) t reg_alloc_info reg_swap
     | Load load ->
       let src = trans_mem load.src in
@@ -506,7 +506,8 @@ let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) opti
   let res = transform res_rev [] in
   let rsp = rsp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
   let rbp = rbp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-  [ Dest.Fname { name = fdefn.func_name; scope = `C0 }
+  let fname = fdefn.func_name in
+  [ Dest.Fname { name = fname }
   ; Push { var = rbp }
   ; Mov { dest = rbp; src = rsp; size }
   ; Sub { src = mem_cnt_oprd; dest = rsp; size }

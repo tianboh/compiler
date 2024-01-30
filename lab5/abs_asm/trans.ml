@@ -205,7 +205,7 @@ let[@warning "-8"] gen_fcall_rev (Src.Fcall fcall) =
   let uses = List.mapi fcall.args ~f:(fun idx _ -> param_map idx) in
   let line = { defines; uses; live_out = []; move = false } in
   let par_insts = gen_param_pass fcall.args in
-  let fcall = Dest.Fcall { func_name; args; line; scope = fcall.scope } in
+  let fcall = Dest.Fcall { func_name; args; line } in
   let num_par = List.length par_insts in
   let need_align = num_par > 6 && num_par % 2 = 1 in
   let insts =
