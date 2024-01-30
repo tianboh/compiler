@@ -169,12 +169,12 @@ type instr =
       }
   | Fcall of
       { func_name : Symbol.t
-      ; scope : [ `C0 | `External | `Internal ]
+      ; scope : [ `C0 | `External ]
       }
   | Abort
   | Fname of
       { name : string
-      ; scope : [ `C0 | `External | `Internal ]
+      ; scope : [ `C0 | `External ]
       }
   | GDB of string
   | Directive of string
@@ -209,7 +209,6 @@ let pp_inst' (operand : Sop.t) = pp_inst operand.size
 let pp_scope = function
   | `C0 -> Symbol.c0_prefix
   | `External -> ""
-  | `Internal -> "_"
 ;;
 
 (* functions that format assembly output *)

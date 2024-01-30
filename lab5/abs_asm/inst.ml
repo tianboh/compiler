@@ -83,7 +83,7 @@ type instr =
         func_name : Symbol.t
       ; args : Sop.t list
       ; line : line
-      ; scope : [ `C0 | `External | `Internal ]
+      ; scope : [ `C0 | `External ]
       }
   | Cast of
       { dest : St.t
@@ -141,7 +141,6 @@ type section =
 type fdefn =
   { func_name : string
   ; body : instr list
-  ; scope : [ `Internal | `C0 ]
   }
 
 type program = fdefn list
@@ -291,7 +290,7 @@ let rec pp_program (program : fdefn list) res =
   match program with
   | [] -> res
   | h :: t ->
-    let func_name = Symbol.pp_scope h.scope ^ h.func_name in
+    let func_name = Symbol.pp_scope `C0 ^ h.func_name in
     let fdefn_str = func_name ^ ":\n" ^ pp_insts h.body "" ^ "\n" in
     let res = res ^ fdefn_str in
     pp_program t res

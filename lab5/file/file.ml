@@ -53,10 +53,9 @@ let dump_abs file_name (program : Abs.program) =
 let dump_x86 file_name fnames instrs =
   let fnames =
     List.filter_map fnames ~f:(fun t ->
-        let name, scope = t in
-        match scope with
-        | `C0 -> Some (Symbol.pp_scope scope ^ name)
-        | _ -> None)
+        let name = t in
+        let scope = Symbol.pp_scope `C0 in
+        Some (scope ^ name))
   in
   (* header *)
   Out_channel.with_file file_name ~f:(fun out ->

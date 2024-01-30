@@ -185,7 +185,7 @@ and[@warning "-8"] munch_effect_rev (Tree.Effect eft) : Quads.instr list =
       let shift_bound = Sop.wrap rhs_size (Op.of_int Fname.shift_bound) in
       [ Quads.Label l4
       ; Quads.Fcall
-          { func_name = Fname.raise; dest = None; args = [ sigfpe ]; scope = `Internal }
+          { func_name = Fname.raise; dest = None; args = [ sigfpe ]; scope = `External }
       ; Quads.Label l3
       ; Quads.Jump { target = l4 }
       ; Quads.Label l2
@@ -296,7 +296,7 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
     let one = 1L |> Quads.Op.of_int |> Quads.Sop.wrap size in
     [ Quads.Label pass
     ; Quads.Fcall
-        { func_name = Fname.raise; dest = None; args = [ sigabrt ]; scope = `Internal }
+        { func_name = Fname.raise; dest = None; args = [ sigabrt ]; scope = `External }
     ; Quads.Label fail
     ; Quads.CJump
         { lhs = St.to_Sop exp
@@ -354,7 +354,7 @@ let gen_fdefn (fdefn : Tree.fdefn) : Quads.fdefn =
   let pars =
     List.map fdefn.temps ~f:(fun par : St.t -> { data = par.data; size = par.size })
   in
-  { func_name = fdefn.func_name; body; pars; scope = fdefn.scope }
+  { func_name = fdefn.func_name; body; pars }
 ;;
 
 (* To codegen a series of statements, just concatenate the results of

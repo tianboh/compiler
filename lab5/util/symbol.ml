@@ -54,7 +54,6 @@ let c0_prefix =
 let pp_scope = function
   | `C0 -> c0_prefix
   | `External -> ""
-  | `Internal -> "_"
 ;;
 
 module Fname = struct

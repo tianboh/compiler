@@ -95,7 +95,7 @@ type instr =
       { func_name : Symbol.t
       ; dest : St.t option
       ; args : Sop.t list
-      ; scope : [ `C0 | `External | `Internal ]
+      ; scope : [ `C0 | `External ]
       }
   | Cast of
       { (* Do not generate new temporary. 
@@ -132,7 +132,6 @@ type fdefn =
   { func_name : Symbol.t
   ; body : instr list
   ; pars : St.t list
-  ; scope : [ `Internal | `C0 ]
   }
 
 type program = fdefn list
@@ -280,7 +279,7 @@ let pp_fdefn (fdefn : fdefn) =
   let body_str =
     List.map fdefn.body ~f:(fun inst -> pp_inst inst) |> String.concat ~sep:"\n"
   in
-  let func_name = Symbol.pp_scope fdefn.scope ^ Symbol.name fdefn.func_name in
+  let func_name = Symbol.pp_scope `C0 ^ Symbol.name fdefn.func_name in
   sprintf "%s(%s)\n%s\n" func_name pars_str body_str
 ;;
 

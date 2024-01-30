@@ -170,7 +170,7 @@ type stm =
       { dest : St.t option
       ; func_name : Symbol.t
       ; args : Sexp.t list
-      ; scope : [ `C0 | `External | `Internal ]
+      ; scope : [ `C0 | `External ]
       }
   | Return of Sexp.t option
   | Jump of Label.t
@@ -197,7 +197,6 @@ type fdefn =
   { func_name : Symbol.t
   ; temps : St.t list
   ; body : stm list
-  ; scope : [ `Internal | `C0 ]
   }
 
 type program = fdefn list
@@ -313,7 +312,7 @@ module Print = struct
   ;;
 
   let pp_fdefn fdefn =
-    let func_name = Symbol.pp_scope fdefn.scope ^ Symbol.name fdefn.func_name in
+    let func_name = Symbol.pp_scope `C0 ^ Symbol.name fdefn.func_name in
     let pars_str = List.map (fun temp -> St.pp temp) fdefn.temps |> String.concat ", " in
     sprintf "%s(%s)\n" func_name pars_str ^ pp_stms fdefn.body
   ;;

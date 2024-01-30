@@ -171,7 +171,7 @@ let compile (cmd : cmd_line_args) : unit =
   (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Ir_tree.Trans.translate tst tc_env cmd.unsafe in
-  let ir' =
+  (* let ir' =
     List.map ir ~f:(fun fdefn ->
         let instrs = CFG_IR.eliminate_fall_through fdefn.body in
         let bbs = CFG_IR.build_bb instrs in
@@ -180,13 +180,13 @@ let compile (cmd : cmd_line_args) : unit =
         let topoorder = List.rev porder in
         let body = CFG_IR.to_instrs bbs topoorder in
         { fdefn with body })
-  in
+  in *)
   say_if cmd.dump_ir (fun () ->
       List.map ir ~f:Ir_tree.Inst.Print.pp_fdefn |> String.concat ~sep:"\n");
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   (* let start = Unix.gettimeofday () in *)
-  let quad = Quads.Trans.gen ir' in
+  let quad = Quads.Trans.gen ir in
   say_if cmd.dump_quad (fun () -> Quads.Inst.pp_program quad "");
   match cmd.emit with
   (* Output: abstract 3-address assem *)
@@ -212,10 +212,7 @@ let compile (cmd : cmd_line_args) : unit =
           fdefn.func_name, instrs)
     in
     let _, instrs = List.unzip progs in
-    let fnames =
-      List.filter abs ~f:(fun fdefn -> phys_equal fdefn.scope `C0)
-      |> List.map ~f:(fun f -> f.func_name, f.scope)
-    in
+    let fnames = List.map abs ~f:(fun f -> f.func_name) in
     let instrs = List.concat instrs in
     File.dump_x86 file fnames instrs
 ;;

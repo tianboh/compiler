@@ -155,19 +155,6 @@ let gen_cond (sexp : Sexp.t) : Sexp.t * Tree.binop * Sexp.t =
   sexp, Tree.Equal_eq, Sexp.wrap size (Exp.of_int 1L)
 ;;
 
-let c0_raise (signo : St.t) : Tree.fdefn =
-  let body =
-    [ Tree.Fcall
-        { dest = None
-        ; func_name = Symbol.Fname.raise
-        ; args = [ St.to_Sexp signo ]
-        ; scope = `External
-        }
-    ]
-  in
-  { func_name = Symbol.Fname.raise; temps = [ signo ]; body; scope = `Internal }
-;;
-
 (* Check whether base is 0 *)
 let check_null (base : Sexp.t) : Tree.stm list =
   let lhs, op, rhs = base, Tree.Equal_eq, Sexp.wrap `QWORD (Exp.of_int 0L) in
@@ -180,7 +167,7 @@ let check_null (base : Sexp.t) : Tree.stm list =
       { dest = None
       ; func_name = Symbol.Fname.raise
       ; args = [ Sexp.wrap `DWORD (Exp.of_int Symbol.Fname.usr2) ]
-      ; scope = `Internal
+      ; scope = `External
       }
   ; Tree.Label target_false
   ]
@@ -219,7 +206,7 @@ let check_bound (base : Sexp.t) (index : Sexp.t) : Tree.stm list * Tree.stm list
         { dest = None
         ; func_name = Symbol.Fname.raise
         ; args = [ Sexp.wrap `DWORD (Exp.of_int Symbol.Fname.usr2) ]
-        ; scope = `Internal
+        ; scope = `External
         }
     ; Tree.Label target2
     ]
@@ -284,7 +271,7 @@ let trans_fcall (fcall : TST.fcall) (env : env) trans_func =
   let args_stms = List.concat args_stms_ls in
   let func_name = fcall.func_name in
   let func = Map.find_exn env.funcs func_name in
-  let scope = (func.scope :> [ `C0 | `Internal | `External ]) in
+  let scope = (func.scope :> [ `C0 | `External ]) in
   let size = sizeof_dtype' func.ret_type in
   match size with
   | `VOID ->
@@ -322,7 +309,7 @@ let check_alloc_arr (size : Sexp.t) : Tree.stm list =
       { dest = None
       ; func_name = Symbol.Fname.raise
       ; args = [ Sexp.wrap `DWORD (Exp.of_int Symbol.Fname.usr2) ]
-      ; scope = `Internal
+      ; scope = `External
       }
   ; Tree.Label target_true
   ]
@@ -785,7 +772,7 @@ let trans_fdefn func_name (pars : TST.param list) blk (env : env) (need_check : 
         let var_s = Sexp.wrap size (Exp.of_t var.temp) |> Sexp.to_St in
         var_s)
   in
-  { func_name; temps; body; scope = `C0 }
+  { func_name; temps; body }
 ;;
 
 let rec trans_prog
@@ -796,9 +783,7 @@ let rec trans_prog
     : Tree.program
   =
   match program with
-  | [] ->
-    let t = Temp.create () |> Exp.of_t |> Sexp.wrap `DWORD |> Sexp.to_St in
-    List.rev acc @ [ c0_raise t ]
+  | [] -> List.rev acc
   | fdefn :: t ->
     let fdefn_tree = trans_fdefn fdefn.func_name fdefn.pars fdefn.blk env need_check in
     trans_prog t (fdefn_tree :: acc) env need_check

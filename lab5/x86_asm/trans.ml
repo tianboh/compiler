@@ -506,8 +506,7 @@ let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) opti
   let res = transform res_rev [] in
   let rsp = rsp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
   let rbp = rbp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-  let scope = (fdefn.scope :> [ `C0 | `Internal | `External ]) in
-  [ Dest.Fname { name = fdefn.func_name; scope }
+  [ Dest.Fname { name = fdefn.func_name; scope = `C0 }
   ; Push { var = rbp }
   ; Mov { dest = rbp; src = rsp; size }
   ; Sub { src = mem_cnt_oprd; dest = rsp; size }

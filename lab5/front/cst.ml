@@ -198,14 +198,14 @@ type field =
 
 and gdecl =
   | Fdecl of
-      { (* Internal indicate c0 function, external indicate c function *)
+      { (* External indicates standard C function *)
         ret_type : dtype
       ; func_name : Symbol.t
       ; par_type : param list
       ; scope : [ `C0 | `External ]
       }
   | Fdefn of
-      { (* Internal indicate c0 function, external indicate c function *)
+      { (* External indicates standard C function *)
         ret_type : dtype
       ; func_name : Symbol.t
       ; par_type : param list

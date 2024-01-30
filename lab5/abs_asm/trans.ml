@@ -441,7 +441,6 @@ let rec gen (program : Src.program) (res : Dest.program) : Dest.program =
     let body_content = gen_body h.body [] exit_label in
     let body, _ = gen_section "body_" h.func_name body_content in
     let prog = gen_program prologue body epilogue in
-    let scope = h.scope in
-    let fdefn = { func_name = Symbol.name h.func_name; body = prog; scope } in
+    let fdefn = { func_name = Symbol.name h.func_name; body = prog } in
     gen t (fdefn :: res)
 ;;
