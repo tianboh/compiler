@@ -273,11 +273,13 @@ let pp_fdefn (fdefn : fdefn) =
     List.map fdefn.pars ~f:(fun par -> Temp.name' par.data par.size)
     |> String.concat ~sep:", "
   in
-  let body_str =
-    List.map fdefn.body ~f:(fun inst -> pp_inst inst) |> String.concat ~sep:"\n"
+  let head, body =
+    match fdefn.body with
+    | [] -> failwith "expect func label"
+    | h :: t -> h, t
   in
-  let func_name = Symbol.name fdefn.func_name in
-  sprintf "%s(%s)\n%s\n" func_name pars_str body_str
+  let body_str = List.map body ~f:(fun inst -> pp_inst inst) |> String.concat ~sep:"\n" in
+  sprintf "%s(%s)\n%s\n" (pp_inst head) pars_str body_str
 ;;
 
 let rec pp_program (program : fdefn list) res =

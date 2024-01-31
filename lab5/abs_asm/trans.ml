@@ -416,16 +416,16 @@ let gen_pars (pars : St.t list) : Dest.instr list =
 let gen_section (prefix : string) (fname : Symbol.t) (content : Dest.instr list)
     : Dest.section * Label.t
   =
-  let label = Label.label (Some (prefix ^ Symbol.name fname)) in
+  let label = Label.label' (prefix ^ Symbol.name fname) in
   let name = Dest.Label { label; line = empty_line () } in
   { name; content }, label
 ;;
 
-let gen_program prologue body epilogue : instr list =
+let gen_program fname prologue body epilogue : instr list =
   let prologue = prologue.name :: prologue.content in
   let body = body.name :: body.content in
   let epilogue = epilogue.name :: epilogue.content in
-  prologue @ body @ epilogue
+  fname @ prologue @ body @ epilogue
 ;;
 
 (* Let register allocation alg handle prologue and epilogue. *)
@@ -433,14 +433,20 @@ let rec gen (program : Src.program) (res : Dest.program) : Dest.program =
   match program with
   | [] -> List.rev res
   | h :: t ->
+    let head, body =
+      match h.body with
+      | [] -> failwith "expect func head"
+      | h :: t -> h, t
+    in
     let pars = List.map h.pars ~f:(fun par -> St.wrap par.size par.data) |> gen_pars in
     let save = save_callee () in
     let epilogue_content = gen_epilogue save in
-    let prologue, _ = gen_section "pro_" h.func_name (save @ pars) in
-    let epilogue, exit_label = gen_section "epi_" h.func_name epilogue_content in
-    let body_content = gen_body h.body [] exit_label in
-    let body, _ = gen_section "body_" h.func_name body_content in
-    let prog = gen_program prologue body epilogue in
+    let prologue, _ = gen_section "_pro" h.func_name (save @ pars) in
+    let epilogue, exit_label = gen_section "_epi" h.func_name epilogue_content in
+    let fname = gen_body [ head ] [] exit_label in
+    let body_content = gen_body body [] exit_label in
+    let body, _ = gen_section "_body" h.func_name body_content in
+    let prog = gen_program fname prologue body epilogue in
     let fdefn = { func_name = Symbol.name h.func_name; body = prog } in
     gen t (fdefn :: res)
 ;;

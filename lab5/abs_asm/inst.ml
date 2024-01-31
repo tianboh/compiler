@@ -288,8 +288,12 @@ let rec pp_program (program : fdefn list) res =
   match program with
   | [] -> res
   | h :: t ->
-    let func_name = h.func_name in
-    let fdefn_str = func_name ^ ":\n" ^ pp_insts h.body "" ^ "\n" in
+    let head, body =
+      match h.body with
+      | [] -> failwith "expect func name"
+      | h :: t -> h, t
+    in
+    let fdefn_str = pp_inst head ^ "\n" ^ pp_insts body "" ^ "\n" in
     let res = res ^ fdefn_str in
     pp_program t res
 ;;

@@ -53,7 +53,7 @@ let label' (name : string) : t =
 
 let name (label : t) : string =
   if label.is_unique
-  then "_" ^ label.name
+  then label.name
   else "_" ^ label.name ^ "_" ^ Int.to_string label.unique_id
 ;;
 

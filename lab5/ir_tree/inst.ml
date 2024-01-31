@@ -310,9 +310,13 @@ module Print = struct
   ;;
 
   let pp_fdefn fdefn =
-    let func_name = Symbol.name fdefn.func_name in
     let pars_str = List.map (fun temp -> St.pp temp) fdefn.temps |> String.concat ", " in
-    sprintf "%s(%s)\n" func_name pars_str ^ pp_stms fdefn.body
+    let head, body =
+      match fdefn.body with
+      | [] -> failwith "expect func label"
+      | h :: t -> h, t
+    in
+    sprintf "%s(%s)\n" (pp_stm head) pars_str ^ pp_stms body
   ;;
 
   let pp_program program =

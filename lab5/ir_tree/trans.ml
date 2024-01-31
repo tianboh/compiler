@@ -749,7 +749,12 @@ let trans_structs (env : TC.env) : env =
       { acc with structs = Map.set acc.structs ~key:sname ~data:s' })
 ;;
 
-let trans_fdefn func_name (pars : TST.param list) blk (env : env) (need_check : bool)
+let trans_fdefn
+    (func_name : Symbol.t)
+    (pars : TST.param list)
+    blk
+    (env : env)
+    (need_check : bool)
     : Tree.fdefn
   =
   let vars =
@@ -760,7 +765,9 @@ let trans_fdefn func_name (pars : TST.param list) blk (env : env) (need_check : 
   in
   let env = { env with vars } in
   let blk_rev, env = trans_stm_rev blk [] env need_check in
+  let flabel = Label.label' func_name.name in
   let body = List.rev blk_rev in
+  let body = Tree.Label flabel :: body in
   let temps : St.t list =
     List.map pars ~f:(fun par ->
         let var = Map.find_exn env.vars par.data in

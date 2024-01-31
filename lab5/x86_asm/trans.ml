@@ -507,10 +507,15 @@ let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) opti
   let rsp = rsp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
   let rbp = rbp |> Dest.Op.of_reg |> Dest.Sop.wrap size in
   let fname = fdefn.func_name in
+  let body =
+    match res with
+    | [] -> failwith "expect func head"
+    | _ :: t -> t
+  in
   [ Dest.Fname { name = fname }
   ; Push { var = rbp }
   ; Mov { dest = rbp; src = rsp; size }
   ; Sub { src = mem_cnt_oprd; dest = rsp; size }
   ]
-  @ res
+  @ body
 ;;
