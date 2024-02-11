@@ -1,195 +1,133 @@
-#### Authorship
- * Author: Frank Pfenning (<fp@cs.cmu.edu>)
- * Modified: Anand Subramanian (<asubrama@andrew.cmu.edu>)
- * Modified for OCaml from SML: Michael Duggan (<md5i@cs.cmu.edu>)
- * Modified: Alice Rao (<alrao@andrew.cmu.edu>)
- * Modified: Nick Roberts (<nroberts@alumni.cmu.edu>)
- * Modified: Henry Nelson (<hcnelson99@gmail.com>)
+# C0 Compiler
 
----
+## Overview Workflow
 
-## Welcome to 15-411!
+**C0 program** ——c0_lexer, c0_parser——> **CST** ——elaborate——> **AST** ——semantic analysis——> **TST** ——ir_tree_trans——> **IR trees** ——quads_trans——> **Quads**  ——abs_codegen——> **Abstract Assembly** ——dataflow graph, liveness analysis, register allocation, x86 codegen——> **x86-64 machine code**
 
-This is some starter code for the L1 compiler you have to build for Lab 1.  It contains a lexer, parser, translator, and even a code generator, except that the code generator creates pseudo assembly language with fictitious instructions and an unlimited number of registers.  We took some care to use good style (according to the past TAs); you may consider this a model for your own coding.  Feel free to modify any and all of this code as you see fit.
+## Lexer and Parser
+[C0 grammar](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/hw/lab4.pdf) is context dependent because we have typedef syntax. Therefore, lexer needs to determine whether return a type identifier or variable identifier when reading an identifier. The custom defined type is recorded in a global set `env`. Lexer will check this set before returning the identifier.
 
-Bug reports to the course staff are welcome.
+## CST
+CST(Concrete Syntax Tree) is parsed from l4 source file. The basic structure for CST and actual syntax tree is the same, for example, CST have if, while, for, block, postops etc. Some may have slight difference to avoid conflict during parsing.
 
----
+Notice that, to avoid reduce-reduce conflict in parser, CST does not have corresponding lvalue type. CST uses exp as lvalue instead. This will be checked and transformed to specific lvalue in the AST.
 
-## OCaml Notes
+## AST
+In order to make following analysis simpler, an elaboration pass is added after CST is constructed. The elaborated syntax tree is AST(Abstract Syntax Tree). This elaboration pass simplifies CST through
 
-If you use Windows, it is strongly recommended that you use an Ubuntu 18.04 LTS Windows subsystem, detailed [here](https://docs.microsoft.com/en-us/windows/wsl/install-win10).
+* for loops are elaborated into while loop.
+* Unary operations(negative, logical not, bitwise not) are elaborated into binary operations by identical value.
+* Logical operations are elaborated to ternary operation.
+* Postop(++, --) is elaborated to += 1, -= 1.
+* Declare is elaborated to provide a namespace for the variable. So typecheck and controlflow check is much easier on AST.
+* Custom typenames are elaborated to primitive type.
 
-This starter code assumes OCaml 4.10.0, the version available on the autograder. However, the starter code should work with any version >=4.08. There are a few steps to installing OCaml.
+Elaboration pass also provides simple checks for type definations because type alias is elaborated afterwards.
 
-  1. Install the package manager [opam](https://opam.ocaml.org/doc/Install.html). The linked page includes a shell command that you can run to install opam directly.
-  2. Initialize opam with the correct compiler version. You can run this command:
-     ```
-      opam init --dot-profile=~/.bashrc --auto-setup
-     ```
-     (If you use a different shell, like `zsh`, just change the dot profile as appropriate.) This command will take a while to finish. If the installation process fails, you may have to install the packages indicated by the error message. If you use Ubuntu 16.04, the `bubblewrap` package is not found in the apt repository, so you will have to install it manually ([example of this on GitHub](https://github.com/ocaml/opam/issues/3424#issuecomment-461660006)).
-  3. Install packages used in the starter code. The starter code uses the Jane Street Core standard library replacement `core`,  the `ppx_jane` syntax extensions, the `cmdliner` package for getopt-like command line parsing, the `menhir` parser generator, the `yojson` json library, and some development tools. Run `opam install core.v0.14.0 ppx_jane cmdliner menhir yojson utop merlin ocamlformat` to install everything you will need.
+* Type definitions cannot conflict with variable names.
+* Type definitions cannot conflict with function names.
+* Type definitions cannot alias void(pointer to void, array of void, etc,.) because void can only appear as function return type.
+* Same type definition is only declared once.
+* No variable declaration at for loop iteration filed.
 
-For information on the OCaml Standard Library, ocamllex, and other sundry details, see: <http://caml.inria.fr/pub/docs/manual-ocaml-4.10/index.html>.
+## Semantic Analysis and TST
+Semantic analysis checks variable and function semantic correctness on AST, and then generates TST. Specifically, it checks
 
-For documentation on the Core library, see:
-<https://ocaml.janestreet.com/ocaml-core/v0.14/doc/core/Core/index.html>.
+* Variables are declared before defination, and all variables are defined before usage.
+* No variable can be declared more than once.
+* Variable names do not collide with type names, but can shadow function names.
+* No variable of type void. Void is only used as return type for function.
+* Functions may be declared more than once, but with the same argument and return type.
+* Functions are defined before calling, forward declare allowed.
+* Expressions are well typed. Including function call arguments, variable assignment, conditions, return etc. 
+* Control flow path with non-void return has proper returned.
 
-For documentation on menhir, see:
-<http://gallium.inria.fr/~fpottier/menhir/manual.pdf>.
+It will not check whether a field of struct is properly defined before use. It only checks whether this struct is declared before use. In other words, it only checks the highest level for dot, array access, and deref operations. Also, assign operation to deref lvalue will lead to extra check(make sure this lvalue is defined before deref).
 
----
+Assign NULL to a pointer will lead to variable defined. Though it is wrong, but this should be the scope of dynamic check at later phase, instead of static check here.
 
-## Strongly consider using Merlin
-If you use Vim, Atom, Emacs, Spacemacs, or VS Code, [Merlin](https://github.com/ocaml/merlin) is a must.
-(See [here](https://github.com/hackwaly/vscode-ocaml) for the VS Code link.)
+Once semantic analysis is finished, it generates TST(Typed Syntax Tree). TST keeps track of type information on AST: each expression is attached with a type. This information helps to get size information in later phases.
 
-Merlin allows you to associate keyboard shortcuts with extremely useful actions:
-  * Detect the type of the expression currently under the cursor.
-  * Globally rename a symbol.
-  * Autocomplete the identifier currently being typed. (Ever wanted to see all the bindings in a module, like List? Type "List." followed by the omnicomplete keybinding to see a navigable list of available functions.)
+## Dynamic Semantic
+Memory access order and sanity check can be tricky. So C0 gives dynamic semantic to clarify this ambiguity. Check [concepts](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/13-dynamic-notes.pdf), [pointer, array](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/14-mutable-notes.pdf) and [struct](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/15-structs-notes.pdf) for details.
 
-You should invest the few hours it takes to learn Merlin so that you can take advantage of its features for the entirety of this course.
+Here are two simple examples to illustrate the importance of dynamic semantics.
 
-Dune will automatically generate the correct .merlin files for your project.
+*p = 1/0
 
----
+This leads to div-by-zero error.
 
-## Expect testing
+and 
 
-You can run expect tests using `dune runtest` in the starter code directory.
-This will automatically run a special kind of test called an expect test.
-Expect tests are tests which confirm that a certain snippet of code has a
-certain output. In `lib/parse.ml`, you will see one such type of expect test,
-which lexes and parses a string and then prints out resulting AST. When you run
-`dune runtest`, the code in each expect test will be compiled and run and then
-the output (from stdout) will be diffed with the text in the `[%expect {| |}]`
-block (the `{| |}` is OCaml's multiline string syntax). The test passes if the
-output is identical. If the output is different, `dune runtest` will notify you
-that a test failed and show the diff. If you'd like to accept the latest output
-as the new correct output, you can run `dune promote` and dune will
-automatically replace the text in your `[%expect ]` block with the latest
-output from running the tests.
+**p = 1/0.
 
-Go ahead and try modifying the expect test to see what the diff looks like for
-a failing test and how `dune promote` works. You can also try adding another
-test to another part of the starter code to help understand how the starter
-code works. Expect tests are also a great way to test and document the behavior
-of your code as you write it. One benefit of expect tests is that they have
-less maintenance burden than unit tests -- if the behavior of your code ever
-changes and the new behavior is correct, you can just inspect the diffs and run
-`dune promote` and all your tests will pass with no hassle.
+This leads to illegal memory access error.
 
----
+The general idea for memory access is to evaluate from left to right. If lvalue is memory access, evaluate this address before assignment(in the last). However, notice that calculating address itself may lead to other errors. The reason why **p lead to illegal memory access is that *p should be evaluated first(not **p), and this leads to a illegal memory access error. This also explains why *p = 1/0 leads to div-by-zero error because p is legal and then 1/0 is measured. [Here(section 5)](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/14-mutable-notes.pdf) gives a more elaborated explanation for above two cases.
 
-## Utop: the better REPL
+## IR tree
+The IR data structure provides assembly-like statements and expressions. High-level controlflow statements in AST, like while and if, are translated to low-level jump and conditional jump in IR. Ternary operation are also translated to statements with jump.
 
-The default OCaml repl is not very user-friendly. Just try it out: it's called `ocaml`.
+Statements may have side effect and expressions are guaranteed to be effect-free. Some expressions(div, mod, shift) are transformed to effect statement, and the rest are pure as it is. New temporaries are created as destination of expressions with side-effect. Expressions are attached with size information.
 
-Fortunately, dune makes it easy to use `utop`, the improved REPL for ocaml. You
-should have already installed it when following the installation steps above.
-If installed, you can start a utop REPL for your compiler by running
-`dune utop`.
+Variables in AST are translated to temporary in IR. Boolean constant is replaced with integer(true for 1 and false for 0). Notice that L4 provides pointer type, so expression may of size QWORD. In such case, IR provides cast instruction for them.
 
-You can then run small programs, like:
+Dot, array access and deref are transformed to memory access. IR provides load and store statements for them. Dynamic check statements are added before store and load.
 
-```
-utop# open Core;;
-utop# open Compiler;;
-utop# let n = Mark.naked;;
-utop# Typechecker.typecheck Ast.[ n (Return (n (Const 0l))) ];;
-```
+## Dominator and SSA
+SSA is built on Controlflow Graph(CFG). Any instruction level(IR, Quads, Abs Assembly, etc,.) that follows the CFG interface can generate its own SSA. SSA is composed with basic blocks on CFG, where each block start with a label and read until next label. SSA first build dominator trees based on [A Simple, Fast Dominance Algorithm](https://www.cs.rice.edu/~keith/EMBED/dom.pdf).
 
-(Hopefully this clues you in on some nice features of OCaml, too, like opening
-a module locally to an expression [e.g. the Ast module is open inside the
-subsequent list literal] and int32 literals [e.g. `0l`]).
+Then, use [SSA algorithm](https://pfalcon.github.io/ssabook/latest/book.pdf)(section 3) to rename the temporaries. Critical edges are properly handled at the end of SSA. Also, SSA works for each function independently, and their parameters are translated to a block at the beginning of the function body. So the rename process takes into parameters as well.
 
-When starting a new REPL session, you will pretty much always want to start by
-running `open Core;; open Compiler;;` to bring the jane street standard library
-(core) and your compiler code into the top level namespace.
+## Quads
+Quads is of assembly-like instructions. IR statements are translated to instructions using maximal munch algorithm. IR expressions are translated to binary/move instructions. Unlike IR expression, quads operand do not have nested expressions because maximal munch algorithm. This helpes to produce assembly like instructions.
 
----
+Quads provide operand of temporary and immediate. Quads is hardware-independent, so operands of register and memory are not provided.
 
-## Source Files
-The following are the source files for the L1 compiler
+## Abstract Assembly
+Abstract assembly provides operand of register, frame memory, temporary and immediate. This is the immediate layer before register allocation, so information for define, use, liveout is attached to each instruction. Instructions requiring special registers can add those registers to define field, so register allocation algorithm will preserve those register unassigned when those instructions are executed. In the x86 assembly code generation, we can move operand/destination to those special registers without risk.
 
-    README.md               -- this file
+Instructions with special register treatments are
 
-    Makefile             -- makefile for the compiler
-                            For a quick test
+* Div and mod. Preserve %RAX and %RDX.
+* Shift. Preserve %RCX.
 
-        % make          (generates file ../bin/c0c using dune build)
+Calling a function will 
 
-        % ../bin/c0c --verbose --emit abs ../tests/l1-basic/return01.l1.
+* Move parameters to %RDI, %RSI, %RDX, %RCX, %R8, %R9 respectively. If parameters are more than 6, then push them to the memory. Last parameter is pushed first, and gradually to the 7th.
+* Save caller-saved register by defining %R10 and %R11 at fcall instruction. 
+* Preserve parameter registers by defining %RDI, %RSI, %RDX, %RCX, %R8, %R9 at fcall as well. So the parameter source will not collide with those registers.
+* Preserve return register %RAX by defining it at fcall.
 
-                        should generate ../tests/l1-basic/return01.l1.abs in pseudo
-                        assembly
+When a function is called, it will 
 
-        % make clean        (removes generated files)
+* Save %RBP(caller func return address) and update %RBP to %RSP(called func address) based on local allocated memory.
+* Store the callee-saved registers.
+* Read parameters from registers. Read from memories if necessary.
+* Execute function. Move result to %RAX if function returns.
+* Restore callee-saved registers.
+* Restore %RBP and %RSP.
 
-    .merlin           The file that merlin uses for determining where build
-                      artifacts are located. This is autogenerated by dune and
-                      should not be committed.  Merlin is useful for
-                      determining types of expressions and for autocomplete.
+## Dataflow analysis
+Dataflow analysis provide four modes: forward/backward must/may analysis. Now we only need liveness analysis(backward may analysis) to allocate register. Abstract assembly code within a function defination will be decomposed to basic blocks. Define and use information is used to calculate liveout info. Operand in this process is of int type, and each value represents a unique register/temporary in abstract assembly operand. 0-15 represent 16 general registers, and higher value represent distinct temporaries.
 
-    ../bin/c0c        The native executable generated by the Makefile
+## Register allocation
+Interference graph edge is built between def and liveout for each instruction. Some instructions may define multiple registers/temporaries, and they are mutually linked as well.
 
-    top.ml          This is the main driver.  It calls all the other parts
-                    of the compiler.
+Register allocation is done based on interference graph. Pre-color is not necessary because special registers are already preserved for those special instructions. Simply apply SEO and greedy coloring will do the rest work.
 
-    ast.ml          abstract syntax tree for the l1 language
-    c0_lexer.mll    lexer for l1 (ocamllex file)
-    c0_parser.mly   parser for l1 (menhir file)
-    parse.ml        code that sets up and calls the parser/lexer
+13 registers are available for allocation. %RBP and %RSP are preserved for function call return address. And %R15 is used as swap register.
 
-    typechecker.ml  basic type checker over the ast
+If there are more than 5000 temporaries in the graph, it may cost much time to run the algorithm. In this case, it will spill all temporary to stack and do not allocate any register.
 
-    tree.ml         data structure representing the IR tree
-    trans.ml        converts from the AST to the IR tree
-    temp.ml         generates temporary variables on the fly
+## x86-64 machine code
+Abstract assembly code is translated to x86-64 machine code based on the information of register allocation. The transformation includs
 
-    assem.ml        representation of assembly used by the compiler
-    codegen.ml      generates pseudo-assembly with temporaries from IR
-
-    error_msg.ml    error message utilities
-    mark.ml         library for tracking source file positions
-    symbol.ml       symbol table library
-
----
-
-Debugging Hints
----
-
-`dune build ./bin/c0c.bc` will generate a debuggable bytecode version of the
-compiler in `_build/default/bin/c0c.bc`.  You can run this in the OCaml debugger:
-
-    ocamldebug _build/default/bin/c0c.bc
-    set arguments ../tests/return01.l1
-    step
-
-The debugger is a time-traveling debugger.  It allows you to step
-backwards as well as forwards.  See the OCaml manual for more
-information.
-
-You can use
-
-    ../bin/c0c --verbose --dump-ast --dump-ir --dump-assem file.l1
-
-to print information from all the phases of the current compiler.
-
-You can use
-
-    ../bin/c0c --debug-parse file.l1
-
-to get a debug trace of the parser.
-
-To get a state table for the parser, you can run
-
-    menhir -v lib/c0_parser.mly
-
-This will generate a `lib/c0_parser.automaton` file which contains
-information about the parse states.  The `lib/c0_parser.conflicts` file will
-also contain explanations of any parser state conflicts due to ambiguities in
-your grammar. Remove the generated `lib/c0_parser.ml` and `lib/c0_parser.mli`
-files before recompiling, as they will confuse dune.  (Try it and see. It is
-kafe.)
+* Transform temporary to allocated register/memory address.
+* Transform frame memory(used in function call parameter passing) to real memory
+* Compared result is calculated by CMP and a followed SETCC.
+* MOV use swap register to handle memory to memory move.
+* RAX and RDX are preserved for div, mod. CVT is used to extend higher bits.
+* RCX is preserved for SAL and SAR.
+* Safety check for SAL and SAR is done by cmp and jump tp fpe handler.
+* Based on allocated memory, provide callee function rsp subtraction value.
