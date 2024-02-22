@@ -606,7 +606,15 @@ let rec trans_stm_rev
   match tst with
   | TST.Assign asn_tst -> trans_asnop_rev acc (TST.Assign asn_tst) need_check env, env
   | TST.If if_TST ->
-    (* 
+    (*  Situation 1: False stm is return.
+     *  CJump cond label_true, label_false
+     *  label_false
+     *  false_stm
+     *  label_true
+     *  true_stm
+     *  rest code blah blah
+     *)
+    (*  Situation 2: False stm not return.
      *  CJump cond label_true, label_false
      *  label_false
      *  false_stm
@@ -623,16 +631,30 @@ let rec trans_stm_rev
     let false_stm, _ = trans_stm_rev if_TST.false_stm [] env need_check in
     let true_stm, _ = trans_stm_rev if_TST.true_stm [] env need_check in
     let lhs, op, rhs = gen_cond cond_exp in
-    ( (Tree.Label label_conv :: true_stm)
-      @ [ Tree.Label label_true; Tree.Jump label_conv ]
-      @ false_stm
+    let false_ret =
+      match List.hd false_stm with
+      | Some f ->
+        (match f with
+        | Tree.Return _ -> true
+        | _ -> false)
+      | None -> false
+    in
+    let common =
+      false_stm
       @ [ Tree.Label label_false
         ; Tree.CJump
             { lhs; op; rhs; target_true = label_true; target_false = label_false }
         ]
       @ List.rev cond_stms
       @ acc
-    , env )
+    in
+    if false_ret
+    then true_stm @ [ Tree.Label label_true ] @ common, env
+    else
+      ( (Tree.Label label_conv :: true_stm)
+        @ [ Tree.Label label_true; Tree.Jump label_conv ]
+        @ common
+      , env )
   | TST.While while_TST ->
     (* 
      * Jump label_loop_stop

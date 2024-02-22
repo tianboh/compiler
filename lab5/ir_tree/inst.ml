@@ -222,6 +222,11 @@ let is_return = function
   | _ -> false
 ;;
 
+let is_raise = function
+  | Fcall f -> if Base.phys_equal f.func_name Symbol.Fname.raise then true else false
+  | _ -> false
+;;
+
 let[@warning "-27"] is_assert (i : stm) : bool = false
 let label (l : Label.t) = Label l
 let jump (target : Label.t) : stm = Jump target
@@ -260,66 +265,64 @@ let replace_ctarget (instr : stm) (old_target : Label.t) (new_target : Label.t) 
   | _ -> failwith "expect cond jump to replace target"
 ;;
 
-module Print = struct
-  let sprintf = Printf.sprintf
-  let pp = Sexp.pp
-  let pp_mem = Mem.pp
+let sprintf = Printf.sprintf
+let pp = Sexp.pp
+let pp_mem = Mem.pp
 
-  let rec pp_stm = function
-    | Cast cast -> "cast " ^ St.pp cast.dest ^ "  <--  " ^ pp cast.src
-    | Move mv ->
-      if Size.compare (Sexp.get_size mv.src) (St.get_size mv.dest) <> 0
-      then failwith (sprintf "move size mismatch %s -> %s" (pp mv.src) (St.pp mv.dest));
-      St.pp mv.dest ^ "  <--  " ^ pp mv.src
-    | Effect eft ->
-      sprintf
-        "effect %s <- %s %s %s"
-        (St.pp eft.dest)
-        (pp eft.lhs)
-        (Exp.pp_binop eft.op)
-        (pp eft.rhs)
-    | Fcall c ->
-      let func_name = Symbol.name c.func_name in
-      let args = List.map (fun arg -> pp arg) c.args |> String.concat ", " in
-      (match c.dest with
-      | Some dest ->
-        let dest = St.pp dest in
-        sprintf "%s <- %s(%s)" dest func_name args
-      | None -> sprintf "%s(%s)" func_name args)
-    | Return e ->
-      (match e with
-      | None -> "return\n"
-      | Some e -> "return " ^ pp e ^ "\n")
-    | Jump j -> "jump " ^ Label.name j
-    | CJump cj ->
-      sprintf
-        "cjump(%s %s %s) target_true:%s, target_false %s "
-        (pp cj.lhs)
-        (Exp.pp_binop cj.op)
-        (pp cj.rhs)
-        (Label.name cj.target_true)
-        (Label.name cj.target_false)
-    | Label l -> Label.content l
-    | Nop -> "nop"
-    | Assert asrt -> sprintf "assert(%s)" (pp asrt)
-    | Load ld -> sprintf "load %s <- %s" (St.pp ld.dest) (pp_mem ld.src)
-    | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp st.src)
+let rec pp_inst = function
+  | Cast cast -> "cast " ^ St.pp cast.dest ^ "  <--  " ^ pp cast.src
+  | Move mv ->
+    if Size.compare (Sexp.get_size mv.src) (St.get_size mv.dest) <> 0
+    then failwith (sprintf "move size mismatch %s -> %s" (pp mv.src) (St.pp mv.dest));
+    St.pp mv.dest ^ "  <--  " ^ pp mv.src
+  | Effect eft ->
+    sprintf
+      "effect %s <- %s %s %s"
+      (St.pp eft.dest)
+      (pp eft.lhs)
+      (Exp.pp_binop eft.op)
+      (pp eft.rhs)
+  | Fcall c ->
+    let func_name = Symbol.name c.func_name in
+    let args = List.map (fun arg -> pp arg) c.args |> String.concat ", " in
+    (match c.dest with
+    | Some dest ->
+      let dest = St.pp dest in
+      sprintf "%s <- %s(%s)" dest func_name args
+    | None -> sprintf "%s(%s)" func_name args)
+  | Return e ->
+    (match e with
+    | None -> "return"
+    | Some e -> "return " ^ pp e)
+  | Jump j -> "jump " ^ Label.name j
+  | CJump cj ->
+    sprintf
+      "cjump(%s %s %s) target_true:%s, target_false %s "
+      (pp cj.lhs)
+      (Exp.pp_binop cj.op)
+      (pp cj.rhs)
+      (Label.name cj.target_true)
+      (Label.name cj.target_false)
+  | Label l -> Label.content l
+  | Nop -> "nop"
+  | Assert asrt -> sprintf "assert(%s)" (pp asrt)
+  | Load ld -> sprintf "load %s <- %s" (St.pp ld.dest) (pp_mem ld.src)
+  | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp st.src)
 
-  and pp_stms (stms : stm list) =
-    List.map (fun stm -> pp_stm stm) stms |> String.concat "\n"
-  ;;
+and pp_insts (stms : stm list) =
+  List.map (fun stm -> pp_inst stm) stms |> String.concat "\n"
+;;
 
-  let pp_fdefn fdefn =
-    let pars_str = List.map (fun temp -> St.pp temp) fdefn.temps |> String.concat ", " in
-    let head, body =
-      match fdefn.body with
-      | [] -> failwith "expect func label"
-      | h :: t -> h, t
-    in
-    sprintf "%s(%s)\n" (pp_stm head) pars_str ^ pp_stms body
-  ;;
+let pp_fdefn fdefn =
+  let pars_str = List.map (fun temp -> St.pp temp) fdefn.temps |> String.concat ", " in
+  let head, body =
+    match fdefn.body with
+    | [] -> failwith "expect func label"
+    | h :: t -> h, t
+  in
+  sprintf "%s(%s)\n" (pp_inst head) pars_str ^ pp_insts body
+;;
 
-  let pp_program program =
-    List.map (fun fdefn -> pp_fdefn fdefn) program |> String.concat "\n"
-  ;;
-end
+let pp_program program =
+  List.map (fun fdefn -> pp_fdefn fdefn) program |> String.concat "\n"
+;;

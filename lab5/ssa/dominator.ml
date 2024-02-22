@@ -78,7 +78,7 @@ module Print = struct
     let sorted_key = List.sort keys ~compare:Label.compare in
     List.iter sorted_key ~f:(fun blk_no ->
         let blk = Label.Map.find_exn blk_map blk_no in
-        printf "block %s\n%s%!\n" (Label.name blk_no) (Tree.Print.pp_stms blk.body);
+        printf "block %s\n%s%!\n" (Label.name blk_no) (Tree.pp_insts blk.body);
         printf "block %s succ %s%!\n" (Label.name blk_no) (pp_label_set blk.succ))
   ;;
 end

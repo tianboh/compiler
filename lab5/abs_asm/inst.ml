@@ -174,6 +174,11 @@ let is_return = function
   | _ -> false
 ;;
 
+let is_raise = function
+  | Fcall f -> if phys_equal f.func_name Symbol.Fname.raise then true else false
+  | _ -> false
+;;
+
 let[@warning "-27"] is_assert (i : instr) : bool = false
 let empty_line () = { defines = []; uses = []; live_out = []; move = false }
 let label (l : Label.t) = Label { label = l; line = empty_line () }

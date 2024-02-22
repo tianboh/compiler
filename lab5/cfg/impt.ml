@@ -21,45 +21,30 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
 
   type bbmap = bb Label.Map.t
 
-  let entry_label = Label.label (Some "entry")
-  let exit_label = Label.label (Some "exit")
-  let get_entry (bbs : bbmap) : bb = Label.Map.find_exn bbs entry_label
-  let get_exit (bbs : bbmap) : bb = Label.Map.find_exn bbs exit_label
-
-  let add_entry_exit (instrs : i list) =
-    (I.label entry_label :: instrs) @ [ I.label exit_label ]
-  ;;
-
-  (* A basic block should end up with one of following possibilities
-   * 1) Jump or conditional jump
-   * 2) Return 
-   *)
-  let has_fall_through (instrs : i list) (pre_opt : i option) : bool =
-    let rec helper (instrs : i list) (pre_opt : i option) (res : bool) : bool =
-      match instrs with
-      | [] -> res
-      | h :: t ->
-        if I.is_label h
-        then (
-          match pre_opt with
-          | None -> if List.length t > 0 then helper t (Some h) res else false
-          | Some pre ->
-            if I.is_jump pre || I.is_cjump pre || I.is_return pre
-            then helper t (Some h) res
-            else helper t (Some h) true)
-        else helper t (Some h) res
-    in
-    helper instrs pre_opt false
-  ;;
+  let entry = ref (Label.label None)
+  let exits = ref []
+  let get_entry () : Label.t = !entry
+  let get_exits () : Label.t list = !exits
 
   (* Eliminate fall through between block and block. 
    * Only use jump/cjump to go through blocks.
    * This helps to build control flow graph, and these 
-   * redundant jumps will be eliminated in optimization pass. *)
+   * redundant jumps will be eliminated in optimization pass.
+   * 
+   * A basic block should end up with one of following possibilities
+   * 1) Jump or conditional jump
+   * 2) Return 
+   *)
   let eliminate_fall_through (instrs : i list) : i list =
     let rec helper (instrs : i list) (acc : i list) : i list =
       match instrs with
-      | [] -> List.rev acc
+      | [] ->
+        (match List.hd acc with
+        | None -> acc
+        | Some tail ->
+          if I.is_return tail || I.is_raise tail
+          then List.rev acc
+          else List.rev (I.ret () :: acc))
       | h :: t ->
         if I.is_label h
         then (
@@ -68,7 +53,7 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
           | None ->
             if List.length t > 0 then helper t (h :: acc) else I.ret () :: h :: acc
           | Some pre ->
-            if I.is_jump pre || I.is_cjump pre || I.is_return pre
+            if I.is_jump pre || I.is_cjump pre || I.is_return pre || I.is_raise pre
             then helper t (h :: acc)
             else (
               let l = I.get_label h in
@@ -77,6 +62,18 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
         else helper t (h :: acc)
     in
     helper instrs []
+  ;;
+
+  let print_bbs (bbs : bbmap) =
+    printf "print bbs\n";
+    Label.Map.iter bbs ~f:(fun bb -> printf "%s\n" (I.pp_insts bb.instrs))
+  ;;
+
+  let print_graph (g : map) =
+    printf "print graph\n";
+    Label.Map.iteri g ~f:(fun ~key:u ~data:vs ->
+        printf "%s\n" (Label.name u);
+        Label.Set.iter vs ~f:(fun v -> printf "  ->%s\n" (Label.name v)))
   ;;
 
   let rec _build_bb
@@ -98,57 +95,79 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
       if I.is_label h
       then (
         match bb_label with
-        | None -> _build_bb t [ h ] (Some (I.get_label h)) bbs
+        | None ->
+          entry := I.get_label h;
+          _build_bb t [ h ] (Some (I.get_label h)) bbs
         | Some l ->
           let bb = { label = l; instrs = List.rev bb_instrs } in
           let bbs = Label.Map.set bbs ~key:l ~data:bb in
-          _build_bb t [ h ] (Some l) bbs)
+          _build_bb t [ h ] (Some (I.get_label h)) bbs)
       else _build_bb t (h :: bb_instrs) bb_label bbs
   ;;
 
-  (* Build basic blocks with entry and exit block *)
+  (* Build basic blocks. Update entry block label *)
   let build_bb (instrs : i list) : bbmap =
-    if has_fall_through instrs None
-    then failwith "build_bb need to eliminate fall through edge first.";
-    let instrs = add_entry_exit instrs in
+    let instrs = eliminate_fall_through instrs in
     let bb_instrs = [] in
     let bb_label = None in
     let bbs = Label.Map.empty in
-    _build_bb instrs bb_instrs bb_label bbs
+    let bbs = _build_bb instrs bb_instrs bb_label bbs in
+    (* print_bbs bbs; *)
+    bbs
   ;;
 
   (* Given edges between u and vs, update ins and outs adjacent graph *)
   let update_u_vs (u : Label.t) (vs : Label.t list) (ins : map) (outs : map) : map * map =
-    let vs_old = Label.Map.find_exn outs u in
+    let vs_old =
+      match Label.Map.find outs u with
+      | None -> Label.Set.empty
+      | Some s -> s
+    in
     let vs_new = Label.Set.union (Label.Set.of_list vs) vs_old in
     let outs' = Label.Map.set outs ~key:u ~data:vs_new in
     let ins' =
       List.fold vs ~init:ins ~f:(fun acc v ->
-          let v_in_old = Label.Map.find_exn acc v in
+          let v_in_old =
+            match Label.Map.find acc v with
+            | None -> Label.Set.empty
+            | Some s -> s
+          in
           let v_in_new = Label.Set.union v_in_old (Label.Set.of_list [ u ]) in
           Label.Map.set acc ~key:v ~data:v_in_new)
     in
     ins', outs'
   ;;
 
-  (* Build up ins and outs graph for each label. *)
+  (* Build up ins and outs graph for each label. 
+   * Update exits labels. *)
   let build_ino (bbs : bbmap) : map * map =
+    let rec helper u instrs ins outs =
+      match instrs with
+      | [] -> update_u_vs u [] ins outs
+      | h :: t ->
+        if I.is_jump h || I.is_cjump h
+        then (
+          let vs = I.next h in
+          let ins', outs' = update_u_vs u vs ins outs in
+          helper u t ins' outs')
+        else if I.is_return h || I.is_assert h || I.is_raise h
+        then (
+          exits := u :: !exits;
+          let ins', outs' = update_u_vs u [] ins outs in
+          helper u t ins' outs')
+        else helper u t ins outs
+    in
     let ins = Label.Map.empty in
     let outs = Label.Map.empty in
-    Label.Map.fold bbs ~init:(ins, outs) ~f:(fun ~key:_ ~data:bb acc_map ->
-        let ins', outs' = acc_map in
-        let u, instrs = bb.label, bb.instrs in
-        List.fold instrs ~init:(ins', outs') ~f:(fun acc_list instr ->
-            let ins'', outs'' = acc_list in
-            if I.is_jump instr || I.is_cjump instr
-            then (
-              let vs = I.next instr in
-              update_u_vs u vs ins'' outs'')
-            else if I.is_return instr || I.is_assert instr
-            then (
-              let vs = [ exit_label ] in
-              update_u_vs u vs ins'' outs'')
-            else ins'', outs''))
+    let ins, outs =
+      Label.Map.fold bbs ~init:(ins, outs) ~f:(fun ~key:_ ~data:bb acc_map ->
+          let ins', outs' = acc_map in
+          let u, instrs = bb.label, bb.instrs in
+          helper u instrs ins' outs')
+    in
+    (* print_graph ins; *)
+    (* print_graph outs; *)
+    ins, outs
   ;;
 
   let is_edge (u : Label.t) (v : Label.t) (outs : map) : bool =
@@ -234,7 +253,7 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
       in
       visited, order @ [ cur_label ]
     in
-    let _, order = helper Label.Set.empty entry_label outs [] in
+    let _, order = helper Label.Set.empty !entry outs [] in
     order
   ;;
 
