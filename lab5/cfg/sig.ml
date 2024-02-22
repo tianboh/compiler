@@ -72,6 +72,7 @@ module type CFGInterface = sig
   val build_ino : bbmap -> map * map
   val is_critical_edge : Label.t -> Label.t -> map -> map -> bool
   val split_edge : Label.t -> Label.t -> bbmap -> map -> map -> bbmap * map * map
+  val remove_criticl_edges : bbmap -> map -> map -> bbmap * map * map
   val postorder : map -> Label.t list
   val print_bbs : bbmap -> unit
   val print_graph : map -> unit

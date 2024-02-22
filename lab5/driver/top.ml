@@ -174,10 +174,15 @@ let compile (cmd : cmd_line_args) : unit =
   let ir' =
     List.map ir ~f:(fun fdefn ->
         let bbs = CFG_IR.build_bb fdefn.body in
-        let _, outs = CFG_IR.build_ino bbs in
-        let porder = CFG_IR.postorder outs in
+        let ins, outs = CFG_IR.build_ino bbs in
+        (* CFG_IR.print_bbs bbs; *)
+        (* CFG_IR.print_graph outs; *)
+        let bbs', _, outs' = CFG_IR.remove_criticl_edges bbs ins outs in
+        let porder = CFG_IR.postorder outs' in
         let topoorder = List.rev porder in
-        let body = CFG_IR.to_instrs bbs topoorder in
+        let body = CFG_IR.to_instrs bbs' topoorder in
+        (* CFG_IR.print_bbs bbs'; *)
+        (* CFG_IR.print_graph outs'; *)
         { fdefn with body })
   in
   say_if cmd.dump_ir (fun () ->

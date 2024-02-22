@@ -199,6 +199,7 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
       : bbmap * map * map
     =
     (* Replace label l with l' *)
+    (* printf "split edge %s -> %s\n" (Label.name u) (Label.name v); *)
     let rec helper (l : Label.t) (l' : Label.t) (instrs : i list) (ret : i list) : i list =
       match instrs with
       | [] -> List.rev ret
@@ -215,7 +216,7 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
     in
     assert (is_edge u v outs);
     let w = Label.label (Some "w") in
-    let bb_w = { label = w; instrs = [ I.jump v ] } in
+    let bb_w = { label = w; instrs = [ I.label w; I.jump v ] } in
     (* update block w *)
     let bbs = Label.Map.set bbs ~key:w ~data:bb_w in
     let ins = Label.Map.set ins ~key:w ~data:(Label.Set.of_list [ u ]) in
@@ -232,6 +233,15 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
     let v_in = Label.Set.remove (Label.Map.find_exn ins v) u in
     let ins = Label.Map.set ins ~key:v ~data:v_in in
     bbs, ins, outs
+  ;;
+
+  let remove_criticl_edges (bbs : bbmap) (ins : map) (outs : map) : bbmap * map * map =
+    Label.Map.fold outs ~init:(bbs, ins, outs) ~f:(fun ~key:u ~data:vs acc ->
+        Label.Set.fold vs ~init:acc ~f:(fun acc v ->
+            let bbs', ins', outs' = acc in
+            if is_critical_edge u v ins' outs'
+            then split_edge u v bbs' ins' outs'
+            else acc))
   ;;
 
   let postorder (outs : map) : Label.t list =
