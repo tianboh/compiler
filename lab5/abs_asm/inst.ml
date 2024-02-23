@@ -280,13 +280,8 @@ let pp_inst inst =
   | Store store -> sprintf "store %s <- %s" (Mem.pp store.dest) (Sop.pp store.src)
 ;;
 
-let rec pp_insts (program : instr list) res =
-  match program with
-  | [] -> res
-  | h :: t ->
-    let fdefn_str = pp_inst h ^ "\n" in
-    let res = res ^ fdefn_str in
-    pp_insts t res
+let pp_insts (insts : instr list) : string =
+  List.map insts ~f:(fun inst -> pp_inst inst) |> String.concat ~sep:"\n"
 ;;
 
 let rec pp_program (program : fdefn list) res =
@@ -298,7 +293,7 @@ let rec pp_program (program : fdefn list) res =
       | [] -> failwith "expect func name"
       | h :: t -> h, t
     in
-    let fdefn_str = pp_inst head ^ "\n" ^ pp_insts body "" ^ "\n" in
+    let fdefn_str = pp_inst head ^ "\n" ^ pp_insts body ^ "\n" in
     let res = res ^ fdefn_str in
     pp_program t res
 ;;

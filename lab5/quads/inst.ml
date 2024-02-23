@@ -273,6 +273,10 @@ let pp_inst = function
   | Store store -> sprintf "store %s <- %s" (Mem.pp store.dest) (Sop.pp store.src)
 ;;
 
+let pp_insts (insts : instr list) : string =
+  List.map insts ~f:(fun inst -> pp_inst inst) |> String.concat ~sep:"\n"
+;;
+
 let pp_fdefn (fdefn : fdefn) =
   let pars_str =
     List.map fdefn.pars ~f:(fun par -> Temp.name' par.data par.size)
