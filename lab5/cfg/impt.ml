@@ -132,7 +132,7 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
             | None -> Label.Set.empty
             | Some s -> s
           in
-          let v_in_new = Label.Set.union v_in_old (Label.Set.of_list [ u ]) in
+          let v_in_new = Label.Set.add v_in_old u in
           Label.Map.set acc ~key:v ~data:v_in_new)
     in
     ins', outs'
@@ -158,6 +158,7 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
         else helper u t ins outs
     in
     let ins = Label.Map.empty in
+    let ins = Label.Map.set ins ~key:(get_entry ()) ~data:Label.Set.empty in
     let outs = Label.Map.empty in
     let ins, outs =
       Label.Map.fold bbs ~init:(ins, outs) ~f:(fun ~key:_ ~data:bb acc_map ->
@@ -267,6 +268,12 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
     order
   ;;
 
+  let print_idom (doms : Label.t Label.Map.t) : unit =
+    printf "print idom\n";
+    Label.Map.iteri doms ~f:(fun ~key:child ~data:parent ->
+        printf "%s -> %s\n" (Label.name parent) (Label.name child))
+  ;;
+
   (* The higher the order, the closer to the root of the tree. 
    * Needs info from label to integer order and reverse. *)
   let intersect (b1 : Label.t) (b2 : Label.t) doms order_map : Label.t =
@@ -306,13 +313,17 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
           let preds_b = Label.Map.find_exn preds b |> Label.Set.to_list in
           let new_idom =
             List.find preds_b ~f:(fun pred_b ->
-                match Label.Map.find doms pred_b with
+                match Label.Map.find_exn doms pred_b with
                 | None -> false
                 | Some _ -> true)
           in
           let new_idom =
             match new_idom with
-            | None -> failwith "by rev_porder, b has at least one processed predecessor"
+            | None ->
+              failwith
+                (sprintf
+                   "by rev_porder, %s has at least one processed predecessor"
+                   (Label.name b))
             | Some s -> s
           in
           let new_idom =
@@ -350,21 +361,77 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
           Label.Map.set acc ~key:l ~data:None)
     in
     let start_node, tails =
-      match porder with
+      match List.rev porder with
       | [] -> failwith "empty porder"
       | h :: t -> h, t
     in
     let doms = Label.Map.set doms ~key:start_node ~data:(Some start_node) in
-    let rev_porder = List.rev tails in
+    let rev_porder = tails in
     let order_map =
       List.foldi porder ~init:Label.Map.empty ~f:(fun i acc label ->
           Label.Map.set acc ~key:label ~data:i)
     in
     let doms_raw = _idom true doms rev_porder preds order_map in
-    Label.Map.map doms_raw ~f:(fun idom ->
-        match idom with
-        | Some s -> s
-        | None -> failwith "dom not processed")
+    let ret =
+      Label.Map.map doms_raw ~f:(fun idom ->
+          match idom with
+          | Some s -> s
+          | None -> failwith "dom not processed")
+    in
+    ret
+  ;;
+
+  (* Pseudo code check http://www.hipersoft.rice.edu/grads/publications/dom14.pdf Figure 5 *)
+  let build_DF (doms : Label.t Label.Map.t) (preds : map) : map =
+    let rec helper runner (b : Label.t) (dom_b : Label.t) df : map =
+      if phys_equal b dom_b
+      then df
+      else (
+        let df_runner =
+          match Label.Map.find df runner with
+          | None -> Label.Set.empty
+          | Some s -> s
+        in
+        let df_runner' = Label.Set.add df_runner b in
+        let df = Label.Map.set df ~key:runner ~data:df_runner' in
+        let runner = Label.Map.find_exn doms runner in
+        if phys_equal runner (get_entry ()) then df else helper runner b dom_b df)
+    in
+    let df = Label.Map.empty in
+    let nodes = Label.Map.keys doms in
+    List.fold nodes ~init:df ~f:(fun acc b ->
+        let preds_b = Label.Map.find_exn preds b in
+        if Label.Set.length preds_b >= 2
+        then
+          Label.Set.fold preds_b ~init:acc ~f:(fun acc pred ->
+              let runner = pred in
+              let dom_b = Label.Map.find_exn doms b in
+              helper runner b dom_b acc)
+        else acc)
+  ;;
+
+  let build_DT (doms : Label.t Label.Map.t) : map =
+    let dt = Label.Map.empty in
+    Label.Map.fold doms ~init:dt ~f:(fun ~key:child ~data:par acc ->
+        let children =
+          match Label.Map.find acc par with
+          | None -> Label.Set.empty
+          | Some s -> s
+        in
+        let children' = Label.Set.add children child in
+        Label.Map.set acc ~key:par ~data:children')
+  ;;
+
+  let print_DT (dt : map) order : unit =
+    printf "print DT order:\n%!";
+    List.iter order ~f:(fun l -> printf "%s %!" (Label.name l));
+    printf "\n%!";
+    List.iter order ~f:(fun par ->
+        printf "%s\n" (Label.name par);
+        match Label.Map.find dt par with
+        | None -> ()
+        | Some children ->
+          Label.Set.iter children ~f:(fun child -> printf "  -> %s\n" (Label.name child)))
   ;;
 
   let to_instrs (bbs : bbmap) (order : Label.t list) =

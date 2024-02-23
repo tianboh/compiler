@@ -22,6 +22,7 @@ module CST = Front.Cst
 module Dfana = Flow.Dfana
 module Symbol = Util.Symbol
 module CFG_IR = Cfg.Impt.Wrapper (Ir_tree.Inst)
+module CFG_QUAD = Cfg.Impt.Wrapper (Quads.Inst)
 
 (* Command line arguments *)
 type cmd_line_args =
@@ -175,10 +176,15 @@ let compile (cmd : cmd_line_args) : unit =
     List.map ir ~f:(fun fdefn ->
         let bbs = CFG_IR.build_bb fdefn.body in
         let ins, outs = CFG_IR.build_ino bbs in
-        (* CFG_IR.print_bbs bbs; *)
-        (* CFG_IR.print_graph outs; *)
-        let bbs', _, outs' = CFG_IR.remove_criticl_edges bbs ins outs in
+        let bbs', ins', outs' = CFG_IR.remove_criticl_edges bbs ins outs in
         let porder = CFG_IR.postorder outs' in
+        (* CFG_IR.print_bbs bbs'; *)
+        (* CFG_IR.print_graph outs'; *)
+        (* ignore (CFG_IR.idom porder ins' : Util.Label.t Util.Label.Map.t); *)
+        let idom = CFG_IR.idom porder ins' in
+        ignore (CFG_IR.build_DF idom ins' : Util.Label.Set.t Util.Label.Map.t);
+        ignore (CFG_IR.build_DT idom : Util.Label.Set.t Util.Label.Map.t);
+        (* CFG_IR.print_DT dt (List.rev porder); *)
         let topoorder = List.rev porder in
         let body = CFG_IR.to_instrs bbs' topoorder in
         (* CFG_IR.print_bbs bbs'; *)
