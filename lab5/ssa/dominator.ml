@@ -371,7 +371,7 @@ let pp_dfs_map dfs_map =
 ;;
 
 (* Calculate immediate dominator id[n] for each block
- * Algorithm: https://www.cs.rice.edu/~keith/EMBED/dom.pdf Figure 3
+ * Algorithm: http://www.hipersoft.rice.edu/grads/publications/dom14.pdf Figure 3
  *)
 let idom blk_map pred_map =
   (* printf "idom%!\n"; *)

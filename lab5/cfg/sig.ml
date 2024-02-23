@@ -14,6 +14,9 @@
  * CFG constructor will not add new blocks to the original graph.
  * Though it will modify each block to end up with jump, cjump, raise or return.
  *
+ * CFG provides dominator functions. Algorithm details check:
+ * http://www.hipersoft.rice.edu/grads/publications/dom14.pdf
+ *
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
 module Label = Util.Label
@@ -64,16 +67,22 @@ module type CFGInterface = sig
   val get_entry : unit -> Label.t
   val get_exits : unit -> Label.t list
 
-  (* Return basic blocks. Add entry and exit block automatically. *)
+  (* Return basic blocks. *)
   val build_bb : i list -> bbmap
-  val eliminate_fall_through : i list -> i list
 
   (* Get in and out edge for each label *)
   val build_ino : bbmap -> map * map
-  val is_critical_edge : Label.t -> Label.t -> map -> map -> bool
-  val split_edge : Label.t -> Label.t -> bbmap -> map -> map -> bbmap * map * map
   val remove_criticl_edges : bbmap -> map -> map -> bbmap * map * map
   val postorder : map -> Label.t list
+
+  (* Calculate immediate dominator *)
+  val idom : bbmap -> map -> map
+
+  (* Calculate dominator frontier *)
+  val build_DF : bbmap -> map -> map -> map
+
+  (* Calculate dominator tree *)
+  val build_DT : map -> map
   val print_bbs : bbmap -> unit
   val print_graph : map -> unit
   val to_instrs : bbmap -> Label.t list -> i list

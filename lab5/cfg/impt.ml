@@ -267,6 +267,106 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = s
     order
   ;;
 
+  (* The higher the order, the closer to the root of the tree. 
+   * Needs info from label to integer order and reverse. *)
+  let intersect (b1 : Label.t) (b2 : Label.t) doms order_map : Label.t =
+    let rec helper finger1 finger2 =
+      let i1 = Label.Map.find_exn order_map finger1 in
+      let i2 = Label.Map.find_exn order_map finger2 in
+      if i1 = i2
+      then finger1
+      else if i1 < i2
+      then (
+        let finger1_pred = Label.Map.find_exn doms finger1 in
+        let finger1_pred =
+          match finger1_pred with
+          | None -> failwith "intersect expect predecessor processed"
+          | Some s -> s
+        in
+        helper finger1_pred finger2)
+      else (
+        let finger2_pred = Label.Map.find_exn doms finger2 in
+        let finger2_pred =
+          match finger2_pred with
+          | None -> failwith "intersect expect predecessor processed"
+          | Some s -> s
+        in
+        helper finger1 finger2_pred)
+    in
+    let finger1 = b1 in
+    let finger2 = b2 in
+    helper finger1 finger2
+  ;;
+
+  let rec _idom' doms (rev_porder : Label.t list) (preds : map) order_map =
+    let changed = false in
+    let doms, changed =
+      List.fold rev_porder ~init:(doms, changed) ~f:(fun acc b ->
+          let doms, _ = acc in
+          let preds_b = Label.Map.find_exn preds b |> Label.Set.to_list in
+          let new_idom =
+            List.find preds_b ~f:(fun pred_b ->
+                match Label.Map.find doms pred_b with
+                | None -> false
+                | Some _ -> true)
+          in
+          let new_idom =
+            match new_idom with
+            | None -> failwith "by rev_porder, b has at least one processed predecessor"
+            | Some s -> s
+          in
+          let new_idom =
+            List.fold preds_b ~init:new_idom ~f:(fun new_idom p ->
+                match Label.Map.find_exn doms p with
+                | None -> new_idom
+                | Some _ -> intersect p new_idom doms order_map)
+          in
+          let changed =
+            match Label.Map.find_exn doms b with
+            | None -> true
+            | Some s -> if phys_equal s new_idom then false || changed else true
+          in
+          let doms = Label.Map.set doms ~key:b ~data:(Some new_idom) in
+          doms, changed)
+    in
+    _idom changed doms rev_porder preds order_map
+
+  and _idom
+      (changed : bool)
+      (doms : (Label.t, Label.t option, Label.comparator_witness) Map_intf.Map.t)
+      (rev_porder : Label.t list)
+      (preds : map)
+      order_map
+    =
+    if not changed then doms else _idom' doms rev_porder preds order_map
+  ;;
+
+  (* Check http://www.hipersoft.rice.edu/grads/publications/dom14.pdf figure 3 for details.
+   * For simplity, I use same notation as original algorithms.
+   * Though variable doms may be misleading, it is in fact immediate dominator map. *)
+  let idom (porder : Label.t list) (preds : map) : Label.t Label.Map.t =
+    let doms =
+      List.fold porder ~init:Label.Map.empty ~f:(fun acc l ->
+          Label.Map.set acc ~key:l ~data:None)
+    in
+    let start_node, tails =
+      match porder with
+      | [] -> failwith "empty porder"
+      | h :: t -> h, t
+    in
+    let doms = Label.Map.set doms ~key:start_node ~data:(Some start_node) in
+    let rev_porder = List.rev tails in
+    let order_map =
+      List.foldi porder ~init:Label.Map.empty ~f:(fun i acc label ->
+          Label.Map.set acc ~key:label ~data:i)
+    in
+    let doms_raw = _idom true doms rev_porder preds order_map in
+    Label.Map.map doms_raw ~f:(fun idom ->
+        match idom with
+        | Some s -> s
+        | None -> failwith "dom not processed")
+  ;;
+
   let to_instrs (bbs : bbmap) (order : Label.t list) =
     List.map order ~f:(fun l ->
         let bb = Label.Map.find_exn bbs l in
