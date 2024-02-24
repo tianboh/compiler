@@ -17,6 +17,7 @@ module Size = Var.Size
 module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
+open Core
 
 type binop =
   | Plus
@@ -35,6 +36,7 @@ type binop =
   | Less
   | Less_eq
   | Not_eq
+[@@deriving sexp, compare, hash]
 
 module rec Addr : (Var.Addr.Sig with type i = Sexp.t) = Var.Addr.Wrapper (Sexp)
 
@@ -49,6 +51,7 @@ and Exp : sig
         ; rhs : Sexp.t
         }
     | BISD of Addr.t
+  [@@deriving sexp, compare, hash]
 
   val pp : t -> string
   val pp_binop : binop -> string
@@ -69,7 +72,7 @@ end = struct
         ; rhs : Sexp.t
         }
     | BISD of Addr.t
-  [@@warning "-37"]
+  [@@deriving sexp, compare, hash] [@@warning "-37"]
 
   let pp_binop = function
     | Plus -> "+"
@@ -132,8 +135,6 @@ end = struct
   ;;
 end
 
-and Mem : (Var.Sized.Sized_Interface with type i = Addr.t) = Var.Sized.Wrapper (Addr)
-
 and St : sig
   include Var.Sized.Sized_Interface with type i = Temp.t
 
@@ -148,6 +149,9 @@ end = struct
     Sexp.wrap size exp
   ;;
 end
+
+module StMap = Map.Make (St)
+module Mem : Var.Sized.Sized_Interface with type i = Addr.t = Var.Sized.Wrapper (Addr)
 
 type stm =
   | Cast of
@@ -200,6 +204,7 @@ type fdefn =
 
 type program = fdefn list
 type t = stm
+type st = St.t
 
 (* Functions for CFG interface *)
 let is_label = function
@@ -223,8 +228,133 @@ let is_return = function
 ;;
 
 let is_raise = function
-  | Fcall f -> if Base.phys_equal f.func_name Symbol.Fname.raise then true else false
+  | Fcall f -> if phys_equal f.func_name Symbol.Fname.raise then true else false
   | _ -> false
+;;
+
+let get_def = function
+  | Cast cast -> [ cast.dest ]
+  | Move move -> [ move.dest ]
+  | Effect effect -> [ effect.dest ]
+  | Fcall fcall ->
+    (match fcall.dest with
+    | None -> []
+    | Some s -> [ s ])
+  | Load load -> [ load.dest ]
+  | Return _ | Jump _ | CJump _ | Label _ | Nop | Assert _ | Store _ -> []
+;;
+
+let rec _get_uses (sexp : Sexp.t) : St.t list =
+  match sexp.data with
+  | Void | Const _ -> []
+  | Temp _ -> [ Sexp.to_St sexp ]
+  | Binop binop -> _get_uses binop.lhs @ _get_uses binop.rhs
+  | BISD bisd ->
+    let base = _get_uses (Addr.get_base bisd) in
+    let index =
+      match Addr.get_index bisd with
+      | None -> []
+      | Some s -> _get_uses s
+    in
+    base @ index
+;;
+
+let get_uses = function
+  | Cast cast -> _get_uses cast.src
+  | Move move -> _get_uses move.src
+  | Effect effect -> _get_uses effect.lhs @ _get_uses effect.rhs
+  | Fcall fcall -> List.fold fcall.args ~init:[] ~f:(fun acc arg -> _get_uses arg @ acc)
+  | Return ret ->
+    (match ret with
+    | None -> []
+    | Some ret -> _get_uses ret)
+  | CJump cjp -> _get_uses cjp.lhs @ _get_uses cjp.rhs
+  | Assert asrt -> _get_uses asrt
+  | Store store -> _get_uses store.src
+  | Label _ | Jump _ | Load _ | Nop -> []
+;;
+
+let replace_def (instr : t) (dic : (st * st) list) : t =
+  let dic = StMap.of_alist_exn dic in
+  match instr with
+  | Cast cast ->
+    let dest_new = Map.find_exn dic cast.dest in
+    Cast { cast with dest = dest_new }
+  | Move move ->
+    let dest_new = Map.find_exn dic move.dest in
+    Move { move with dest = dest_new }
+  | Effect effect ->
+    let dest_new = Map.find_exn dic effect.dest in
+    Effect { effect with dest = dest_new }
+  | Fcall fcall ->
+    (match fcall.dest with
+    | None -> instr
+    | Some dest ->
+      let dest_new = Map.find_exn dic dest in
+      Fcall { fcall with dest = Some dest_new })
+  | Load load ->
+    let dest_new = Map.find_exn dic load.dest in
+    Load { load with dest = dest_new }
+  | Return _ | Jump _ | CJump _ | Label _ | Nop | Assert _ | Store _ -> instr
+;;
+
+let rec _replace_uses (sexp : Sexp.t) (dic : St.t StMap.t) : Sexp.t =
+  let size = sexp.size in
+  match sexp.data with
+  | Void | Const _ -> sexp
+  | Temp _ ->
+    let st = Sexp.to_St sexp in
+    let st_ssa = StMap.find_exn dic st in
+    St.to_Sexp st_ssa
+  | Binop binop ->
+    let lhs = _replace_uses binop.lhs dic in
+    let rhs = _replace_uses binop.rhs dic in
+    Sexp.wrap size (Binop { binop with lhs; rhs })
+  | BISD bisd ->
+    let base : Sexp.t = _replace_uses (Addr.get_base bisd) dic in
+    let index =
+      match Addr.get_index bisd with
+      | None -> None
+      | Some s -> Some (_replace_uses s dic)
+    in
+    let scale = Addr.get_scale bisd in
+    let disp = Addr.get_disp bisd in
+    Sexp.wrap size (BISD (Addr.of_bisd base index scale disp))
+;;
+
+let replace_uses (instr : t) (dic : (st * st) list) : t =
+  let dic = StMap.of_alist_exn dic in
+  match instr with
+  | Cast cast ->
+    let src = _replace_uses cast.src dic in
+    Cast { cast with src }
+  | Move move ->
+    let src = _replace_uses move.src dic in
+    Move { move with src }
+  | Effect effect ->
+    let lhs = _replace_uses effect.lhs dic in
+    let rhs = _replace_uses effect.rhs dic in
+    Effect { effect with lhs; rhs }
+  | Fcall fcall ->
+    let args = List.map fcall.args ~f:(fun arg -> _replace_uses arg dic) in
+    Fcall { fcall with args }
+  | Return ret ->
+    (match ret with
+    | None -> Return None
+    | Some exp ->
+      let exp = _replace_uses exp dic in
+      Return (Some exp))
+  | CJump cjp ->
+    let lhs = _replace_uses cjp.lhs dic in
+    let rhs = _replace_uses cjp.rhs dic in
+    CJump { cjp with lhs; rhs }
+  | Assert asrt ->
+    let exp = _replace_uses asrt dic in
+    Assert exp
+  | Store store ->
+    let src = _replace_uses store.src dic in
+    Store { store with src }
+  | Label _ | Jump _ | Load _ | Nop -> instr
 ;;
 
 let[@warning "-27"] is_assert (i : stm) : bool = false
@@ -284,7 +414,7 @@ let rec pp_inst = function
       (pp eft.rhs)
   | Fcall c ->
     let func_name = Symbol.name c.func_name in
-    let args = List.map (fun arg -> pp arg) c.args |> String.concat ", " in
+    let args = List.map ~f:(fun arg -> pp arg) c.args |> String.concat ~sep:", " in
     (match c.dest with
     | Some dest ->
       let dest = St.pp dest in
@@ -310,11 +440,13 @@ let rec pp_inst = function
   | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp st.src)
 
 and pp_insts (stms : stm list) =
-  List.map (fun stm -> pp_inst stm) stms |> String.concat "\n"
+  List.map ~f:(fun stm -> pp_inst stm) stms |> String.concat ~sep:"\n"
 ;;
 
 let pp_fdefn fdefn =
-  let pars_str = List.map (fun temp -> St.pp temp) fdefn.temps |> String.concat ", " in
+  let pars_str =
+    List.map ~f:(fun temp -> St.pp temp) fdefn.temps |> String.concat ~sep:", "
+  in
   let head, body =
     match fdefn.body with
     | [] -> failwith "expect func label"
@@ -324,5 +456,5 @@ let pp_fdefn fdefn =
 ;;
 
 let pp_program program =
-  List.map (fun fdefn -> pp_fdefn fdefn) program |> String.concat "\n"
+  List.map ~f:(fun fdefn -> pp_fdefn fdefn) program |> String.concat ~sep:"\n"
 ;;

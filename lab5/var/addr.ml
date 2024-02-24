@@ -9,15 +9,17 @@
  *
  * Author: Tianbo Hao<tianboh@alumni.cmu.edu>
  *)
+open Core
+
 module type Op = sig
-  type t
+  type t [@@deriving sexp, compare, hash]
 
   val pp : t -> string
 end
 
 module type Sig = sig
-  type i
-  type t
+  type i [@@deriving sexp, compare, hash]
+  type t [@@deriving sexp, compare, hash]
 
   val of_bisd : i -> i option -> Int64.t option -> Int64.t option -> t
   val pp : t -> string
@@ -29,7 +31,7 @@ module type Sig = sig
 end
 
 module Wrapper (M : Op) : Sig with type i = M.t = struct
-  type i = M.t
+  type i = M.t [@@deriving sexp, compare, hash]
 
   (* 
    * Intel's Combined Volume Set of Intel® 64 and IA-32 Architectures Software Developer’s Manuals
@@ -50,6 +52,7 @@ module Wrapper (M : Op) : Sig with type i = M.t = struct
     ; scale : Int64.t option
     ; disp : Int64.t option (* used by array *)
     }
+  [@@deriving sexp, compare, hash]
 
   let of_bisd base index scale disp = { base; index; scale; disp }
 

@@ -4,19 +4,22 @@
  *
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
+open Core
+
 module type Interface = sig
-  type t
+  type t [@@deriving sexp, compare, hash]
 
   val pp : t -> string
 end
 
 module type Sized_Interface = sig
-  type i
+  type i [@@deriving sexp, compare, hash]
 
   type t =
     { data : i
     ; size : Size.primitive
     }
+  [@@deriving sexp, compare, hash]
 
   val get_data : t -> i
   val wrap : Size.primitive -> i -> t
@@ -26,12 +29,17 @@ module type Sized_Interface = sig
 end
 
 module Wrapper (M : Interface) : Sized_Interface with type i = M.t = struct
-  type i = M.t
+  type i = M.t [@@deriving sexp, compare, hash]
 
-  type t =
-    { data : i
-    ; size : Size.primitive
-    }
+  module T = struct
+    type t =
+      { data : i
+      ; size : Size.primitive
+      }
+    [@@deriving sexp, compare, hash]
+  end
+
+  include T
 
   let wrap size (exp : i) : t = { data = exp; size }
   let pp (sexp : t) : string = M.pp sexp.data ^ "_" ^ Size.pp_size (sexp.size :> Size.t)

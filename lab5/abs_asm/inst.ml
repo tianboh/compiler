@@ -18,6 +18,7 @@ module Op = struct
     | Temp of Temp.t
     | Reg of Register.t
     | Above_frame of Int64.t
+  [@@deriving sexp, compare, hash]
 
   let pp = function
     | Imm n -> "$" ^ Int64.to_string n

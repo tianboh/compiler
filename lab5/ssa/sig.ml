@@ -34,14 +34,16 @@ module type SSAInterface = sig
 end
 
 module type InstrInterface = sig
-  type t
+  type t (* Instruction *)
 
-  val get_def : t -> Temp.t list
-  val get_uses : t -> Temp.t list
+  type st (* Sized temporary *)
+
+  val get_def : t -> st list
+  val get_uses : t -> st list
 
   (* Tuple stands for (old_temp, ssa_temp) *)
-  val replace_def : t -> (Temp.t * Temp.t) list -> t
-  val replace_uses : t -> (Temp.t * Temp.t) list -> t
+  val replace_def : t -> (st * st) list -> t
+  val replace_uses : t -> (st * st) list -> t
   val pp_insts : t list -> string
   val pp_inst : t -> string
 end

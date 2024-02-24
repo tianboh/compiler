@@ -20,6 +20,7 @@ module Op = struct
         { index : Int64.t
         ; reg : Register.t
         }
+  [@@deriving sexp, compare, hash]
 
   let pp = function
     | Imm i -> Int64.to_string i

@@ -20,6 +20,7 @@ module Op = struct
   type t =
     | Imm of Int64.t
     | Temp of Temp.t
+  [@@deriving sexp, compare, hash]
 
   let pp = function
     | Imm i -> Int64.to_string i
