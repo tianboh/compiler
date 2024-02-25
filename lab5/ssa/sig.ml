@@ -20,19 +20,6 @@
 module Label = Util.Label
 module Temp = Var.Temp
 
-module type SSAInterface = sig
-  type phi
-  type t
-
-  val construct : t -> t
-  val decompose : t -> t
-  val insert_param_block : t -> t
-  val delete_param_block : t -> t
-  val place_phi : t -> t
-  val rename : t -> t
-  val renameBB : t -> t
-end
-
 module type InstrInterface = sig
   type t (* Instruction *)
 
@@ -44,6 +31,15 @@ module type InstrInterface = sig
   (* Tuple stands for (old_temp, ssa_temp) *)
   val replace_def : t -> (st * st) list -> t
   val replace_uses : t -> (st * st) list -> t
+  val label : Label.t -> t
+  val assign : st -> Int64.t -> t
   val pp_insts : t list -> string
   val pp_inst : t -> string
+end
+
+module type SSAInterface = functor
+  (Instr : InstrInterface)
+  (CFG : Cfg.Sig.CFGInterface with type i = Instr.t)
+  -> sig
+  val run : CFG.bbmap -> CFG.bbmap
 end
