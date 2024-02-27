@@ -9,10 +9,10 @@
 module Label = Util.Label
 open Core
 
-module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t = struct
+module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.i = struct
   type set = Label.Set.t
   type map = set Label.Map.t
-  type i = I.t
+  type i = I.i
 
   type bb =
     { label : Label.t

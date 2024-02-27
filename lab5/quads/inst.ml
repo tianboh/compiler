@@ -135,7 +135,7 @@ type fdefn =
   }
 
 type program = fdefn list
-type t = instr
+type i = instr
 
 (* Functions for CFG interface *)
 let is_label = function

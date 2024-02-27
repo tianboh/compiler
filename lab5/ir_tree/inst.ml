@@ -203,8 +203,8 @@ type fdefn =
   }
 
 type program = fdefn list
-type t = stm
-type st = St.t
+type i = stm
+type t = St.t
 
 (* Functions for CFG interface *)
 let is_label = function
@@ -274,7 +274,7 @@ let get_uses = function
   | Label _ | Jump _ | Load _ | Nop -> []
 ;;
 
-let replace_def (instr : t) (dic : (st * st) list) : t =
+let replace_def (instr : i) (dic : (t * t) list) : i =
   let dic = StMap.of_alist_exn dic in
   match instr with
   | Cast cast ->
@@ -322,7 +322,7 @@ let rec _replace_uses (sexp : Sexp.t) (dic : St.t StMap.t) : Sexp.t =
     Sexp.wrap size (BISD (Addr.of_bisd base index scale disp))
 ;;
 
-let replace_uses (instr : t) (dic : (st * st) list) : t =
+let replace_uses (instr : i) (dic : (t * t) list) : i =
   let dic = StMap.of_alist_exn dic in
   match instr with
   | Cast cast ->
@@ -395,7 +395,7 @@ let replace_ctarget (instr : stm) (old_target : Label.t) (new_target : Label.t) 
   | _ -> failwith "expect cond jump to replace target"
 ;;
 
-let assign (st : St.t) (v : Int64.t) : t =
+let assign (st : St.t) (v : Int64.t) : i =
   Move { dest = st; src = Sexp.wrap st.size (Exp.of_int v) }
 ;;
 

@@ -17,24 +17,25 @@
  *
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
+open Core
 module Label = Util.Label
 module Temp = Var.Temp
 
 module type InstrInterface = sig
-  type t (* Instruction *)
+  type i (* Instruction *)
 
-  type st (* Sized temporary *)
+  type t [@@deriving sexp, compare, hash] (* Sized temporary *)
 
-  val get_def : t -> st list
-  val get_uses : t -> st list
+  val get_def : i -> t list
+  val get_uses : i -> t list
 
   (* Tuple stands for (old_temp, ssa_temp) *)
-  val replace_def : t -> (st * st) list -> t
-  val replace_uses : t -> (st * st) list -> t
-  val label : Label.t -> t
-  val assign : st -> Int64.t -> t
-  val pp_insts : t list -> string
-  val pp_inst : t -> string
+  val replace_def : i -> (t * t) list -> i
+  val replace_uses : i -> (t * t) list -> i
+  val label : Label.t -> i
+  val assign : t -> Int64.t -> i
+  val pp_insts : i list -> string
+  val pp_inst : i -> string
 end
 
 module type SSAInterface = functor

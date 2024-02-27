@@ -144,7 +144,7 @@ type fdefn =
   }
 
 type program = fdefn list
-type t = instr
+type i = instr
 
 let to_int_list (ops : Op.t list) : int list =
   List.fold ops ~init:[] ~f:(fun acc x ->

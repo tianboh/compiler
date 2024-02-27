@@ -22,32 +22,32 @@
 module Label = Util.Label
 
 module type InstrInterface = sig
-  type t
+  type i
 
-  val is_label : t -> bool
-  val is_jump : t -> bool
+  val is_label : i -> bool
+  val is_jump : i -> bool
 
   (* Cond jump means it will jump to one of the targets.
    * Je is not cond jump because it only jump when equal meet. *)
-  val is_cjump : t -> bool
-  val is_return : t -> bool
-  val is_assert : t -> bool
-  val is_raise : t -> bool
-  val label : Label.t -> t
-  val jump : Label.t -> t
-  val ret : unit -> t
-  val get_label : t -> Label.t
+  val is_cjump : i -> bool
+  val is_return : i -> bool
+  val is_assert : i -> bool
+  val is_raise : i -> bool
+  val label : Label.t -> i
+  val jump : Label.t -> i
+  val ret : unit -> i
+  val get_label : i -> Label.t
 
   (* Given jump/conditional jump, return target label list. *)
-  val next : t -> Label.t list
+  val next : i -> Label.t list
 
   (* Replace target of Jump *)
-  val replace_target : t -> Label.t -> t
+  val replace_target : i -> Label.t -> i
 
   (* Replace old target to new target for CJump *)
-  val replace_ctarget : t -> Label.t -> Label.t -> t
-  val pp_insts : t list -> string
-  val pp_inst : t -> string
+  val replace_ctarget : i -> Label.t -> Label.t -> i
+  val pp_insts : i list -> string
+  val pp_inst : i -> string
 end
 
 module type CFGInterface = sig
