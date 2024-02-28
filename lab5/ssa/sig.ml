@@ -40,10 +40,3 @@ module type InstrInterface = sig
   val pp_insts : i list -> string
   val pp_inst : i -> string
 end
-
-module type SSAInterface = functor
-  (Instr : InstrInterface)
-  (CFG : Cfg.Sig.CFGInterface with type i = Instr.t)
-  -> sig
-  val run : CFG.bbmap -> CFG.bbmap
-end

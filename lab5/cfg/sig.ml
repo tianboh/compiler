@@ -76,17 +76,19 @@ module type CFGInterface = sig
   val postorder : map -> Label.t list
 
   (* Calculate immediate dominator. 
-   * node idom[b] immediate dominate node b *)
-  val idom : Label.t list -> map -> Label.t Label.Map.t
+   * node idom[b] immediate dominate node b.
+   * entry node does not have immediate dominator. 
+   * idom[entry] is None. All other nodes have immediate dominator. *)
+  val idom : Label.t list -> map -> Label.t option Label.Map.t
 
   (* Calculate dominator frontier.
    * df[b] is dominator frontier of node b. *)
-  val build_DF : Label.t Label.Map.t -> map -> map
+  val build_DF : Label.t option Label.Map.t -> map -> map
 
   (* Calculate dominator tree.
    * dt[b] are children of node b in dominator tree *)
-  val build_DT : Label.t Label.Map.t -> map
-  val print_idom : Label.t Label.Map.t -> unit
+  val build_DT : Label.t option Label.Map.t -> map
+  val print_idom : Label.t option Label.Map.t -> unit
   val print_DT : map -> Label.t list -> unit
   val print_bbs : bbmap -> unit
   val print_graph : map -> unit

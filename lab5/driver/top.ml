@@ -176,6 +176,9 @@ let compile (cmd : cmd_line_args) : unit =
   let ir = Ir_tree.Trans.translate tst tc_env cmd.unsafe in
   let ir' =
     List.map ir ~f:(fun fdefn ->
+        let body = SSA_IR.run fdefn.temps fdefn.body in
+        { fdefn with body }
+        (* 
         let bbs = CFG_IR.build_bb fdefn.body in
         let ins, outs = CFG_IR.build_ino bbs in
         let bbs', ins', outs' = CFG_IR.remove_criticl_edges bbs ins outs in
@@ -191,7 +194,7 @@ let compile (cmd : cmd_line_args) : unit =
         let body = CFG_IR.to_instrs bbs' topoorder in
         (* CFG_IR.print_bbs bbs'; *)
         (* CFG_IR.print_graph outs'; *)
-        { fdefn with body })
+        { fdefn with body } *))
   in
   say_if cmd.dump_ir (fun () ->
       List.map ir' ~f:Ir_tree.Inst.pp_fdefn |> String.concat ~sep:"\n");

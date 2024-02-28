@@ -44,8 +44,9 @@ functor
       label :: List.map params ~f:(fun param -> Instr.assign param 0L)
     ;;
 
-    let delete_param_block (bbs : CFG.bbmap) : CFG.bbmap =
-      Label.Map.remove bbs param_label
+    let delete_param_block (ssa_bbmap : ssa_bbmap) : CFG.bbmap =
+      let ssa_bbmap = Label.Map.remove ssa_bbmap param_label in
+      Label.Map.map ssa_bbmap ~f:(fun ssa_bb -> ssa_bb.block)
     ;;
 
     (* Insert phi and generate ssa basic block map. *)
@@ -87,7 +88,11 @@ functor
         match q with
         | [] -> phis
         | u :: t ->
-          let df_u = Label.Map.find_exn df u in
+          let df_u =
+            match Label.Map.find df u with
+            | None -> Label.Set.empty (* root or leaf does not have dominator frontier *)
+            | Some s -> s
+          in
           let phis, q' =
             Label.Set.fold df_u ~init:(phis, t) ~f:(fun acc v ->
                 let phis, t = acc in
@@ -159,7 +164,7 @@ functor
       =
       (* Rename def use within block *)
       let bb = Label.Map.find_exn ssa_bbmap bb_name in
-      let ssa_bb, stack = rename_BB_inside bb stack in
+      let ssa_bb, stack, defs = rename_BB_inside bb stack in
       let ssa_bbmap = Label.Map.set ssa_bbmap ~key:bb_name ~data:ssa_bb in
       (* Rename block successors phi function *)
       let children = Label.Map.find_exn succs bb_name in
@@ -168,25 +173,26 @@ functor
             rename_BB_succs ssa_bbmap_acc stack bb_name child)
       in
       (* Rename block dominator frontier *)
-      let frontier = Label.Map.find_exn dt bb_name in
+      let frontier =
+        match Label.Map.find dt bb_name with
+        | None -> Label.Set.empty
+        | Some s -> s
+      in
       let ssa_bbmap, stack =
         Label.Set.fold frontier ~init:(ssa_bbmap, stack) ~f:(fun acc child ->
             let ssa_bbmap_acc, stack_acc = acc in
             rename_BB child ssa_bbmap_acc stack_acc dt succs)
       in
       (* Pop block defined variable *)
-      let instrs = ssa_bb.block.instrs in
       let stack =
-        List.fold instrs ~init:stack ~f:(fun stack_acc instr ->
-            let defs = Instr.get_def instr in
-            List.fold defs ~init:stack_acc ~f:(fun stack_acc def ->
-                let def_stack = StMap.find_exn stack_acc def in
-                let def_stack' =
-                  match def_stack with
-                  | [] -> failwith "def stack empty"
-                  | _ :: t -> t
-                in
-                StMap.set stack_acc ~key:def ~data:def_stack'))
+        List.fold defs ~init:stack ~f:(fun stack_acc def ->
+            let def_stack = StMap.find_exn stack_acc def in
+            let def_stack' =
+              match def_stack with
+              | [] -> failwith "def stack empty"
+              | _ :: t -> t
+            in
+            StMap.set stack_acc ~key:def ~data:def_stack')
       in
       ssa_bbmap, stack
 
@@ -194,12 +200,12 @@ functor
         rename_BB_inside
         (bb : ssa_bb)
         (stack : stack)
-        : ssa_bb * stack
+        : ssa_bb * stack * st list
       =
       let instrs = bb.block.instrs in
-      let ssa_instrs_rev, stack =
-        List.fold instrs ~init:([], stack) ~f:(fun acc instr ->
-            let ssa_instrs_acc_rev, stack_instrs_acc = acc in
+      let ssa_instrs_rev, stack, defs =
+        List.fold instrs ~init:([], stack, []) ~f:(fun acc instr ->
+            let ssa_instrs_acc_rev, stack_instrs_acc, defs_acc = acc in
             let uses = Instr.get_uses instr in
             let uses_ssa =
               List.map uses ~f:(fun v ->
@@ -210,6 +216,7 @@ functor
             let map_uses = List.zip_exn uses uses_ssa in
             let instr_ssa_uses = Instr.replace_uses instr map_uses in
             let defs = Instr.get_def instr in
+            let defs_acc = defs @ defs_acc in
             let defs_ssa, stack_def =
               List.fold defs ~init:([], stack_instrs_acc) ~f:(fun acc v ->
                   let defs_ssa_acc, stack_def_acc = acc in
@@ -222,11 +229,11 @@ functor
             in
             let map_defs = List.zip_exn defs defs_ssa in
             let instr_ssa = Instr.replace_def instr_ssa_uses map_defs in
-            instr_ssa :: ssa_instrs_acc_rev, stack_def)
+            instr_ssa :: ssa_instrs_acc_rev, stack_def, defs_acc)
       in
       let block = { bb.block with instrs = List.rev ssa_instrs_rev } in
       let ssa_bb = { bb with block } in
-      ssa_bb, stack
+      ssa_bb, stack, defs
 
     (* Rename phi function operands *)
     and rename_BB_succs
@@ -254,19 +261,28 @@ functor
       Label.Map.set ssa_bbmap ~key:child ~data:child_ssa_bb'
     ;;
 
-    let run (params : Instr.t list) (instrs_body : Instr.i list) : CFG.bbmap =
+    let run (params : Instr.t list) (instrs_body : Instr.i list) : Instr.i list =
       let instrs_head = insert_param_block params in
       let instrs = instrs_head @ instrs_body in
       let bbs = CFG.build_bb instrs in
-      let succs, preds = CFG.build_ino bbs in
-      let bbs', succs, preds = CFG.remove_criticl_edges bbs succs preds in
+      let preds, succs = CFG.build_ino bbs in
+      let bbs', preds, succs = CFG.remove_criticl_edges bbs preds succs in
       let porder = CFG.postorder succs in
       let idom = CFG.idom porder preds in
       let df = CFG.build_DF idom preds in
       let dt = CFG.build_DT idom in
+      (* CFG.print_bbs bbs'; *)
       let ssa_bbs, stack = construct bbs' df preds in
       let entry = param_label in
       let[@warning "-26"] ssa_bbs, _ = rename_BB entry ssa_bbs stack dt succs in
-      delete_param_block bbs'
+      let ssa_bbs = delete_param_block ssa_bbs in
+      let topoorder = List.rev porder in
+      let valid_order =
+        (* remove param label *)
+        match topoorder with
+        | [] -> failwith "empty"
+        | _ :: t -> t
+      in
+      CFG.to_instrs ssa_bbs valid_order
     ;;
   end
