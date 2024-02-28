@@ -204,7 +204,7 @@ type fdefn =
 
 type program = fdefn list
 type i = stm
-type t = St.t
+type t = St.t [@@deriving sexp, compare, hash]
 
 (* Functions for CFG interface *)
 let is_label = function
@@ -355,6 +355,11 @@ let replace_uses (instr : i) (dic : (t * t) list) : i =
     let src = _replace_uses store.src dic in
     Store { store with src }
   | Label _ | Jump _ | Load _ | Nop -> instr
+;;
+
+let new_t (t : t) : t =
+  let temp = Temp.create () in
+  St.wrap t.size temp
 ;;
 
 let[@warning "-27"] is_assert (i : stm) : bool = false

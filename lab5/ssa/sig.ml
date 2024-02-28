@@ -32,6 +32,9 @@ module type InstrInterface = sig
   (* Tuple stands for (old_temp, ssa_temp) *)
   val replace_def : i -> (t * t) list -> i
   val replace_uses : i -> (t * t) list -> i
+
+  (* Given t, generate a new t with same size *)
+  val new_t : t -> t
   val label : Label.t -> i
   val assign : t -> Int64.t -> i
   val pp_insts : i list -> string

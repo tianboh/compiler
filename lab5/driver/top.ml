@@ -24,7 +24,7 @@ module Symbol = Util.Symbol
 module CFG_IR = Cfg.Impt.Wrapper (Ir_tree.Inst)
 module CFG_QUAD = Cfg.Impt.Wrapper (Quads.Inst)
 module CFG_ABS = Cfg.Impt.Wrapper (Abs_asm.Inst)
-module SSA_IR = Ssa.Impt.Wraper (Ir_tree.Inst) (CFG_IR)
+module SSA_IR = Ssa.Impt.Wrapper (Ir_tree.Inst) (CFG_IR)
 
 (* Command line arguments *)
 type cmd_line_args =
