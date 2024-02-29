@@ -171,10 +171,9 @@ let compile (cmd : cmd_line_args) : unit =
   let tst, tc_env = Semantic.Driver.run ast in
   say_if cmd.dump_tst (fun () -> Semantic.Inst.Print.pp_program tst);
   if cmd.semcheck_only then exit 0;
-  (* Translate *)
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Ir_tree.Trans.translate tst tc_env cmd.unsafe in
-  let ir' =
+  (* let ir' =
     List.map ir ~f:(fun fdefn ->
         let body = SSA_IR.run fdefn.temps fdefn.body in
         { fdefn with body }
@@ -195,16 +194,14 @@ let compile (cmd : cmd_line_args) : unit =
         (* CFG_IR.print_bbs bbs'; *)
         (* CFG_IR.print_graph outs'; *)
         { fdefn with body } *))
-  in
+  in *)
   say_if cmd.dump_ir (fun () ->
-      List.map ir' ~f:Ir_tree.Inst.pp_fdefn |> String.concat ~sep:"\n");
+      List.map ir ~f:Ir_tree.Inst.pp_fdefn |> String.concat ~sep:"\n");
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
-  (* let start = Unix.gettimeofday () in *)
-  let quad = Quads.Trans.gen ir' in
+  let quad = Quads.Trans.gen ir in
   say_if cmd.dump_quad (fun () -> Quads.Inst.pp_program quad "");
   match cmd.emit with
-  (* Output: abstract 3-address assem *)
   | Quad ->
     let file = cmd.filename ^ ".quad" in
     say_if cmd.verbose (fun () -> sprintf "Writing abstract assem to %s..." file);

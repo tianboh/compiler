@@ -237,22 +237,16 @@ let format = function
   | Mov mv ->
     let src_str = pp_Sop mv.src in
     let dest_str = pp_Sop mv.dest in
-    let () =
-      if Size.compare (mv.src.size :> Size.t) (mv.dest.size :> Size.t) <> 0
-      then
-        printf
-          "move oprd size mismatch mov%s %s, %s\n"
-          (pp_inst mv.dest.size)
-          src_str
-          dest_str
-      else ()
-    in
-    let size = mv.dest.size in
-    (match mv.src.data, mv.dest.data with
-    | Imm _, _ | Addr _, _ | Reg _, Reg _ | Reg _, Addr _ ->
-      sprintf "mov%s %s, %s" (pp_inst size) src_str dest_str
-    | Reg _, Imm _ -> failwith "invalid move"
-    | _ -> failwith "stack memory should not appear in the program")
+    assert (Size.compare' mv.src.size mv.dest.size = 0);
+    if phys_equal src_str dest_str
+    then ""
+    else (
+      let size = mv.dest.size in
+      match mv.src.data, mv.dest.data with
+      | Imm _, _ | Addr _, _ | Reg _, Reg _ | Reg _, Addr _ ->
+        sprintf "mov%s %s, %s" (pp_inst size) src_str dest_str
+      | Reg _, Imm _ -> failwith "invalid move"
+      | _ -> failwith "stack memory should not appear in the program")
   | Ret -> "ret"
   | Push push ->
     (match push.var.data with
