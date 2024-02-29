@@ -26,6 +26,7 @@ type line =
 (* Return all the temporary/register in line.defines *)
 let get_defs line = line.defs
 let get_uses line = line.uses
+let get_move line = line.move
 
 type temps_info = line list
 

@@ -63,8 +63,8 @@ let transform_vertices_to_json (vertices : (IG.Vertex.t * Driver.dest) option li
 
 let regalloc_ckpt (prog : Program.line list) : (IG.Vertex.t * Driver.dest) option list =
   let prog_dummy = List.map prog ~f:(fun x -> x, Abs_asm.Inst.Comment "") in
-  let adj = Driver.Helper.build_graph prog_dummy IG.Vertex.Map.empty in
-  let seq = Driver.seo adj prog in
+  let adj, roots = Driver.Helper.build_graph prog_dummy in
+  let seq = Driver.seo adj in
   let vertex_to_reg = IG.Vertex.Map.empty in
   let color = Driver.greedy seq adj vertex_to_reg in
   (* Print.print_adj adj;
@@ -73,5 +73,5 @@ let regalloc_ckpt (prog : Program.line list) : (IG.Vertex.t * Driver.dest) optio
   List.iter ~f:(printf "%s ") seq_l;
   Print.print_vertex_to_dest color;
   printf "\n"; *)
-  Driver.gen_result color prog
+  Driver.gen_result roots color
 ;;

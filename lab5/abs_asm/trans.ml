@@ -90,7 +90,11 @@ let[@warning "-8"] gen_binop_rev (Src.Binop bin) =
 let[@warning "-8"] gen_move_rev (Src.Mov move) =
   let dest, src = trans_operand (Src.St.to_Sop move.dest), trans_operand move.src in
   let defines, uses = [ dest.data ], [ src.data ] in
-  let line = { defines; uses; live_out = []; move = true } in
+  let line =
+    if Size.compare' dest.size `QWORD = 0
+    then { defines; uses; live_out = []; move = false }
+    else { defines; uses; live_out = []; move = true }
+  in
   [ Dest.Mov { dest; src; line } ]
 ;;
 

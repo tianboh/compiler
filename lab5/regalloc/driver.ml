@@ -34,6 +34,10 @@ module Spill = Var.X86_reg.Spill
 module Reg_info = Program
 module Abs_asm = Abs_asm.Inst
 module IG = Interference_graph
+module VMap = IG.Vertex.Map
+module VSet = IG.Vertex.Set
+
+type t = IG.Vertex.t
 
 type dest =
   | Reg of Register.t
@@ -50,12 +54,12 @@ module Print = struct
   (* print adjacency list (interference graph) *)
   let print_adj adj =
     printf "\nprint adj\n";
-    let keys = IG.Vertex.Map.keys adj in
+    let keys = VMap.keys adj in
     let sorted_keys = List.sort keys ~compare:IG.Vertex.compare in
     let () =
       List.iter sorted_keys ~f:(fun key ->
-          let s = IG.Vertex.Map.find_exn adj key in
-          let l = List.sort (IG.Vertex.Set.to_list s) ~compare:IG.Vertex.compare in
+          let s = VMap.find_exn adj key in
+          let l = List.sort (VSet.to_list s) ~compare:IG.Vertex.compare in
           printf "From %s to\t" (IG.Print.pp_vertex key);
           List.iter l ~f:(fun x -> printf "%s " (IG.Print.pp_vertex x));
           printf "\n")
@@ -63,39 +67,53 @@ module Print = struct
     printf "\n\n"
   ;;
 
-  let print_vertex_to_dest (color : dest IG.Vertex.Map.t) =
+  let dest_str dest : string =
+    match dest with
+    | Reg r -> Register.pp r
+    | Spill s -> Spill.pp s
+  ;;
+
+  let print_vertex_to_dest (color : dest VMap.t) =
     let () = printf "\n\n==========\nVertex to register\n" in
-    let sorted_keys = List.sort (IG.Vertex.Map.keys color) ~compare:IG.Vertex.compare in
+    let sorted_keys = List.sort (VMap.keys color) ~compare:IG.Vertex.compare in
     List.iter sorted_keys ~f:(fun k ->
         let t = IG.Print.pp_vertex k in
-        let r =
-          match IG.Vertex.Map.find_exn color k with
-          | Reg r -> Register.pp r
-          | Spill s -> Spill.pp s
-        in
+        let r = VMap.find_exn color k |> dest_str in
         printf "%s -> %s\n%!" t r)
+  ;;
+
+  let print_result (results : (t * dest) option list) : unit =
+    printf "print result\n";
+    List.iter results ~f:(fun tuple ->
+        match tuple with
+        | None -> ()
+        | Some s ->
+          let src, dest = s in
+          let src_string, dest_string = IG.Print.pp_vertex src, dest_str dest in
+          printf "%s -> %s\n%!" src_string dest_string);
+    printf "result done\n%!"
   ;;
 end
 
 module Helper = struct
   (* Build edge between vertices and vertex *)
-  let build_vtx_vtxs adj vertex vertices =
-    let s_vertex = IG.Vertex.Set.of_list [ vertex ] in
+  let connect adj vertex vertices =
+    let s_vertex = VSet.of_list [ vertex ] in
     let s_vertex_nbr =
-      match IG.Vertex.Map.find adj vertex with
-      | None -> IG.Vertex.Set.empty
+      match VMap.find adj vertex with
+      | None -> VSet.empty
       | Some s -> s
     in
-    let s_vertex_nbr_union = IG.Vertex.Set.union s_vertex_nbr vertices in
-    let adj = IG.Vertex.Map.set adj ~key:vertex ~data:s_vertex_nbr_union in
-    IG.Vertex.Set.fold_right vertices ~init:adj ~f:(fun v adj ->
+    let s_vertex_nbr_union = VSet.union s_vertex_nbr vertices in
+    let adj = VMap.set adj ~key:vertex ~data:s_vertex_nbr_union in
+    VSet.fold_right vertices ~init:adj ~f:(fun v adj ->
         let s_vertices =
-          match IG.Vertex.Map.find adj v with
-          | None -> IG.Vertex.Set.empty
+          match VMap.find adj v with
+          | None -> VSet.empty
           | Some s -> s
         in
-        let s_res = IG.Vertex.Set.union s_vertices s_vertex in
-        IG.Vertex.Map.set adj ~key:v ~data:s_res)
+        let s_res = VSet.union s_vertices s_vertex in
+        VMap.set adj ~key:v ~data:s_res)
   ;;
 
   (* Build interference graph based on def and (live_out Union uses).
@@ -105,46 +123,124 @@ module Helper = struct
    * make x86 assembly code generation easier, we don't allow uses and def to be assigned
    * to the same register. This can be more flexible for x86 assembly code generation.
    *)
-  let rec build_graph reginfo_instr adj =
-    match reginfo_instr with
-    | [] -> adj
-    | h :: t ->
-      let reginfo, _ = h in
-      (* Reg_info.print_line reginfo; *)
-      let defs = Reg_info.get_defs reginfo in
-      let adj =
-        IG.Vertex.Set.fold defs ~init:adj ~f:(fun acc_adj def ->
-            (* build edges between defs *)
-            let defs' = IG.Vertex.Set.diff defs (IG.Vertex.Set.of_list [ def ]) in
-            let s_def_nbr =
-              match IG.Vertex.Map.find adj def with
-              | Some s -> IG.Vertex.Set.union s defs'
-              | None -> defs'
-            in
-            let s_lo = reginfo.live_out in
-            let s_u = IG.Vertex.Set.union s_def_nbr s_lo in
-            build_vtx_vtxs acc_adj def s_u)
-      in
-      build_graph t adj
+  let build_graph reginfo_instr =
+    let rec helper reginfo_instr adj =
+      match reginfo_instr with
+      | [] ->
+        let vs = VMap.keys adj in
+        let roots =
+          List.fold vs ~init:VMap.empty ~f:(fun acc v -> VMap.set acc ~key:v ~data:v)
+        in
+        adj, roots
+      | h :: t ->
+        let reginfo, _ = h in
+        (* Reg_info.print_line reginfo; *)
+        let defs = Reg_info.get_defs reginfo in
+        let adj =
+          VSet.fold defs ~init:adj ~f:(fun adj_acc def ->
+              (* build edges between defs *)
+              let defs' = VSet.diff defs (VSet.of_list [ def ]) in
+              let s_def_nbr =
+                match VMap.find adj def with
+                | Some s -> VSet.union s defs'
+                | None -> defs'
+              in
+              let s_lo = reginfo.live_out in
+              let s_u = VSet.union s_def_nbr s_lo in
+              connect adj_acc def s_u)
+        in
+        helper t adj
+    in
+    helper reginfo_instr VMap.empty
   ;;
 
-  (* Table store info from vertex to number which will be used in seo. *)
-  let gen_vertex_table prog =
-    let rec helper prog hash =
-      match prog with
-      | [] -> hash
+  (* Build coalesce graph. Connect def uses when move is true. *)
+  let build_coalesce reginfo_instr vs =
+    let rec _build_coalesce reginfo_instr adj =
+      match reginfo_instr with
+      | [] -> adj
       | h :: t ->
-        let defs = Reg_info.get_defs h in
-        let uses = Reg_info.get_uses h in
-        let vs = IG.Vertex.Set.union defs uses in
-        let hash =
-          IG.Vertex.Set.fold vs ~init:hash ~f:(fun acc_hash def_ ->
-              let acc_hash = IG.Vertex.Map.set acc_hash ~key:def_ ~data:0 in
-              acc_hash)
-        in
-        helper t hash
+        let reginfo, _ = h in
+        if Reg_info.get_move reginfo
+        then (
+          let defs = Reg_info.get_defs reginfo in
+          let uses = Reg_info.get_uses reginfo in
+          let adj =
+            VSet.fold defs ~init:adj ~f:(fun adj_acc def -> connect adj_acc def uses)
+          in
+          _build_coalesce t adj)
+        else _build_coalesce t adj
     in
-    helper prog IG.Vertex.Map.empty
+    let adj_init =
+      List.fold vs ~init:VMap.empty ~f:(fun acc v -> VMap.set acc ~key:v ~data:VSet.empty)
+    in
+    _build_coalesce reginfo_instr adj_init
+  ;;
+
+  let rec dfs (node : t) (visited : bool VMap.t) (adj : VSet.t VMap.t) (roots : t VMap.t)
+      : bool VMap.t * t VMap.t
+    =
+    let visited = VMap.set visited ~key:node ~data:true in
+    let succs = VMap.find_exn adj node in
+    let node_root = VMap.find_exn roots node in
+    VSet.fold succs ~init:(visited, roots) ~f:(fun acc succ ->
+        let visited_acc, roots_acc = acc in
+        let has_visited = VMap.find_exn visited_acc succ in
+        if has_visited
+        then acc
+        else (
+          let roots_acc = VMap.set roots_acc ~key:succ ~data:node_root in
+          dfs succ visited_acc adj roots_acc))
+  ;;
+
+  (* Given coalesce graph, generate connected component graph.
+   * Each node records its component root. So roots can compose a new graph *)
+  let ccg (adj : VSet.t VMap.t) : t VMap.t =
+    let roots = VMap.mapi adj ~f:(fun ~key:u ~data:_ -> u) in
+    let visited =
+      VMap.mapi adj ~f:(fun ~key:u ~data:_ ->
+          match u with
+          | IG.Vertex.Reg _ ->
+            true
+            (* Do NOT coalesce temp to register. For example, rax is used for calloc. *)
+          | IG.Vertex.Temp _ -> false)
+    in
+    let nodes = VMap.keys adj in
+    let _, ccg =
+      List.fold nodes ~init:(visited, roots) ~f:(fun acc node ->
+          let visited_acc, roots_acc = acc in
+          let has_visited = VMap.find_exn visited_acc node in
+          if has_visited then acc else dfs node visited_acc adj roots_acc)
+    in
+    ccg
+  ;;
+
+  (* Build graph using coalesce information. 
+   * adj: original connected graph built on def-live out info
+   * ccg: records node -> its root.
+   * return: adj graph after treating all connected components 
+   *         in coalesce graph as a single node.*)
+  let build_graph' reginfo_instr =
+    let adj, _ = build_graph reginfo_instr in
+    let vs = VMap.keys adj in
+    let adj_coalesce = build_coalesce reginfo_instr vs in
+    (* Print.print_adj adj_coalesce; *)
+    let roots = ccg adj_coalesce in
+    let graph_init =
+      VMap.data roots
+      |> VSet.of_list
+      |> VSet.to_list
+      |> List.fold ~init:VMap.empty ~f:(fun graph_acc root ->
+             VMap.set graph_acc ~key:root ~data:VSet.empty)
+    in
+    (* List.iter (VMap.data ccg) ~f:(fun n -> printf "%s\n" (IG.Print.pp_vertex n)); *)
+    let adj_ccg =
+      VMap.fold adj ~init:graph_init ~f:(fun ~key:u ~data:vs graph_acc ->
+          let u' = VMap.find_exn roots u in
+          let vs' = VSet.map vs ~f:(fun v -> VMap.find_exn roots v) in
+          connect graph_acc u' vs')
+    in
+    adj_ccg, roots
   ;;
 end
 
@@ -158,9 +254,9 @@ module Lazy = struct
 
   let trans_operand (operand : Abs_asm.Sop.t) =
     match operand.data with
-    | Abs_asm.Op.Temp t -> IG.Vertex.Set.of_list [ IG.Vertex.T.Temp t ]
-    | Abs_asm.Op.Imm _ | Abs_asm.Op.Above_frame _ -> IG.Vertex.Set.empty
-    | Abs_asm.Op.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r ]
+    | Abs_asm.Op.Temp t -> VSet.of_list [ IG.Vertex.Temp t ]
+    | Abs_asm.Op.Imm _ | Abs_asm.Op.Above_frame _ -> VSet.empty
+    | Abs_asm.Op.Reg r -> VSet.of_list [ IG.Vertex.Reg r ]
   ;;
 
   let rec collect_vertex (prog : Abs_asm.instr list) res =
@@ -169,43 +265,43 @@ module Lazy = struct
     | h :: t ->
       (match h with
       | Binop binop ->
-        let res = IG.Vertex.Set.union res (trans_operand binop.dest) in
-        let res = IG.Vertex.Set.union res (trans_operand binop.lhs) in
-        let res = IG.Vertex.Set.union res (trans_operand binop.rhs) in
+        let res = VSet.union res (trans_operand binop.dest) in
+        let res = VSet.union res (trans_operand binop.lhs) in
+        let res = VSet.union res (trans_operand binop.rhs) in
         collect_vertex t res
       | Mov mov ->
-        let res = IG.Vertex.Set.union res (trans_operand mov.dest) in
-        let res = IG.Vertex.Set.union res (trans_operand mov.src) in
+        let res = VSet.union res (trans_operand mov.dest) in
+        let res = VSet.union res (trans_operand mov.src) in
         collect_vertex t res
       | Cast cast ->
         let dest = Abs_asm.St.to_Sop cast.dest in
         let src = Abs_asm.St.to_Sop cast.src in
-        let res = IG.Vertex.Set.union res (trans_operand dest) in
-        let res = IG.Vertex.Set.union res (trans_operand src) in
+        let res = VSet.union res (trans_operand dest) in
+        let res = VSet.union res (trans_operand src) in
         collect_vertex t res
       | CJump cjp ->
-        let res = IG.Vertex.Set.union res (trans_operand cjp.lhs) in
-        let res = IG.Vertex.Set.union res (trans_operand cjp.rhs) in
+        let res = VSet.union res (trans_operand cjp.lhs) in
+        let res = VSet.union res (trans_operand cjp.rhs) in
         collect_vertex t res
       | Ret _ -> collect_vertex t res
       | Fcall fcall ->
         let res =
           List.fold fcall.args ~init:res ~f:(fun acc arg ->
-              IG.Vertex.Set.union acc (trans_operand arg))
+              VSet.union acc (trans_operand arg))
         in
         collect_vertex t res
       | Push push ->
-        let res = IG.Vertex.Set.union res (trans_operand push.var) in
+        let res = VSet.union res (trans_operand push.var) in
         collect_vertex t res
       | Pop pop ->
-        let res = IG.Vertex.Set.union res (trans_operand pop.var) in
+        let res = VSet.union res (trans_operand pop.var) in
         collect_vertex t res
       | Load load ->
         let dest = Abs_asm.St.to_Sop load.dest in
-        let res = IG.Vertex.Set.union res (trans_operand dest) in
+        let res = VSet.union res (trans_operand dest) in
         collect_vertex t res
       | Store store ->
-        let res = IG.Vertex.Set.union res (trans_operand store.src) in
+        let res = VSet.union res (trans_operand store.src) in
         collect_vertex t res
       | Jump _ | Label _ | Directive _ | Comment _ -> collect_vertex t res)
   ;;
@@ -213,12 +309,12 @@ module Lazy = struct
   let gen_result_dummy vertex_set =
     let cnt = ref 16 in
     let cache = ref Int.Map.empty in
-    let vertex_list = IG.Vertex.Set.to_list vertex_set in
+    let vertex_list = VSet.to_list vertex_set in
     List.map vertex_list ~f:(fun vtx ->
         let dest =
           match vtx with
-          | IG.Vertex.T.Reg r -> Reg r
-          | IG.Vertex.T.Temp t ->
+          | IG.Vertex.Reg r -> Reg r
+          | IG.Vertex.Temp t ->
             if Int.Map.mem !cache t.id
             then (
               let id = Int.Map.find_exn !cache t.id in
@@ -236,12 +332,12 @@ module Lazy = struct
 end
 
 let rec _seo_rev adj vertex_table seq =
-  match IG.Vertex.Map.is_empty vertex_table with
+  match VMap.is_empty vertex_table with
   | true -> seq
   | false ->
     let u, _ =
       match
-        IG.Vertex.Map.fold vertex_table ~init:None ~f:(fun ~key ~data accu ->
+        VMap.fold vertex_table ~init:None ~f:(fun ~key ~data accu ->
             match accu with
             | None -> Some (key, data)
             | Some (_, data') -> if data' > data then accu else Some (key, data))
@@ -250,22 +346,22 @@ let rec _seo_rev adj vertex_table seq =
       | Some s -> s
     in
     let seq_new = u :: seq in
-    let nbr = IG.Vertex.Map.find_exn adj u in
-    let nbr = IG.Vertex.Set.remove nbr u in
+    let nbr = VMap.find_exn adj u in
+    let nbr = VSet.remove nbr u in
     let vertex_table =
-      IG.Vertex.Set.fold_right nbr ~init:vertex_table ~f:(fun x acc ->
-          match IG.Vertex.Map.find vertex_table x with
+      VSet.fold_right nbr ~init:vertex_table ~f:(fun x acc ->
+          match VMap.find vertex_table x with
           | None -> acc
           | Some v ->
             let order = v + 1 in
-            IG.Vertex.Map.set vertex_table ~key:x ~data:order)
+            VMap.set vertex_table ~key:x ~data:order)
     in
-    let vertex_table = IG.Vertex.Map.remove vertex_table u in
+    let vertex_table = VMap.remove vertex_table u in
     _seo_rev adj vertex_table seq_new
 ;;
 
-let seo adj prog =
-  let vertex_table = Helper.gen_vertex_table prog in
+let seo adj =
+  let vertex_table = VMap.map adj ~f:(fun _ -> 0) in
   let seo_rev = _seo_rev adj vertex_table [] in
   List.rev seo_rev
 ;;
@@ -293,19 +389,19 @@ let find_min_available (nbr : Int.Set.t) (black_set : Int.Set.t) : int =
  * if t is connected to rax, it will not be assigned as rax.
  * 2) Minimum available registers among its temporary neighbors.
  *)
-let alloc (nbr : IG.Vertex.Set.t) (vertex_to_dest : dest IG.Vertex.Map.t) : dest =
+let alloc (nbr : VSet.t) (vertex_to_dest : dest VMap.t) : dest =
   (* If a temporary is connected to a register, 
    * we cannot assign this register to it. *)
   let nbr_black_list =
-    IG.Vertex.Set.fold nbr ~init:[] ~f:(fun acc u ->
+    VSet.fold nbr ~init:[] ~f:(fun acc u ->
         match u with
-        | IG.Vertex.T.Reg r -> Register.get_idx r :: acc
-        | IG.Vertex.T.Temp _ -> acc)
+        | IG.Vertex.Reg r -> Register.get_idx r :: acc
+        | IG.Vertex.Temp _ -> acc)
   in
   (* Keep track of assigned registers for neighbor temporaries *)
   let nbr_int_l =
-    IG.Vertex.Set.fold nbr ~init:[] ~f:(fun acc u ->
-        match IG.Vertex.Map.find vertex_to_dest u with
+    VSet.fold nbr ~init:[] ~f:(fun acc u ->
+        match VMap.find vertex_to_dest u with
         | None -> acc
         | Some u' ->
           (match u' with
@@ -324,9 +420,13 @@ let rec greedy seq adj vertex_to_dest =
   | [] -> vertex_to_dest
   | h :: t ->
     (match h with
-    | IG.Vertex.T.Reg _ -> greedy t adj vertex_to_dest
-    | IG.Vertex.T.Temp temp ->
-      let nbr = IG.Vertex.Map.find_exn adj h in
+    | IG.Vertex.Reg reg ->
+      let vertex_to_dest =
+        VMap.set vertex_to_dest ~key:(IG.Vertex.Reg reg) ~data:(Reg reg)
+      in
+      greedy t adj vertex_to_dest
+    | IG.Vertex.Temp temp ->
+      let nbr = VMap.find_exn adj h in
       let dest = alloc nbr vertex_to_dest in
       (* let () =
         match dest with
@@ -335,54 +435,41 @@ let rec greedy seq adj vertex_to_dest =
         | Spill s -> printf "alloc %s for %s\n" (Spill.pp s) (Temp.name temp)
       in *)
       let vertex_to_dest =
-        IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Temp temp) ~data:dest
+        VMap.set vertex_to_dest ~key:(IG.Vertex.Temp temp) ~data:dest
       in
       greedy t adj vertex_to_dest)
 ;;
 
-let rec gen_result (color : dest IG.Vertex.Map.t) prog =
-  match prog with
-  | [] -> []
-  | h :: t ->
-    let defs = Reg_info.get_defs h in
-    let uses = Reg_info.get_uses h in
-    let vs = IG.Vertex.Set.union defs uses in
-    let assign_l =
-      IG.Vertex.Set.fold vs ~init:[] ~f:(fun acc v ->
-          match v with
-          | IG.Vertex.T.Temp _ ->
-            let dest = IG.Vertex.Map.find color v in
-            let tk =
-              match dest with
-              | None -> None
-              | Some dest' -> Some (v, dest')
-            in
-            tk :: acc
-          | IG.Vertex.T.Reg _ -> None :: acc)
-    in
-    assign_l @ gen_result color t
+let gen_result (roots : t VMap.t) color : (t * dest) option list =
+  let vs = VMap.keys roots in
+  List.map vs ~f:(fun v ->
+      match v with
+      | IG.Vertex.Temp _ ->
+        let v_root = VMap.find_exn roots v in
+        let dest = VMap.find color v_root in
+        (match dest with
+        | None -> None
+        | Some dest' -> Some (v, dest'))
+      | IG.Vertex.Reg _ -> None)
 ;;
 
-let regalloc (fdefn : Abs_asm.fdefn) : (IG.Vertex.t * dest) option list =
-  let vertex_set = Lazy.collect_vertex fdefn.body IG.Vertex.Set.empty in
-  if IG.Vertex.Set.length vertex_set > threshold
+let regalloc (fdefn : Abs_asm.fdefn) : (t * dest) option list =
+  let vertex_set = Lazy.collect_vertex fdefn.body VSet.empty in
+  if VSet.length vertex_set > threshold
   then Lazy.gen_result_dummy vertex_set
   else (
     let reginfo_instrs = Program.gen_regalloc_info fdefn.body in
-    let adj = Helper.build_graph reginfo_instrs IG.Vertex.Map.empty in
-    let prog =
-      List.fold_left reginfo_instrs ~init:[] ~f:(fun acc line ->
-          let reginfo, _ = line in
-          reginfo :: acc)
-    in
-    let seq = seo adj prog in
-    let vertex_to_dest = IG.Vertex.Map.empty in
-    let color = greedy seq adj vertex_to_dest in
+    (* let adj, roots = Helper.build_graph reginfo_instrs in *)
+    let adj, roots = Helper.build_graph' reginfo_instrs in
+    let seq = seo adj in
+    let color = greedy seq adj VMap.empty in
     (* Print.print_adj adj;
     printf "SEO order\n";
     let seq_l = List.map seq ~f:(fun x -> IG.Print.pp_vertex x) in
     List.iter ~f:(printf "%s ") seq_l;
     Print.print_vertex_to_dest color;
     printf "\n%!"; *)
-    gen_result color prog)
+    let results = gen_result roots color in
+    (* Print.print_result results; *)
+    results)
 ;;
