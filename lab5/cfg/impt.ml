@@ -110,6 +110,7 @@ module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.i = s
     let instrs = eliminate_fall_through instrs in
     let bb_instrs = [] in
     let bb_label = None in
+    entry := Label.label None;
     let bbs = Label.Map.empty in
     let bbs = _build_bb instrs bb_instrs bb_label bbs in
     (* print_bbs bbs; *)

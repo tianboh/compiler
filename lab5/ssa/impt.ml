@@ -7,8 +7,12 @@ functor
   (CFG : Cfg.Sig.CFGInterface with type i = Instr.i)
   ->
   struct
-    (* dest temp(dominator frontier), src temp(from predecessor) *)
-    type pair = Instr.t * Instr.t
+    (* dest temp, src temp *)
+    type pair =
+      { dest : Instr.t
+      ; src : Instr.t
+      }
+
     type bb = CFG.bb
 
     module K = struct
@@ -26,6 +30,7 @@ functor
 
     type ssa_bb =
       { phis : Instr.t option PhiKey.t
+      ; phi_asns : pair list
       ; block : bb
       }
 
@@ -127,7 +132,8 @@ functor
             helper v defs_v df orig acc)
       in
       let ssa_bbmap : ssa_bbmap =
-        Label.Map.map bbs ~f:(fun bb -> { block = bb; phis = PhiKey.empty })
+        Label.Map.map bbs ~f:(fun bb ->
+            { block = bb; phis = PhiKey.empty; phi_asns = [] })
       in
       let ssa_bbmap =
         StMap.fold phis ~init:ssa_bbmap ~f:(fun ~key:st ~data:locs (acc : ssa_bbmap) ->
@@ -202,6 +208,25 @@ functor
         (stack : stack)
         : ssa_bb * stack * st list
       =
+      (* Rename phi dest *)
+      let ts =
+        PhiKey.keys bb.phis
+        |> List.map ~f:(fun tuple ->
+               let st, _ = K.decompose tuple in
+               st)
+      in
+      let stack, phi_asns =
+        List.fold ts ~init:(stack, []) ~f:(fun acc t ->
+            let stack_acc, phi_asns_acc = acc in
+            let stack_t = StMap.find_exn stack_acc t in
+            let t_ssa = Instr.new_t t in
+            let stack_t_new = t_ssa :: stack_t in
+            let phi_asn = { dest = t_ssa; src = t } in
+            let stack_acc_new = StMap.set stack_acc ~key:t ~data:stack_t_new in
+            let phi_asn_acc_new = phi_asn :: phi_asns_acc in
+            stack_acc_new, phi_asn_acc_new)
+      in
+      (* Rename instr def and use in body *)
       let instrs = bb.block.instrs in
       let ssa_instrs_rev, stack, defs =
         List.fold instrs ~init:([], stack, []) ~f:(fun acc instr ->
@@ -214,6 +239,7 @@ functor
                   v_top)
             in
             let map_uses = List.zip_exn uses uses_ssa in
+            printf "%s\n%!" (Instr.pp_inst instr);
             let instr_ssa_uses = Instr.replace_uses instr map_uses in
             let defs = Instr.get_def instr in
             let defs_acc = defs @ defs_acc in
@@ -232,7 +258,7 @@ functor
             instr_ssa :: ssa_instrs_acc_rev, stack_def, defs_acc)
       in
       let block = { bb.block with instrs = List.rev ssa_instrs_rev } in
-      let ssa_bb = { bb with block } in
+      let ssa_bb = { bb with block; phi_asns } in
       ssa_bb, stack, defs
 
     (* Rename phi function operands *)

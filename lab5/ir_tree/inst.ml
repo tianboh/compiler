@@ -323,7 +323,18 @@ let rec _replace_uses (sexp : Sexp.t) (dic : St.t StMap.t) : Sexp.t =
 ;;
 
 let replace_uses (instr : i) (dic : (t * t) list) : i =
-  let dic = StMap.of_alist_exn dic in
+  (* let dic = StMap.of_alist_exn dic in *)
+  let dic =
+    List.fold dic ~init:StMap.empty ~f:(fun acc tuple ->
+        let src, dest = tuple in
+        if StMap.mem acc src
+        then (
+          let old_dest = StMap.find_exn acc src in
+          if phys_equal old_dest dest
+          then acc
+          else failwith "duplicate src temp to different dests")
+        else StMap.set acc ~key:src ~data:dest)
+  in
   match instr with
   | Cast cast ->
     let src = _replace_uses cast.src dic in
