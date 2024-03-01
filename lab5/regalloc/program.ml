@@ -76,7 +76,19 @@ let print_lines (l : (line * Abs_asm.instr) list) =
       print_line line)
 ;;
 
-(* Generate defines, use, move, liveout, line number. *)
+(* Generate defines, use, move, liveout, line number. 
+ *
+ * live out is special for non-move instruction.
+ * Consider following case:
+ * %t19_dword <-- %t21_dword - %t22_dword
+ * if t19 and t21, t22 is not interfere, then t21 and t19 can be assigned with same reg
+ * then assembly will be
+ * 	movl $3, %r8d 	//t21
+ *	movl $2, %eax		//t22
+ *	movl %r8d, %eax		
+ *	subl %eax, %eax 
+ * moving t21 to destination will erase t22's value. 
+ * So for non-move instruction, live out = lo Union uses. *)
 let rec gen_forward
     (inst_list : Abs_asm.instr list)
     (inst_info : (int, line * Abs_asm.instr) Base.Hashtbl.t)
@@ -87,7 +99,7 @@ let rec gen_forward
     let line_empty = empty_line line_num lo in
     let defs = gen_VertexSet line.defines in
     let uses = gen_VertexSet line.uses in
-    let live_out = IG.Vertex.Set.union lo uses in
+    let live_out = if line.move then lo else IG.Vertex.Set.union lo uses in
     let line = { line_empty with defs; uses; live_out; move } in
     Hashtbl.set inst_info ~key:line_num ~data:(line, h);
     inst_info
@@ -150,7 +162,7 @@ let gen_regalloc_info (inst_list : Abs_asm.instr list) =
     |> List.rev
   in
   List.iter lines ~f:(fun line -> print_line line);
-  printf "%s\n" (Abs_asm.pp_insts inst_list "");
+  printf "%s\n" (Abs_asm.pp_insts inst_list);
   let lines = List.zip_exn lines inst_list in
   print_lines lines; *)
   ret

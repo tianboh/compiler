@@ -224,7 +224,7 @@ module Helper = struct
     let adj, _ = build_graph reginfo_instr in
     let vs = VMap.keys adj in
     let adj_coalesce = build_coalesce reginfo_instr vs in
-    (* Print.print_adj adj_coalesce; *)
+    Print.print_adj adj_coalesce;
     let roots = ccg adj_coalesce in
     let graph_init =
       VMap.data roots
@@ -459,8 +459,8 @@ let regalloc (fdefn : Abs_asm.fdefn) : (t * dest) option list =
   then Lazy.gen_result_dummy vertex_set
   else (
     let reginfo_instrs = Program.gen_regalloc_info fdefn.body in
-    (* let adj, roots = Helper.build_graph reginfo_instrs in *)
-    let adj, roots = Helper.build_graph' reginfo_instrs in
+    let adj, roots = Helper.build_graph reginfo_instrs in
+    (* let adj, roots = Helper.build_graph' reginfo_instrs in *)
     let seq = seo adj in
     let color = greedy seq adj VMap.empty in
     (* Print.print_adj adj;
