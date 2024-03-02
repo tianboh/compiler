@@ -96,6 +96,23 @@ module Print = struct
 end
 
 module Helper = struct
+  let link (u : t) (v : t) (adj : VSet.t VMap.t) : VSet.t VMap.t =
+    let u_nbr =
+      match VMap.find adj u with
+      | None -> VSet.empty
+      | Some s -> s
+    in
+    let u_nbr' = VSet.add u_nbr v in
+    let adj = VMap.set adj ~key:u ~data:u_nbr' in
+    let v_nbr =
+      match VMap.find adj v with
+      | None -> VSet.empty
+      | Some s -> s
+    in
+    let v_nbr' = VSet.add v_nbr u in
+    VMap.set adj ~key:v ~data:v_nbr'
+  ;;
+
   (* Build edge between vertices and vertex *)
   let connect adj vertex vertices =
     let s_vertex = VSet.of_list [ vertex ] in
@@ -154,11 +171,19 @@ module Helper = struct
     helper reginfo_instr VMap.empty
   ;;
 
-  (* Build coalesce graph. Connect def uses when move is true. *)
-  let build_coalesce reginfo_instr vs =
+  (* Build coalesce graph. 
+   * Connect def use when both requirements are meet.
+   * 1) instruction move is true.
+   * 2) edge (def, use) does not exist in interference graph. *)
+  let build_coalesce reginfo_instr adj_ig =
     let rec _build_coalesce reginfo_instr adj =
       match reginfo_instr with
-      | [] -> adj
+      | [] ->
+        let edges =
+          VMap.fold adj ~init:[] ~f:(fun ~key:u ~data:vs acc ->
+              VSet.fold vs ~init:acc ~f:(fun acc v -> (u, v) :: acc))
+        in
+        adj, edges
       | h :: t ->
         let reginfo, _ = h in
         if Reg_info.get_move reginfo
@@ -166,11 +191,15 @@ module Helper = struct
           let defs = Reg_info.get_defs reginfo in
           let uses = Reg_info.get_uses reginfo in
           let adj =
-            VSet.fold defs ~init:adj ~f:(fun adj_acc def -> connect adj_acc def uses)
+            VSet.fold defs ~init:adj ~f:(fun adj_acc def ->
+                let def_nbr = VMap.find_exn adj_ig def in
+                VSet.fold uses ~init:adj_acc ~f:(fun adj_acc use ->
+                    if VSet.mem def_nbr use then adj_acc else link def use adj_acc))
           in
           _build_coalesce t adj)
         else _build_coalesce t adj
     in
+    let vs = VMap.keys adj_ig in
     let adj_init =
       List.fold vs ~init:VMap.empty ~f:(fun acc v -> VMap.set acc ~key:v ~data:VSet.empty)
     in
@@ -193,18 +222,42 @@ module Helper = struct
           dfs succ visited_acc adj roots_acc))
   ;;
 
+  let get_nbr u adj =
+    let u_nbr =
+      match VMap.find adj u with
+      | None -> VSet.empty
+      | Some s -> s
+    in
+    VSet.remove u_nbr u
+  ;;
+
+  (* Given a interference graph, coalesce edges, eliminate redundant edges to make
+   * each components is a fully connected(any two nodes in it does not interfere). 
+   * This algorithm does not return the optimal maximum clique because it is NP-hard.
+   * Here we only provide a greedy algorithm to find all cliques. *)
+  let cliques (edges : (t * t) list) (ig_adj : VSet.t VMap.t) : VSet.t VMap.t =
+    let cliques = VMap.mapi ig_adj ~f:(fun ~key:u ~data:_ -> VSet.of_list [ u ]) in
+    List.fold edges ~init:cliques ~f:(fun cliques_acc edge ->
+        let u, v = edge in
+        let u_coa_nbr = get_nbr u cliques_acc in
+        let u_ig_nbr = get_nbr v cliques_acc in
+        let v_coa_nbr = get_nbr v cliques_acc in
+        let v_ig_nbr = get_nbr v ig_adj in
+        let intersect1 = VSet.inter u_coa_nbr v_ig_nbr in
+        let intersect2 = VSet.inter v_coa_nbr u_ig_nbr in
+        if VSet.is_empty intersect1 && VSet.is_empty intersect2
+        then (
+          let acc1 = connect cliques_acc v (VSet.add u_coa_nbr u) in
+          let v_coa_nbr = get_nbr v acc1 in
+          connect acc1 u (VSet.add v_coa_nbr v))
+        else cliques_acc)
+  ;;
+
   (* Given coalesce graph, generate connected component graph.
    * Each node records its component root. So roots can compose a new graph *)
   let ccg (adj : VSet.t VMap.t) : t VMap.t =
     let roots = VMap.mapi adj ~f:(fun ~key:u ~data:_ -> u) in
-    let visited =
-      VMap.mapi adj ~f:(fun ~key:u ~data:_ ->
-          match u with
-          | IG.Vertex.Reg _ ->
-            true
-            (* Do NOT coalesce temp to register. For example, rax is used for calloc. *)
-          | IG.Vertex.Temp _ -> false)
-    in
+    let visited = VMap.mapi adj ~f:(fun ~key:_ ~data:_ -> false) in
     let nodes = VMap.keys adj in
     let _, ccg =
       List.fold nodes ~init:(visited, roots) ~f:(fun acc node ->
@@ -221,11 +274,11 @@ module Helper = struct
    * return: adj graph after treating all connected components 
    *         in coalesce graph as a single node.*)
   let build_graph' reginfo_instr =
-    let adj, _ = build_graph reginfo_instr in
-    let vs = VMap.keys adj in
-    let adj_coalesce = build_coalesce reginfo_instr vs in
-    Print.print_adj adj_coalesce;
-    let roots = ccg adj_coalesce in
+    let ig_adj, _ = build_graph reginfo_instr in
+    let _, coa_edges = build_coalesce reginfo_instr ig_adj in
+    let cliques = cliques coa_edges ig_adj in
+    (* Print.print_adj cliques; *)
+    let roots = ccg cliques in
     let graph_init =
       VMap.data roots
       |> VSet.of_list
@@ -235,7 +288,7 @@ module Helper = struct
     in
     (* List.iter (VMap.data ccg) ~f:(fun n -> printf "%s\n" (IG.Print.pp_vertex n)); *)
     let adj_ccg =
-      VMap.fold adj ~init:graph_init ~f:(fun ~key:u ~data:vs graph_acc ->
+      VMap.fold ig_adj ~init:graph_init ~f:(fun ~key:u ~data:vs graph_acc ->
           let u' = VMap.find_exn roots u in
           let vs' = VSet.map vs ~f:(fun v -> VMap.find_exn roots v) in
           connect graph_acc u' vs')
@@ -459,8 +512,8 @@ let regalloc (fdefn : Abs_asm.fdefn) : (t * dest) option list =
   then Lazy.gen_result_dummy vertex_set
   else (
     let reginfo_instrs = Program.gen_regalloc_info fdefn.body in
-    let adj, roots = Helper.build_graph reginfo_instrs in
-    (* let adj, roots = Helper.build_graph' reginfo_instrs in *)
+    (* let adj, roots = Helper.build_graph reginfo_instrs in *)
+    let adj, roots = Helper.build_graph' reginfo_instrs in
     let seq = seo adj in
     let color = greedy seq adj VMap.empty in
     (* Print.print_adj adj;
@@ -468,7 +521,9 @@ let regalloc (fdefn : Abs_asm.fdefn) : (t * dest) option list =
     let seq_l = List.map seq ~f:(fun x -> IG.Print.pp_vertex x) in
     List.iter ~f:(printf "%s ") seq_l;
     Print.print_vertex_to_dest color;
-    printf "\n%!"; *)
+    printf "\n%!";
+    VMap.iteri roots ~f:(fun ~key:u ~data:root ->
+        printf "root %s -> %s\n" (IG.Print.pp_vertex root) (IG.Print.pp_vertex u)); *)
     let results = gen_result roots color in
     (* Print.print_result results; *)
     results)
