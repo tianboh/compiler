@@ -245,7 +245,9 @@ module Helper = struct
         let v_ig_nbr = get_nbr v ig_adj in
         let intersect1 = VSet.inter u_coa_nbr v_ig_nbr in
         let intersect2 = VSet.inter v_coa_nbr u_ig_nbr in
-        if VSet.is_empty intersect1 && VSet.is_empty intersect2
+        if VSet.is_empty intersect1
+           && VSet.is_empty intersect2
+           && VSet.length (VSet.union u_ig_nbr v_ig_nbr) < 4
         then (
           let acc1 = connect cliques_acc v (VSet.add u_coa_nbr u) in
           let v_coa_nbr = get_nbr v acc1 in
