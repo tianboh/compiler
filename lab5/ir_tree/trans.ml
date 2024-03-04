@@ -1,4 +1,4 @@
-(* L4 Compiler
+(* L5 Compiler
  * TST -> IR Translator
  *
  * Calculate memory address for dot, deref and array access

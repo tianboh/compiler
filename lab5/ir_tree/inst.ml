@@ -1,4 +1,4 @@
-(* L4 Compiler
+(* L5 Compiler
  * IR Trees
  *
  * IR has two levels: statement and expression.

@@ -1,4 +1,4 @@
-(* L4 Compiler
+(* L5 Compiler
  * IR -> Quads 
  *
  * Each instruction do not have nested operand 
@@ -62,10 +62,10 @@ let rec munch_exp_acc (dest : St.t) (exp : Sexp.t) (rev_acc : Quads.instr list)
   =
   match exp.data with
   | Void -> rev_acc
-  | Const i -> Mov { dest; src = Op.of_int i |> Sop.wrap dest.size } :: rev_acc
+  | Const i -> Move { dest; src = Op.of_int i |> Sop.wrap dest.size } :: rev_acc
   | Temp t ->
     let src, cast_instr = cast_helper dest.size (t |> St.wrap exp.size) in
-    (Quads.Mov { dest; src = St.to_Sop src } :: cast_instr) @ rev_acc
+    (Quads.Move { dest; src = St.to_Sop src } :: cast_instr) @ rev_acc
   | Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
   | BISD bisd ->
     let base, index, scale, disp = Tree.Addr.get bisd in

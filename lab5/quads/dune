@@ -1,6 +1,6 @@
 (library
  (name quads)
- (libraries core ir_tree var util )
+ (libraries core ir_tree var util ssa)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))

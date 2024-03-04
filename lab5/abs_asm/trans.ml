@@ -1,4 +1,4 @@
-(* L4 x86 abstract assembly code
+(* L5 x86 abstract assembly code
  * Transfrom from Ir_tree Inst to x86 Inst with convention
  * This is done by providing each instruction with different
  * defines/uses operand. Compared with Ir_tree Inst, this
@@ -87,7 +87,7 @@ let[@warning "-8"] gen_binop_rev (Src.Binop bin) =
   [ Dest.Binop { op; dest; lhs; rhs; line } ]
 ;;
 
-let[@warning "-8"] gen_move_rev (Src.Mov move) =
+let[@warning "-8"] gen_move_rev (Src.Move move) =
   let dest, src = trans_operand (Src.St.to_Sop move.dest), trans_operand move.src in
   let defines, uses = [ dest.data ], [ src.data ] in
   let line = { defines; uses; live_out = []; move = true } in
@@ -336,7 +336,7 @@ let rec gen_body (program : Src.instr list) (res : Dest.instr list) (exit_label 
       match h with
       | Binop bin -> gen_binop_rev (Binop bin)
       | Cast cast -> gen_cast_rev (Cast cast)
-      | Mov move -> gen_move_rev (Mov move)
+      | Move move -> gen_move_rev (Move move)
       | Jump jump -> gen_jump_rev (Jump jump)
       | CJump cjump -> gen_cjump_rev (CJump cjump)
       | Ret ret -> gen_ret_rev (Ret ret) exit_label

@@ -1,4 +1,4 @@
-(* L4 Compiler
+(* L5 Compiler
  * Quad
  *
  * Only have instr. More low-level compared with IR.
@@ -64,6 +64,7 @@ end = struct
   let to_t st = st.data
 end
 
+module StMap = Map.Make (St)
 module Addr : Var.Addr.Sig with type i = Sop.t = Var.Addr.Wrapper (Sop)
 module Mem : Var.Sized.Sized_Interface with type i = Addr.t = Var.Sized.Wrapper (Addr)
 
@@ -103,7 +104,7 @@ type instr =
         dest : St.t
       ; src : St.t
       }
-  | Mov of
+  | Move of
       { dest : St.t
       ; src : Sop.t
       }
@@ -136,6 +137,7 @@ type fdefn =
 
 type program = fdefn list
 type i = instr
+type t = St.t [@@deriving sexp, compare, hash]
 
 (* Functions for CFG interface *)
 let is_label = function
@@ -201,8 +203,122 @@ let replace_ctarget (instr : instr) (old_target : Label.t) (new_target : Label.t
   | _ -> failwith "expect cond jump to replace target"
 ;;
 
-(* functions that format assembly output *)
+(* Functions for SSA instr interface *)
+let get_def = function
+  | Binop binop -> [ binop.dest ]
+  | Fcall fcall ->
+    (match fcall.dest with
+    | None -> []
+    | Some s -> [ s ])
+  | Cast cast -> [ cast.dest ]
+  | Move move -> [ move.dest ]
+  | Load load -> [ load.dest ]
+  | Ret _ | Jump _ | CJump _ | Store _ | Label _ | Directive _ | Comment _ -> []
+;;
 
+let _get_uses (sop : Sop.t) : St.t list =
+  match sop.data with
+  | Imm _ -> []
+  | Temp _ -> [ Sop.to_St sop ]
+;;
+
+let get_uses = function
+  | Binop binop -> _get_uses binop.lhs @ _get_uses binop.rhs
+  | Fcall fcall -> List.map fcall.args ~f:_get_uses |> List.concat
+  | Cast cast -> [ cast.src ]
+  | Move move -> _get_uses move.src
+  | CJump cjp -> _get_uses cjp.lhs @ _get_uses cjp.rhs
+  | Ret ret ->
+    (match ret.var with
+    | None -> []
+    | Some s -> _get_uses s)
+  | Store store -> _get_uses store.src
+  | Jump _ | Load _ | Directive _ | Comment _ | Label _ -> []
+;;
+
+let replace_def (instr : i) (dic : (t * t) list) : i =
+  let dic = StMap.of_alist_exn dic in
+  match instr with
+  | Move move ->
+    let dest_new = Map.find_exn dic move.dest in
+    Move { move with dest = dest_new }
+  | Binop binop ->
+    let dest_new = Map.find_exn dic binop.dest in
+    Binop { binop with dest = dest_new }
+  | Fcall fcall ->
+    (match fcall.dest with
+    | None -> instr
+    | Some dest ->
+      let dest_new = Map.find_exn dic dest in
+      Fcall { fcall with dest = Some dest_new })
+  | Cast cast ->
+    let dest_new = Map.find_exn dic cast.dest in
+    Cast { cast with dest = dest_new }
+  | Load load ->
+    let dest_new = Map.find_exn dic load.dest in
+    Load { load with dest = dest_new }
+  | Ret _ | Jump _ | CJump _ | Store _ | Label _ | Directive _ | Comment _ -> instr
+;;
+
+let _replace_uses (sexp : Sop.t) (dic : St.t StMap.t) : Sop.t =
+  match sexp.data with
+  | Imm _ -> sexp
+  | Temp _ ->
+    let st = Sop.to_St sexp in
+    let st_ssa = StMap.find_exn dic st in
+    St.to_Sop st_ssa
+;;
+
+let replace_uses (instr : i) (dic : (t * t) list) : i =
+  let dic =
+    List.fold dic ~init:StMap.empty ~f:(fun acc tuple ->
+        let src, dest = tuple in
+        if StMap.mem acc src
+        then (
+          let old_dest = StMap.find_exn acc src in
+          if phys_equal old_dest dest
+          then acc
+          else failwith "duplicate src temp to different dests")
+        else StMap.set acc ~key:src ~data:dest)
+  in
+  match instr with
+  | Binop binop ->
+    let lhs = _replace_uses binop.lhs dic in
+    let rhs = _replace_uses binop.lhs dic in
+    Binop { binop with lhs; rhs }
+  | Fcall fcall ->
+    let args = List.map fcall.args ~f:(fun arg -> _replace_uses arg dic) in
+    Fcall { fcall with args }
+  | Cast cast ->
+    let src = _replace_uses (St.to_Sop cast.src) dic in
+    Cast { cast with src = Sop.to_St src }
+  | Move move ->
+    let src = _replace_uses move.src dic in
+    Move { move with src }
+  | Jump _ -> instr
+  | CJump cjp ->
+    let lhs = _replace_uses cjp.lhs dic in
+    let rhs = _replace_uses cjp.rhs dic in
+    CJump { cjp with lhs; rhs }
+  | Ret ret ->
+    (match ret.var with
+    | None -> Ret ret
+    | Some exp ->
+      let var = _replace_uses exp dic in
+      Ret { var = Some var })
+  | Store store ->
+    let src = _replace_uses store.src dic in
+    Store { store with src }
+  | Label _ | Directive _ | Comment _ | Load _ -> instr
+;;
+
+let new_t (t : t) = St.wrap t.size (Temp.create ())
+
+let assign (st : t) (v : Int64.t) : i =
+  Move { dest = st; src = Sop.wrap st.size (Op.of_int v) }
+;;
+
+(* functions that format assembly output *)
 let pp_binop = function
   | Plus -> "+"
   | Minus -> "-"
@@ -230,8 +346,8 @@ let pp_inst = function
       (Sop.pp binop.lhs)
       (pp_binop binop.op)
       (Sop.pp binop.rhs)
-  (* | Mov mv -> sprintf "%s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src) *)
-  | Mov mv ->
+  (* | Move mv -> sprintf "%s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src) *)
+  | Move mv ->
     if Size.compare (mv.src.size :> Size.t) (mv.dest.size :> Size.t) <> 0
     then failwith (sprintf "move size mismatch %s -> %s" (Sop.pp mv.src) (St.pp mv.dest));
     sprintf "%s <-- %s" (St.pp mv.dest) (Sop.pp mv.src)

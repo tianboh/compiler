@@ -25,6 +25,7 @@ module CFG_IR = Cfg.Impt.Wrapper (Ir_tree.Inst)
 module CFG_QUAD = Cfg.Impt.Wrapper (Quads.Inst)
 module CFG_ABS = Cfg.Impt.Wrapper (Abs_asm.Inst)
 module SSA_IR = Ssa.Impt.Wrapper (Ir_tree.Inst) (CFG_IR)
+module SSA_QUAD = Ssa.Impt.Wrapper (Quads.Inst) (CFG_QUAD)
 
 (* Command line arguments *)
 type cmd_line_args =
@@ -173,33 +174,21 @@ let compile (cmd : cmd_line_args) : unit =
   if cmd.semcheck_only then exit 0;
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Ir_tree.Trans.translate tst tc_env cmd.unsafe in
-  (* let ir' =
+  let[@warning "-26"] ir' =
     List.map ir ~f:(fun fdefn ->
         let body = SSA_IR.run fdefn.temps fdefn.body in
-        { fdefn with body }
-        (* 
-        let bbs = CFG_IR.build_bb fdefn.body in
-        let ins, outs = CFG_IR.build_ino bbs in
-        let bbs', ins', outs' = CFG_IR.remove_criticl_edges bbs ins outs in
-        let porder = CFG_IR.postorder outs' in
-        (* CFG_IR.print_bbs bbs'; *)
-        (* CFG_IR.print_graph outs'; *)
-        (* ignore (CFG_IR.idom porder ins' : Util.Label.t Util.Label.Map.t); *)
-        let idom = CFG_IR.idom porder ins' in
-        ignore (CFG_IR.build_DF idom ins' : Util.Label.Set.t Util.Label.Map.t);
-        ignore (CFG_IR.build_DT idom : Util.Label.Set.t Util.Label.Map.t);
-        (* CFG_IR.print_DT dt (List.rev porder); *)
-        let topoorder = List.rev porder in
-        let body = CFG_IR.to_instrs bbs' topoorder in
-        (* CFG_IR.print_bbs bbs'; *)
-        (* CFG_IR.print_graph outs'; *)
-        { fdefn with body } *))
-  in *)
+        { fdefn with body })
+  in
   say_if cmd.dump_ir (fun () ->
       List.map ir ~f:Ir_tree.Inst.pp_fdefn |> String.concat ~sep:"\n");
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   let quad = Quads.Trans.gen ir in
+  let[@warning "-26"] quad' =
+    List.map quad ~f:(fun fdefn ->
+        let body = SSA_QUAD.run fdefn.pars fdefn.body in
+        { fdefn with body })
+  in
   say_if cmd.dump_quad (fun () -> Quads.Inst.pp_program quad "");
   match cmd.emit with
   | Quad ->
