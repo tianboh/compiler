@@ -84,28 +84,28 @@ let safe_mov (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
   | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-    [ Dest.Mov { dest = swap; src; size }; Dest.Mov { dest; src = swap; size } ]
-  | _ -> [ Mov { dest; src; size } ]
+    [ Dest.Move { dest = swap; src; size }; Dest.Move { dest; src = swap; size } ]
+  | _ -> [ Move { dest; src; size } ]
 ;;
 
 (* Now we provide safe instruction to avoid source and destination are both memory. *)
 let safe_cast (dest : Dest.Sop.t) (src : Dest.Sop.t) =
   if Size.compare (dest.size :> Size.t) (src.size :> Size.t) = 0
-  then [ Dest.Mov { dest; src; size = dest.size } ]
+  then [ Dest.Move { dest; src; size = dest.size } ]
   else (
     match dest.data, src.data with
     | Dest.Op.Stack _, Dest.Op.Stack _ ->
       let size = src.size in
       let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
       let swap_ext = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap dest.size in
-      [ Dest.Mov { dest = swap; src; size }
+      [ Dest.Move { dest = swap; src; size }
       ; Dest.Cast { dest = swap_ext; src = swap }
-      ; Dest.Mov { dest; src = swap_ext; size = dest.size }
+      ; Dest.Move { dest; src = swap_ext; size = dest.size }
       ]
     | Dest.Op.Stack _, Dest.Op.Reg r ->
       let r_ext = r |> Dest.Op.of_reg |> Dest.Sop.wrap dest.size in
       [ Dest.Cast { dest = r_ext; src = Dest.Op.of_reg r |> Dest.Sop.wrap src.size }
-      ; Dest.Mov { dest; src = r_ext; size = dest.size }
+      ; Dest.Move { dest; src = r_ext; size = dest.size }
       ]
     | _ -> [ Dest.Cast { dest; src } ])
 ;;
@@ -114,7 +114,7 @@ let safe_add (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
   | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-    [ Dest.Mov { dest = swap; src; size }; Dest.Add { dest; src = swap; size } ]
+    [ Dest.Move { dest = swap; src; size }; Dest.Add { dest; src = swap; size } ]
   | _ -> [ Dest.Add { dest; src; size } ]
 ;;
 
@@ -122,7 +122,7 @@ let safe_sub (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
   | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-    [ Dest.Mov { dest = swap; src; size }; Dest.Sub { dest; src = swap; size } ]
+    [ Dest.Move { dest = swap; src; size }; Dest.Sub { dest; src = swap; size } ]
   | _ -> [ Sub { dest; src; size } ]
 ;;
 
@@ -130,7 +130,7 @@ let safe_and (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
   | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-    [ Dest.Mov { dest = swap; src; size }; Dest.AND { dest; src = swap; size } ]
+    [ Dest.Move { dest = swap; src; size }; Dest.AND { dest; src = swap; size } ]
   | _ -> [ AND { dest; src; size } ]
 ;;
 
@@ -138,7 +138,7 @@ let safe_or (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
   | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-    [ Dest.Mov { dest = swap; src; size }; Dest.OR { dest; src = swap; size } ]
+    [ Dest.Move { dest = swap; src; size }; Dest.OR { dest; src = swap; size } ]
   | _ -> [ OR { dest; src; size } ]
 ;;
 
@@ -146,7 +146,7 @@ let safe_xor (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
   match dest.data, src.data with
   | Dest.Op.Stack _, Dest.Op.Stack _ ->
     let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-    [ Dest.Mov { dest = swap; src; size }; Dest.XOR { dest; src = swap; size } ]
+    [ Dest.Move { dest = swap; src; size }; Dest.XOR { dest; src = swap; size } ]
   | _ -> [ XOR { dest; src; size } ]
 ;;
 
@@ -176,7 +176,7 @@ let safe_ret () =
   let size = `QWORD in
   let rsp = Reg_logic.RSP |> Dest.Op.of_reg |> Dest.Sop.wrap size in
   let rbp = Reg_logic.RBP |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-  [ Dest.Mov { dest = rsp; src = rbp; size }; Pop { var = rbp }; Dest.Ret ]
+  [ Dest.Move { dest = rsp; src = rbp; size }; Pop { var = rbp }; Dest.Ret ]
 ;;
 
 (* Prepare for conditional jump. *)
@@ -188,7 +188,7 @@ let safe_cmp
   =
   match lhs.data, rhs.data with
   | Dest.Op.Stack _, Dest.Op.Stack _ ->
-    [ Dest.Mov { dest = swap; src = lhs; size }; Dest.Cmp { lhs = swap; rhs; size } ]
+    [ Dest.Move { dest = swap; src = lhs; size }; Dest.Cmp { lhs = swap; rhs; size } ]
   | _ -> [ Dest.Cmp { lhs; rhs; size } ]
 ;;
 
@@ -230,26 +230,26 @@ let gen_x86_inst_bin
   | Plus -> safe_mov dest lhs size @ safe_add dest rhs size
   | Minus -> safe_mov dest lhs size @ safe_sub dest rhs size
   | Times ->
-    [ Dest.Mov { dest = rax; src = lhs; size }
+    [ Dest.Move { dest = rax; src = lhs; size }
     ; Dest.Mul { src = rhs; dest = rax; size }
-    ; Dest.Mov { dest; src = rax; size }
+    ; Dest.Move { dest; src = rax; size }
     ]
   | Divided_by ->
     (* Notice that lhs and rhs may be allocated on rdx. 
      * So we use reg_swap to avoid override in the rdx <- 0. *)
-    [ Dest.Mov { dest = rax; src = lhs; size }
-    ; Dest.Mov { dest = swap; src = rhs; size }
+    [ Dest.Move { dest = rax; src = lhs; size }
+    ; Dest.Move { dest = swap; src = rhs; size }
     ; Dest.Cvt { size }
     ; Dest.Div { src = swap; size }
-    ; Dest.Mov { dest; src = rax; size }
+    ; Dest.Move { dest; src = rax; size }
     ]
   | Modulo ->
     let rdx = Reg_logic.RDX |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-    [ Dest.Mov { dest = rax; src = lhs; size }
-    ; Dest.Mov { dest = swap; src = rhs; size }
+    [ Dest.Move { dest = rax; src = lhs; size }
+    ; Dest.Move { dest = swap; src = rhs; size }
     ; Dest.Cvt { size }
     ; Dest.Div { src = swap; size }
-    ; Dest.Mov { dest; src = rdx; size }
+    ; Dest.Move { dest; src = rdx; size }
     ]
   | And -> safe_mov dest lhs size @ safe_and dest rhs size
   | Or -> safe_mov dest lhs size @ safe_or dest rhs size
@@ -286,7 +286,7 @@ let rec _codegen_w_reg_rev
       let insts = safe_cast dest src in
       let insts_rev = List.rev insts in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
-    | Mov mov ->
+    | Move mov ->
       let dest = trans_operand mov.dest reg_alloc_info in
       let src = trans_operand mov.src reg_alloc_info in
       let size = dest.size in
@@ -346,10 +346,10 @@ let rec _codegen_w_reg_rev
         match dest.data with
         | Dest.Op.Stack _ ->
           let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-          [ Dest.Mov { dest; src = swap; size }
-          ; Dest.Mov { dest = swap; src = src_oprd; size }
+          [ Dest.Move { dest; src = swap; size }
+          ; Dest.Move { dest = swap; src = src_oprd; size }
           ]
-        | _ -> [ Dest.Mov { dest; src = src_oprd; size } ]
+        | _ -> [ Dest.Move { dest; src = src_oprd; size } ]
       in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Store store ->
@@ -361,10 +361,10 @@ let rec _codegen_w_reg_rev
         match src.data with
         | Dest.Op.Stack _ ->
           let swap = Reg_logic.swap |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-          [ Dest.Mov { dest = dest_oprd; src = swap; size }
-          ; Dest.Mov { dest = swap; src; size }
+          [ Dest.Move { dest = dest_oprd; src = swap; size }
+          ; Dest.Move { dest = swap; src; size }
           ]
-        | _ -> [ Dest.Mov { dest = dest_oprd; src; size } ]
+        | _ -> [ Dest.Move { dest = dest_oprd; src; size } ]
       in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
     | Directive _ | Comment _ -> _codegen_w_reg_rev res t reg_alloc_info reg_swap)
@@ -412,10 +412,10 @@ let rec transform (insts_rev : Dest.instr list) (acc : Dest.instr list) : Dest.i
         let src_inst, src = helper cast.src in
         let dest_inst, dest = helper cast.dest in
         src_inst @ dest_inst @ [ Dest.Cast { dest; src } ] @ acc
-      | Mov mov ->
+      | Move mov ->
         let src_inst, src = helper mov.src in
         let dest_inst, dest = helper mov.dest in
-        src_inst @ dest_inst @ [ Dest.Mov { mov with dest; src } ] @ acc
+        src_inst @ dest_inst @ [ Dest.Move { mov with dest; src } ] @ acc
       | Cvt cvt -> Cvt cvt :: acc
       | Ret -> Ret :: acc
       | Pop pop ->
@@ -514,7 +514,7 @@ let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) opti
   in
   [ Dest.Fname { name = fname }
   ; Push { var = rbp }
-  ; Mov { dest = rbp; src = rsp; size }
+  ; Move { dest = rbp; src = rsp; size }
   ; Sub { src = mem_cnt_oprd; dest = rsp; size }
   ]
   @ body

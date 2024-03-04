@@ -83,7 +83,7 @@ type instr =
       { dest : Sop.t
       ; src : Sop.t
       }
-  | Mov of
+  | Move of
       { dest : Sop.t
       ; src : Sop.t
       ; size : Size.primitive
@@ -234,7 +234,7 @@ let format = function
     else (
       let dest_str = pp_Sop { cast.dest with size = cast.src.size } in
       sprintf "mov%s %s, %s" (pp_inst src_size) src_str dest_str)
-  | Mov mv ->
+  | Move mv ->
     let src_str = pp_Sop mv.src in
     let dest_str = pp_Sop mv.dest in
     assert (Size.compare' mv.src.size mv.dest.size = 0);

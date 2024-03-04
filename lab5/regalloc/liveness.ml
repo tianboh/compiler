@@ -54,7 +54,7 @@ let rec gen_succ (inst_list : Abs_asm.instr list) (line_no : int) map =
     | Jump _
     | CJump _
     | Ret _
-    | Mov _
+    | Move _
     | Cast _
     | Binop _
     | Fcall _
@@ -96,7 +96,7 @@ let rec _gen_df_info_rev (inst_list : Abs_asm.instr list) line_number label_map 
     let line =
       match h with
       | Binop binop -> Some (_gen_df_info_helper line_number binop.line)
-      | Mov mov -> Some (_gen_df_info_helper line_number mov.line)
+      | Move mov -> Some (_gen_df_info_helper line_number mov.line)
       | Cast cast -> Some (_gen_df_info_helper line_number cast.line)
       | Push push -> Some (_gen_df_info_helper line_number push.line)
       | Pop pop -> Some (_gen_df_info_helper line_number pop.line)

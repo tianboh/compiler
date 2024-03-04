@@ -26,6 +26,7 @@ module CFG_QUAD = Cfg.Impt.Wrapper (Quads.Inst)
 module CFG_ABS = Cfg.Impt.Wrapper (Abs_asm.Inst)
 module SSA_IR = Ssa.Impt.Wrapper (Ir_tree.Inst) (CFG_IR)
 module SSA_QUAD = Ssa.Impt.Wrapper (Quads.Inst) (CFG_QUAD)
+module SSA_ABS = Ssa.Impt.Wrapper (Abs_asm.Inst) (CFG_ABS)
 
 (* Command line arguments *)
 type cmd_line_args =
@@ -174,21 +175,21 @@ let compile (cmd : cmd_line_args) : unit =
   if cmd.semcheck_only then exit 0;
   say_if cmd.verbose (fun () -> "Translating...");
   let ir = Ir_tree.Trans.translate tst tc_env cmd.unsafe in
-  let[@warning "-26"] ir' =
+  say_if cmd.dump_ir (fun () ->
+      List.map ir ~f:Ir_tree.Inst.pp_fdefn |> String.concat ~sep:"\n");
+  (* let[@warning "-26"] ir' =
     List.map ir ~f:(fun fdefn ->
         let body = SSA_IR.run fdefn.temps fdefn.body in
         { fdefn with body })
-  in
-  say_if cmd.dump_ir (fun () ->
-      List.map ir ~f:Ir_tree.Inst.pp_fdefn |> String.concat ~sep:"\n");
+  in *)
   (* Codegen *)
   say_if cmd.verbose (fun () -> "Codegen...");
   let quad = Quads.Trans.gen ir in
-  let[@warning "-26"] quad' =
+  (* let[@warning "-26"] quad' =
     List.map quad ~f:(fun fdefn ->
         let body = SSA_QUAD.run fdefn.pars fdefn.body in
         { fdefn with body })
-  in
+  in *)
   say_if cmd.dump_quad (fun () -> Quads.Inst.pp_program quad "");
   match cmd.emit with
   | Quad ->
@@ -204,6 +205,11 @@ let compile (cmd : cmd_line_args) : unit =
     let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
     let abs = Abs_asm.Trans.gen quad [] in
+    (* let[@warning "-26"] abs' =
+      List.map abs ~f:(fun fdefn ->
+          let body = SSA_ABS.run [] fdefn.body in
+          { fdefn with body })
+    in *)
     say_if cmd.dump_conv (fun () -> Abs_asm.Inst.pp_program abs "");
     let progs =
       List.map abs ~f:(fun fdefn ->

@@ -112,7 +112,7 @@ let rec gen_forward
     | Abs_asm.Binop binop ->
       let inst_info = helper binop.line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Mov mov ->
+    | Abs_asm.Move mov ->
       let inst_info = helper mov.line live_out true inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Cast cast ->

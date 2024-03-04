@@ -317,6 +317,7 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func need_check =
   (* C0 array has 8 byte header to store the array length. But it only take DWORD for the size.
    * To access it, use base + disp. Base is the start addr for array. *)
   let stms, (nitems : Sexp.t) = trans_func alloc_arr.nitems env in
+  assert (Size.compare' nitems.size `DWORD = 0);
   let check = if need_check then check_alloc_arr nitems else [] in
   let size_4 = nitems.size in
   let esize = sizeof_dtype alloc_arr.etype env |> Size.type_size_byte in
@@ -331,13 +332,17 @@ let trans_alloc_arr (alloc_arr : TST.alloc_arr) env trans_func need_check =
   let ptr_c0 = Temp.create () |> Exp.of_t |> Sexp.wrap size_8 in
   let alloc = Tree.Fcall { dest = Some (Sexp.to_St ptr_c0); func_name; args } in
   let header = Mem.wrap size_8 (Addr.of_bisd ptr_c0 None None None) in
-  let store_size = Tree.Store { dest = header; src = { nitems with size = size_8 } } in
+  let temp_nitems_4 = St.wrap size_4 (Temp.create ()) in
+  let temp_nitems_8 = St.wrap size_8 temp_nitems_4.data in
+  let temp_mov = Tree.Move { dest = temp_nitems_4; src = nitems } in
+  let cast_size = Tree.Cast { dest = temp_nitems_8; src = St.to_Sexp temp_nitems_4 } in
+  let store_size = Tree.Store { dest = header; src = St.to_Sexp temp_nitems_8 } in
   let ptr_c = Temp.create () |> Exp.of_t |> Sexp.wrap size_8 |> Sexp.to_St in
   let c_addr =
     Addr.of_bisd ptr_c0 None None (Some 8L) |> Exp.of_bisd |> Sexp.wrap size_8
   in
   let move = Tree.Move { dest = ptr_c; src = c_addr } in
-  stms @ check @ [ alloc; store_size; move ], St.to_Sexp ptr_c
+  stms @ check @ [ alloc; temp_mov; cast_size; store_size; move ], St.to_Sexp ptr_c
 ;;
 
 let trans_mem

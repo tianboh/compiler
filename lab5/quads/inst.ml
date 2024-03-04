@@ -295,7 +295,6 @@ let replace_uses (instr : i) (dic : (t * t) list) : i =
   | Move move ->
     let src = _replace_uses move.src dic in
     Move { move with src }
-  | Jump _ -> instr
   | CJump cjp ->
     let lhs = _replace_uses cjp.lhs dic in
     let rhs = _replace_uses cjp.rhs dic in
@@ -309,7 +308,7 @@ let replace_uses (instr : i) (dic : (t * t) list) : i =
   | Store store ->
     let src = _replace_uses store.src dic in
     Store { store with src }
-  | Label _ | Directive _ | Comment _ | Load _ -> instr
+  | Jump _ | Label _ | Directive _ | Comment _ | Load _ -> instr
 ;;
 
 let new_t (t : t) = St.wrap t.size (Temp.create ())

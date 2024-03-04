@@ -91,7 +91,7 @@ let[@warning "-8"] gen_move_rev (Src.Move move) =
   let dest, src = trans_operand (Src.St.to_Sop move.dest), trans_operand move.src in
   let defines, uses = [ dest.data ], [ src.data ] in
   let line = { defines; uses; live_out = []; move = true } in
-  [ Dest.Mov { dest; src; line } ]
+  [ Dest.Move { dest; src; line } ]
 ;;
 
 let[@warning "-8"] gen_jump_rev (Src.Jump jump) =
@@ -121,7 +121,7 @@ let[@warning "-8"] gen_ret_rev (Src.Ret ret) (exit_label : Label.t) =
       let defines, uses = [ Dest.Op.of_reg RAX ], [ src.data ] in
       let line_mov = { line with defines; uses; move = true } in
       let dest = RAX |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-      [ Dest.Mov { dest; src; line = line_mov } ]
+      [ Dest.Move { dest; src; line = line_mov } ]
   in
   Dest.Jump { target = exit_label; line } :: mov
 ;;
@@ -173,7 +173,7 @@ let gen_param_pass (params : Src.Sop.t list) : Dest.instr list =
         let defines = [ dest ] in
         let uses = [ src.data ] in
         let line = { defines; uses; live_out = []; move = true } in
-        let mov = Dest.Mov { dest = Dest.Sop.wrap size dest; src; line } in
+        let mov = Dest.Move { dest = Dest.Sop.wrap size dest; src; line } in
         mov)
       else (
         let defines = [] in
@@ -188,7 +188,7 @@ let gen_fret (dest : Dest.Sop.t) =
   let line : Dest.line = { defines; uses; live_out = []; move = true } in
   let size = dest.size in
   let src : Dest.Sop.t = { data = Dest.Op.of_reg RAX; size } in
-  Dest.Mov { dest; src; line }
+  Dest.Move { dest; src; line }
 ;;
 
 (* Generate x86 instr with function call convention *)
@@ -237,7 +237,7 @@ let gen_move_rev' (dest : Reg.t) (src : Src.Sop.t) : Dest.instr * Sreg.t * Dest.
   let src = trans_operand src in
   let defines, uses = [ dest.data ], [ src.data ] in
   let line = { uses; defines; live_out = []; move = true } in
-  Dest.Mov { dest; src; line }, reg, src
+  Dest.Move { dest; src; line }, reg, src
 ;;
 
 let[@warning "-8"] gen_load_rev (Src.Load load) : Dest.instr list =
@@ -359,7 +359,7 @@ let save_callee () : Dest.instr list =
       let line = { defines; uses; move = true; live_out = [] } in
       let dest = Dest.Sop.wrap size t in
       let src = r |> Op.of_reg |> Dest.Sop.wrap size in
-      let mov = Dest.Mov { dest; src; line } in
+      let mov = Dest.Move { dest; src; line } in
       mov :: acc)
   |> List.rev
 ;;
@@ -372,13 +372,13 @@ let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
     |> List.map ~f:(fun inst ->
            let dest, src =
              match inst with
-             | Dest.Mov mov -> mov.src, mov.dest
+             | Dest.Move mov -> mov.src, mov.dest
              | _ -> failwith "mov missing"
            in
            let line =
              { defines = [ dest.data ]; uses = [ src.data ]; live_out = []; move = true }
            in
-           Dest.Mov { dest; src; line })
+           Dest.Move { dest; src; line })
   in
   let line = empty_line () in
   let line_ret = { line with uses = [ Dest.Op.of_reg RAX ] } in
@@ -396,7 +396,7 @@ let gen_pars (pars : St.t list) : Dest.instr list =
       if idx < 6
       then (
         let line = { defines; uses = [ src ]; live_out = []; move = true } in
-        [ Mov { dest; src = { data = src; size = par.size }; line } ])
+        [ Move { dest; src = { data = src; size = par.size }; line } ])
       else (
         let temp_sop = Temp.create () |> Op.of_temp |> Sop.wrap par.size in
         let temp_mem = Sop.wrap par.size src in
@@ -407,9 +407,9 @@ let gen_pars (pars : St.t list) : Dest.instr list =
           ; move = true
           }
         in
-        let load = Mov { dest = temp_sop; src = temp_mem; line = line_load } in
+        let load = Move { dest = temp_sop; src = temp_mem; line = line_load } in
         let line = { defines; uses = [ temp_sop.data ]; live_out = []; move = true } in
-        [ load; Mov { dest; src = temp_sop; line } ]))
+        [ load; Move { dest; src = temp_sop; line } ]))
   |> List.concat
 ;;
 

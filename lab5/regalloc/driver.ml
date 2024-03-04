@@ -324,7 +324,7 @@ module Lazy = struct
         let res = VSet.union res (trans_operand binop.lhs) in
         let res = VSet.union res (trans_operand binop.rhs) in
         collect_vertex t res
-      | Mov mov ->
+      | Move mov ->
         let res = VSet.union res (trans_operand mov.dest) in
         let res = VSet.union res (trans_operand mov.src) in
         collect_vertex t res
