@@ -44,27 +44,45 @@ let error ~msg src_span =
  * Notice that While is treated as never return because we cannot
  * check every case, like how many times it will run in real time.
  * So we treat it conservatively as never return *)
-let rec _cf_ret_stm (ast : AST.mstm) : bool =
+let rec _cf_ret_stm (ast : AST.mstm) : bool * AST.mstm =
   match Mark.data ast with
-  | If if_ast -> _cf_ret_stm if_ast.true_stm && _cf_ret_stm if_ast.false_stm
-  | Seq seq_ast -> _cf_ret_stm seq_ast.head || _cf_ret_stm seq_ast.tail
-  | Declare decl_ast -> _cf_ret_stm decl_ast.tail
-  | Return _ -> true
-  | Assign _ | Sexp _ | Assert _ | While _ | Nop -> false
+  | If if_ast ->
+    let true_ret, true_stm = _cf_ret_stm if_ast.true_stm in
+    let false_ret, false_stm = _cf_ret_stm if_ast.false_stm in
+    true_ret && false_ret, Mark.naked (AST.If { if_ast with true_stm; false_stm })
+  | Seq seq_ast ->
+    let head_ret, head = _cf_ret_stm seq_ast.head in
+    if head_ret
+    then true, head
+    else (
+      let tail_ret, tail = _cf_ret_stm seq_ast.tail in
+      tail_ret, Mark.naked (AST.Seq { head; tail }))
+  | Declare decl_ast ->
+    let decl_ret, tail = _cf_ret_stm decl_ast.tail in
+    decl_ret, Mark.naked (AST.Declare { decl_ast with tail })
+  | Return _ -> true, ast
+  | Assign _ | Sexp _ | Assert _ | While _ | Nop -> false, ast
 ;;
 
-let rec cf_ret (ast : AST.program) : unit =
+(* Check if each branch has return.
+ * Remove statements after return. *)
+let rec cf_ret (ast : AST.program) (acc : AST.program) : AST.program =
   match ast with
-  | [] -> ()
+  | [] -> List.rev acc
   | h :: t ->
-    (match h with
-    | Fdefn fdefn ->
-      (match fdefn.ret_type with
-      | `Void -> ()
-      | _ ->
-        if not (_cf_ret_stm fdefn.blk) then error ~msg:"Some branches not return" None)
-    | Typedef _ | Fdecl _ | Sdecl _ | Sdefn _ -> ());
-    cf_ret t
+    let gdecl =
+      match h with
+      | Fdefn fdefn ->
+        (match fdefn.ret_type with
+        | `Void -> h
+        | _ ->
+          let has_ret, mstm = _cf_ret_stm fdefn.blk in
+          if not has_ret
+          then error ~msg:"Some branches not return" None
+          else Fdefn { fdefn with blk = mstm })
+      | Typedef _ | Fdecl _ | Sdecl _ | Sdefn _ -> h
+    in
+    cf_ret t (gdecl :: acc)
 ;;
 
 (* Check whether var is used in exp. Return true if used, false otherwise. *)

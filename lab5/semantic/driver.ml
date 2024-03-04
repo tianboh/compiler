@@ -4,8 +4,9 @@ module TC = Typechecker
 module CC = Cfchecker
 
 let run (ast : AST.program) : TST.program * TC.env =
-  let tst, env = TC.typecheck ast in
-  CC.cf_ret ast;
-  CC.cf_init ast;
+  let _, _ = TC.typecheck ast in
+  let ast_new = CC.cf_ret ast [] in
+  CC.cf_init ast_new;
+  let tst, env = TC.typecheck ast_new in
   tst, env
 ;;

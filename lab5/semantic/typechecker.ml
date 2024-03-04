@@ -1,4 +1,4 @@
-(* L4 Compiler
+(* L5 Compiler
  * TypeChecker, also generate Type Syntax Tree(TST).
  * TST is just an AST with annotated type for each exp.
  *
