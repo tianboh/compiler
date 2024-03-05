@@ -231,7 +231,7 @@ functor
       let ssa_instrs_rev, stack, defs =
         List.fold instrs ~init:([], stack, []) ~f:(fun acc instr ->
             let ssa_instrs_acc_rev, stack_instrs_acc, defs_acc = acc in
-            printf "%s\n%!" (Instr.pp_inst instr);
+            (* printf "%s\n%!" (Instr.pp_inst instr); *)
             let uses = Instr.get_uses instr in
             let uses_ssa =
               List.map uses ~f:(fun v ->

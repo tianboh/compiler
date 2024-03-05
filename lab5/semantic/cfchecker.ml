@@ -52,16 +52,22 @@ let rec _cf_ret_stm (ast : AST.mstm) : bool * AST.mstm =
     true_ret && false_ret, Mark.naked (AST.If { if_ast with true_stm; false_stm })
   | Seq seq_ast ->
     let head_ret, head = _cf_ret_stm seq_ast.head in
+    (* printf "seq ret:%b, head{%s}\n%!" head_ret (AST.Print.pp_mstm head); *)
     if head_ret
-    then true, head
+    then (* printf "seq return\n%!"; *)
+      true, head
     else (
       let tail_ret, tail = _cf_ret_stm seq_ast.tail in
+      (* printf "seq tail{%s}\n%!" (AST.Print.pp_mstm tail); *)
       tail_ret, Mark.naked (AST.Seq { head; tail }))
   | Declare decl_ast ->
     let decl_ret, tail = _cf_ret_stm decl_ast.tail in
     decl_ret, Mark.naked (AST.Declare { decl_ast with tail })
+  | While while_ast ->
+    let _, body = _cf_ret_stm while_ast.body in
+    false, Mark.naked (AST.While { while_ast with body })
   | Return _ -> true, ast
-  | Assign _ | Sexp _ | Assert _ | While _ | Nop -> false, ast
+  | Assign _ | Sexp _ | Assert _ | Nop -> false, ast
 ;;
 
 (* Check if each branch has return.

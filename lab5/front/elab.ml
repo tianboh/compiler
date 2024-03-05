@@ -208,13 +208,19 @@ and elab_mlvalue mlvalue_cst =
   Mark.mark' lvalue_ast src_span
 ;;
 
-let rec elab_blk (cst : Cst.block) (acc : Ast.mstm) : Ast.mstm =
+let rec elab_blk (cst : Cst.block) (acc : Ast.mstm option) : Ast.mstm =
   match cst with
-  | [] -> acc
+  | [] ->
+    (match acc with
+    | Some s -> s
+    | None -> Mark.naked Ast.Nop)
   | h :: t ->
     let ast_head, cst_tail = elab_stm h t in
-    let acc = Ast.Seq { head = acc; tail = ast_head } in
-    elab_blk cst_tail (Mark.naked acc)
+    (match acc with
+    | Some head ->
+      let acc = Ast.Seq { head; tail = ast_head } in
+      elab_blk cst_tail (Some (Mark.naked acc))
+    | None -> elab_blk cst_tail (Some ast_head))
 
 (* Though we are elaborating current statement, the tail is required
  * during process because in some cases, like declare, we need the following 
@@ -228,7 +234,7 @@ and elab_stm (head : Cst.mstm) (tail : Cst.mstms) : Ast.mstm * Cst.block =
   match Util.Mark.data head with
   | Cst.Simp simp -> elab_simp simp src_span tail
   | Cst.Control ctl -> elab_control ctl src_span, tail
-  | Cst.Block blk -> elab_blk blk (Mark.naked Ast.Nop), tail
+  | Cst.Block blk -> elab_blk blk None, tail
 
 (* simp: CST simp statement
  * src_span: location of simp in source code, thie will be marked to AST.
@@ -259,7 +265,7 @@ and elab_simp (simp : Cst.simp) (src_span : Mark.src_span option) (tail : Cst.ms
 and elab_declare (decl : Cst.decl) (src_span : Mark.src_span option) (tail : Cst.mstms) =
   match decl with
   | New_var var ->
-    let ast_tail = elab_blk tail (Mark.naked Ast.Nop) in
+    let ast_tail = elab_blk tail None in
     if Symbol.Map.mem !ct2pt var.name
     then error None ~msg:"decl var name conflict with typedef name";
     let decl_ast =
@@ -267,7 +273,7 @@ and elab_declare (decl : Cst.decl) (src_span : Mark.src_span option) (tail : Cst
     in
     Mark.mark' decl_ast src_span, []
   | Init init ->
-    let ast_tail = elab_blk tail (Mark.naked Ast.Nop) in
+    let ast_tail = elab_blk tail None in
     if Symbol.Map.mem !ct2pt init.name
     then error None ~msg:"init var name conflict with typedef name";
     let decl_ast =
@@ -327,7 +333,7 @@ and elab_control ctl (src_span : Mark.src_span option) =
         let cst_program =
           [ init_cst; Mark.mark' (Cst.Control while_cst) src_span_body ]
         in
-        elab_blk cst_program (Mark.naked Ast.Nop)
+        elab_blk cst_program None
     in
     for_ast
   | Return ret ->
@@ -372,7 +378,7 @@ let[@warning "-8"] elab_fdefn (Cst.Fdefn fdenf) =
       { ret_type
       ; func_name
       ; pars = List.map par_type ~f:elab_param
-      ; blk = elab_blk blk (Mark.naked Ast.Nop)
+      ; blk = elab_blk blk None
       ; scope
       }
 ;;

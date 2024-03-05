@@ -280,8 +280,8 @@ module Print = struct
       (match ret with
       | Some ret -> sprintf "return %s" (pp_mexp ret)
       | None -> sprintf "return")
-    | Nop -> ""
-    | Seq seq_ast -> sprintf "%s\n%s" (pp_mstm seq_ast.head) (pp_mstm seq_ast.tail)
+    | Nop -> "nop"
+    | Seq seq_ast -> sprintf "seq{%s\n%s}" (pp_mstm seq_ast.head) (pp_mstm seq_ast.tail)
     | Declare decl_ast ->
       (match decl_ast.value with
       | None ->
