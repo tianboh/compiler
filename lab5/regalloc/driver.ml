@@ -307,58 +307,60 @@ module Lazy = struct
   let ecx = Register.RCX
   let edx = Register.RDX
 
-  let trans_operand (operand : Abs_asm.Sop.t) =
-    match operand.data with
-    | Abs_asm.Op.Temp t -> VSet.of_list [ IG.Vertex.Temp t ]
-    | Abs_asm.Op.Imm _ | Abs_asm.Op.Above_frame _ -> VSet.empty
-    | Abs_asm.Op.Reg r -> VSet.of_list [ IG.Vertex.Reg r ]
-  ;;
-
   let rec collect_vertex (prog : Abs_asm.instr list) res =
     match prog with
     | [] -> res
     | h :: t ->
       (match h with
       | Binop binop ->
-        let res = VSet.union res (trans_operand binop.dest) in
-        let res = VSet.union res (trans_operand binop.lhs) in
-        let res = VSet.union res (trans_operand binop.rhs) in
+        let res = VSet.union res (IG.Vertex.of_abs binop.dest) in
+        let res = VSet.union res (IG.Vertex.of_abs binop.lhs) in
+        let res = VSet.union res (IG.Vertex.of_abs binop.rhs) in
         collect_vertex t res
       | Move mov ->
-        let res = VSet.union res (trans_operand mov.dest) in
-        let res = VSet.union res (trans_operand mov.src) in
+        let res = VSet.union res (IG.Vertex.of_abs mov.dest) in
+        let res = VSet.union res (IG.Vertex.of_abs mov.src) in
         collect_vertex t res
       | Cast cast ->
         let dest = Abs_asm.St.to_Sop cast.dest in
         let src = Abs_asm.St.to_Sop cast.src in
-        let res = VSet.union res (trans_operand dest) in
-        let res = VSet.union res (trans_operand src) in
+        let res = VSet.union res (IG.Vertex.of_abs dest) in
+        let res = VSet.union res (IG.Vertex.of_abs src) in
         collect_vertex t res
       | CJump cjp ->
-        let res = VSet.union res (trans_operand cjp.lhs) in
-        let res = VSet.union res (trans_operand cjp.rhs) in
+        let res = VSet.union res (IG.Vertex.of_abs cjp.lhs) in
+        let res = VSet.union res (IG.Vertex.of_abs cjp.rhs) in
         collect_vertex t res
       | Ret _ -> collect_vertex t res
       | Fcall fcall ->
         let res =
           List.fold fcall.args ~init:res ~f:(fun acc arg ->
-              VSet.union acc (trans_operand arg))
+              VSet.union acc (IG.Vertex.of_abs arg))
         in
         collect_vertex t res
       | Push push ->
-        let res = VSet.union res (trans_operand push.var) in
+        let res = VSet.union res (IG.Vertex.of_abs push.var) in
         collect_vertex t res
       | Pop pop ->
-        let res = VSet.union res (trans_operand pop.var) in
+        let res = VSet.union res (IG.Vertex.of_abs pop.var) in
         collect_vertex t res
       | Load load ->
         let dest = Abs_asm.St.to_Sop load.dest in
-        let res = VSet.union res (trans_operand dest) in
+        let res = VSet.union res (IG.Vertex.of_abs dest) in
         collect_vertex t res
       | Store store ->
-        let res = VSet.union res (trans_operand store.src) in
+        let res = VSet.union res (IG.Vertex.of_abs store.src) in
         collect_vertex t res
       | Jump _ | Label _ | Directive _ | Comment _ -> collect_vertex t res)
+  ;;
+
+  let rec collect_vertex' (lines : Program.line list) (vs : VSet.t) : VSet.t =
+    match lines with
+    | [] -> vs
+    | line :: t ->
+      let vs = VSet.union vs line.defs in
+      let vs = VSet.union vs line.uses in
+      collect_vertex' t vs
   ;;
 
   let gen_result_dummy vertex_set =

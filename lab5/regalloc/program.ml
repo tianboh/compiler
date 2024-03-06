@@ -28,8 +28,6 @@ let get_defs line = line.defs
 let get_uses line = line.uses
 let get_move line = line.move
 
-type temps_info = line list
-
 let empty_line line_num live_out =
   { uses = IG.Vertex.Set.empty
   ; defs = IG.Vertex.Set.empty

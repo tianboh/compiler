@@ -1,4 +1,5 @@
 open Core
+module Abs_asm = Abs_asm.Inst
 module X86_reg = Var.X86_reg.Logic
 module Temp = Var.Temp
 
@@ -12,6 +13,13 @@ module Vertex = struct
 
   include T
   include Comparable.Make (T)
+
+  let of_abs (operand : Abs_asm.Sop.t) =
+    match operand.data with
+    | Abs_asm.Op.Temp t -> Set.of_list [ Temp t ]
+    | Abs_asm.Op.Imm _ | Abs_asm.Op.Above_frame _ -> Set.empty
+    | Abs_asm.Op.Reg r -> Set.of_list [ Reg r ]
+  ;;
 end
 
 module Edge = struct
