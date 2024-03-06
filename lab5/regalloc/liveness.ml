@@ -47,13 +47,13 @@ let rec gen_succ (inst_list : Abs_asm.instr list) (line_no : int) map =
   match inst_list with
   | [] -> map
   | h :: t ->
-    (match h with
+    (match h.data with
     | Abs_asm.Label l ->
-      let map = Label.Map.set map ~key:l.label ~data:line_no in
+      let map = Label.Map.set map ~key:l ~data:line_no in
       gen_succ t (line_no + 1) map
     | Jump _
     | CJump _
-    | Ret _
+    | Ret
     | Move _
     | Cast _
     | Binop _
@@ -77,10 +77,14 @@ let[@warning "-8"] _gen_df_info_helper (line_number : int) (line : Abs_asm.line)
     : Dfana_info.line)
 ;;
 
-let[@warning "-8"] _gen_df_info_cjump line_number (Abs_asm.CJump cjump) label_map
+let[@warning "-8"] _gen_df_info_cjump
+    line_number
+    (line : Abs_asm.line)
+    (Abs_asm.CJump cjump)
+    label_map
     : Dfana_info.line
   =
-  let uses = cjump.line.uses in
+  let uses = line.uses in
   let gen = Int.Set.of_list (Abs_asm.to_int_list uses) in
   let target_true_no = Label.Map.find_exn label_map cjump.target_true in
   let target_false_no = Label.Map.find_exn label_map cjump.target_false in
@@ -93,31 +97,24 @@ let rec _gen_df_info_rev (inst_list : Abs_asm.instr list) line_number label_map 
   match inst_list with
   | [] -> res
   | h :: t ->
-    let line =
-      match h with
-      | Binop binop -> Some (_gen_df_info_helper line_number binop.line)
-      | Move mov -> Some (_gen_df_info_helper line_number mov.line)
-      | Cast cast -> Some (_gen_df_info_helper line_number cast.line)
-      | Push push -> Some (_gen_df_info_helper line_number push.line)
-      | Pop pop -> Some (_gen_df_info_helper line_number pop.line)
-      | Fcall fcall -> Some (_gen_df_info_helper line_number fcall.line)
-      | Load load -> Some (_gen_df_info_helper line_number load.line)
-      | Store store -> Some (_gen_df_info_helper line_number store.line)
+    let line = h.line in
+    let line' =
+      match h.data with
+      | Binop _ | Move _ | Cast _ | Push _ | Pop _ | Fcall _ | Load _ | Store _ ->
+        Some (_gen_df_info_helper line_number line)
       | Jump jp ->
-        let succ = [ Label.Map.find_exn label_map jp.target ] in
+        let succ = [ Label.Map.find_exn label_map jp ] in
         Some { gen = []; kill = []; succ; is_label = false; line_number }
-      | CJump cjp -> Some (_gen_df_info_cjump line_number (CJump cjp) label_map)
-      | Ret ret ->
-        let gen, kill =
-          Abs_asm.to_int_list ret.line.uses, Abs_asm.to_int_list ret.line.defines
-        in
+      | CJump cjp -> Some (_gen_df_info_cjump line_number line (CJump cjp) label_map)
+      | Ret ->
+        let gen, kill = Abs_asm.to_int_list line.uses, Abs_asm.to_int_list line.defines in
         Some { gen; kill; succ = []; is_label = false; line_number }
       | Label _ ->
         let succ = [ line_number + 1 ] in
         Some { gen = []; kill = []; succ; is_label = true; line_number }
       | Directive _ | Comment _ -> None
     in
-    (match (line : Dfana_info.line option) with
+    (match (line' : Dfana_info.line option) with
     | None -> _gen_df_info_rev t line_number label_map res
     | Some line_s -> _gen_df_info_rev t (line_number + 1) label_map (line_s :: res))
 ;;

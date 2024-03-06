@@ -307,60 +307,15 @@ module Lazy = struct
   let ecx = Register.RCX
   let edx = Register.RDX
 
-  let rec collect_vertex (prog : Abs_asm.instr list) res =
-    match prog with
-    | [] -> res
-    | h :: t ->
-      (match h with
-      | Binop binop ->
-        let res = VSet.union res (IG.Vertex.of_abs binop.dest) in
-        let res = VSet.union res (IG.Vertex.of_abs binop.lhs) in
-        let res = VSet.union res (IG.Vertex.of_abs binop.rhs) in
-        collect_vertex t res
-      | Move mov ->
-        let res = VSet.union res (IG.Vertex.of_abs mov.dest) in
-        let res = VSet.union res (IG.Vertex.of_abs mov.src) in
-        collect_vertex t res
-      | Cast cast ->
-        let dest = Abs_asm.St.to_Sop cast.dest in
-        let src = Abs_asm.St.to_Sop cast.src in
-        let res = VSet.union res (IG.Vertex.of_abs dest) in
-        let res = VSet.union res (IG.Vertex.of_abs src) in
-        collect_vertex t res
-      | CJump cjp ->
-        let res = VSet.union res (IG.Vertex.of_abs cjp.lhs) in
-        let res = VSet.union res (IG.Vertex.of_abs cjp.rhs) in
-        collect_vertex t res
-      | Ret _ -> collect_vertex t res
-      | Fcall fcall ->
-        let res =
-          List.fold fcall.args ~init:res ~f:(fun acc arg ->
-              VSet.union acc (IG.Vertex.of_abs arg))
-        in
-        collect_vertex t res
-      | Push push ->
-        let res = VSet.union res (IG.Vertex.of_abs push.var) in
-        collect_vertex t res
-      | Pop pop ->
-        let res = VSet.union res (IG.Vertex.of_abs pop.var) in
-        collect_vertex t res
-      | Load load ->
-        let dest = Abs_asm.St.to_Sop load.dest in
-        let res = VSet.union res (IG.Vertex.of_abs dest) in
-        collect_vertex t res
-      | Store store ->
-        let res = VSet.union res (IG.Vertex.of_abs store.src) in
-        collect_vertex t res
-      | Jump _ | Label _ | Directive _ | Comment _ -> collect_vertex t res)
-  ;;
-
-  let rec collect_vertex' (lines : Program.line list) (vs : VSet.t) : VSet.t =
+  let rec collect_vertex (lines : Abs_asm.line list) res =
     match lines with
-    | [] -> vs
+    | [] -> res
     | line :: t ->
-      let vs = VSet.union vs line.defs in
-      let vs = VSet.union vs line.uses in
-      collect_vertex' t vs
+      let res =
+        List.fold (line.defines @ line.uses) ~init:res ~f:(fun acc u ->
+            VSet.union acc (IG.Vertex.of_abs u))
+      in
+      collect_vertex t res
   ;;
 
   let gen_result_dummy vertex_set =
@@ -511,7 +466,8 @@ let gen_result (roots : t VMap.t) color : (t * dest) option list =
 ;;
 
 let regalloc (fdefn : Abs_asm.fdefn) : (t * dest) option list =
-  let vertex_set = Lazy.collect_vertex fdefn.body VSet.empty in
+  let lines = List.map fdefn.body ~f:(fun instr -> instr.line) in
+  let vertex_set = Lazy.collect_vertex lines VSet.empty in
   if VSet.length vertex_set > threshold
   then Lazy.gen_result_dummy vertex_set
   else (

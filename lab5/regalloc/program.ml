@@ -106,42 +106,22 @@ let rec gen_forward
   | [] -> inst_info
   | h :: t ->
     let live_out = Int.Map.find_exn live_out_map line_num in
-    (match h with
-    | Abs_asm.Binop binop ->
-      let inst_info = helper binop.line live_out false inst_info h line_num in
+    let line = h.line in
+    (match h.data with
+    | Abs_asm.Move _ | Abs_asm.Cast _ ->
+      let inst_info = helper line live_out true inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Move mov ->
-      let inst_info = helper mov.line live_out true inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Cast cast ->
-      let inst_info = helper cast.line live_out true inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.CJump cjp ->
-      let inst_info = helper cjp.line live_out false inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Jump jp ->
-      let inst_info = helper jp.line live_out false inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Ret ret ->
-      let inst_info = helper ret.line live_out false inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Label label ->
-      let inst_info = helper label.line live_out false inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Fcall fcall ->
-      let inst_info = helper fcall.line live_out false inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Pop pop ->
-      let inst_info = helper pop.line live_out false inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Push push ->
-      let inst_info = helper push.line live_out false inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Load load ->
-      let inst_info = helper load.line live_out false inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Store store ->
-      let inst_info = helper store.line live_out false inst_info h line_num in
+    | Abs_asm.Binop _
+    | Abs_asm.CJump _
+    | Abs_asm.Jump _
+    | Abs_asm.Ret
+    | Abs_asm.Label _
+    | Abs_asm.Fcall _
+    | Abs_asm.Pop _
+    | Abs_asm.Push _
+    | Abs_asm.Load _
+    | Abs_asm.Store _ ->
+      let inst_info = helper line live_out false inst_info h line_num in
       gen_forward t inst_info (line_num + 1) live_out_map
     | Abs_asm.Directive _ | Abs_asm.Comment _ ->
       gen_forward t inst_info line_num live_out_map)

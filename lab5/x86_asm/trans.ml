@@ -270,7 +270,7 @@ let rec _codegen_w_reg_rev
   | [] -> res
   | h :: t ->
     (* printf "src:%s\n" (Src.pp_inst h); *)
-    (match h with
+    (match h.data with
     | Binop bin_op ->
       let dest = trans_operand bin_op.dest reg_alloc_info in
       let lhs = trans_operand bin_op.lhs reg_alloc_info in
@@ -293,12 +293,12 @@ let rec _codegen_w_reg_rev
       let insts = safe_mov dest src size in
       let insts_rev = List.rev insts in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
-    | Ret _ ->
+    | Ret ->
       let insts = safe_ret () in
       let insts_rev = List.rev insts in
       _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
-    | Label l -> _codegen_w_reg_rev (Dest.Label l.label :: res) t reg_alloc_info reg_swap
-    | Jump jp -> _codegen_w_reg_rev (Dest.Jump jp.target :: res) t reg_alloc_info reg_swap
+    | Label l -> _codegen_w_reg_rev (Dest.Label l :: res) t reg_alloc_info reg_swap
+    | Jump jp -> _codegen_w_reg_rev (Dest.Jump jp :: res) t reg_alloc_info reg_swap
     | CJump cjp ->
       let lhs = trans_operand cjp.lhs reg_alloc_info in
       let rhs = trans_operand cjp.rhs reg_alloc_info in
@@ -325,11 +325,11 @@ let rec _codegen_w_reg_rev
         reg_alloc_info
         reg_swap
     | Push push ->
-      let var = trans_operand push.var reg_alloc_info in
+      let var = trans_operand push reg_alloc_info in
       let inst_rev = Dest.Push { var } in
       _codegen_w_reg_rev (inst_rev :: res) t reg_alloc_info reg_swap
     | Pop pop ->
-      let var = trans_operand pop.var reg_alloc_info in
+      let var = trans_operand pop reg_alloc_info in
       let inst_rev = Dest.Pop { var } in
       _codegen_w_reg_rev (inst_rev :: res) t reg_alloc_info reg_swap
     | Fcall fcall ->
