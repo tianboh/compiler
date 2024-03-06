@@ -107,24 +107,15 @@ let rec gen_forward
   | h :: t ->
     let live_out = Int.Map.find_exn live_out_map line_num in
     let line = h.line in
-    (match h.data with
-    | Abs_asm.Move _ | Abs_asm.Cast _ ->
+    if Abs_asm.is_dummy h
+    then gen_forward t inst_info line_num live_out_map
+    else if Abs_asm.is_move h
+    then (
       let inst_info = helper line live_out true inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Binop _
-    | Abs_asm.CJump _
-    | Abs_asm.Jump _
-    | Abs_asm.Ret
-    | Abs_asm.Label _
-    | Abs_asm.Fcall _
-    | Abs_asm.Pop _
-    | Abs_asm.Push _
-    | Abs_asm.Load _
-    | Abs_asm.Store _ ->
+      gen_forward t inst_info (line_num + 1) live_out_map)
+    else (
       let inst_info = helper line live_out false inst_info h line_num in
-      gen_forward t inst_info (line_num + 1) live_out_map
-    | Abs_asm.Directive _ | Abs_asm.Comment _ ->
-      gen_forward t inst_info line_num live_out_map)
+      gen_forward t inst_info (line_num + 1) live_out_map)
 ;;
 
 let gen_regalloc_info (inst_list : Abs_asm.instr list) =

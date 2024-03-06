@@ -143,6 +143,31 @@ let to_int_list (ops : Op.t list) : int list =
       | Above_frame _ | Imm _ -> acc)
 ;;
 
+(* Functions for regalloc *)
+let is_move (instr : i) : bool =
+  match instr.data with
+  | Move _ | Cast _ -> true
+  | _ -> false
+;;
+
+let is_dummy (instr : i) : bool =
+  match instr.data with
+  | Directive _ | Comment _ -> true
+  | _ -> false
+;;
+
+let get_cjump_targets_exn (instr : i) : Label.t * Label.t =
+  match instr.data with
+  | CJump cjp -> cjp.target_true, cjp.target_false
+  | _ -> failwith "expect cjump"
+;;
+
+let get_jump_target_exn (instr : i) : Label.t =
+  match instr.data with
+  | Jump jp -> jp
+  | _ -> failwith "expect jump"
+;;
+
 (* Functions for CFG interface *)
 let is_label (instr : i) : bool =
   match instr.data with
