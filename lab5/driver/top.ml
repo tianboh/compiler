@@ -214,7 +214,8 @@ let compile (cmd : cmd_line_args) : unit =
     let progs =
       List.map abs ~f:(fun fdefn ->
           Var.X86_reg.Spill.reset ();
-          let reg_alloc_info = Regalloc.Driver.regalloc fdefn in
+          let lines, is_lazy = Regalloc.Liveness.gen_liveness fdefn.body in
+          let reg_alloc_info = Regalloc.Driver.gen_result lines is_lazy in
           let instrs = X86_asm.Trans.gen fdefn reg_alloc_info in
           fdefn.func_name, instrs)
     in

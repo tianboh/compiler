@@ -14,7 +14,7 @@ module Vertex = struct
   include T
   include Comparable.Make (T)
 
-  let of_abs (operand : Abs_asm.Op.t) =
+  let of_abs (operand : Abs_asm.Op.t) : Set.t =
     match operand with
     | Abs_asm.Op.Temp t -> Set.of_list [ Temp t ]
     | Abs_asm.Op.Imm _ | Abs_asm.Op.Above_frame _ -> Set.empty

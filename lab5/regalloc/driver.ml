@@ -31,7 +31,6 @@ module Temp = Var.Temp
 module Size = Var.Size
 module Register = Var.X86_reg.Logic
 module Spill = Var.X86_reg.Spill
-module Reg_info = Program
 module Abs_asm = Abs_asm.Inst
 module IG = Interference_graph
 module VMap = IG.Vertex.Map
@@ -133,6 +132,19 @@ module Helper = struct
         VMap.set adj ~key:v ~data:s_res)
   ;;
 
+  let ops_to_vs (ops : Abs_asm.Op.t list) : IG.Vertex.Set.t =
+    List.fold ops ~init:VSet.empty ~f:(fun acc op ->
+        match op with
+        | Temp t ->
+          let v = IG.Vertex.Temp t in
+          VSet.add acc v
+        | Reg r ->
+          let r = IG.Vertex.Reg r in
+          VSet.add acc r
+        | Imm _ -> acc
+        | Above_frame _ -> acc)
+  ;;
+
   (* Build interference graph based on def and (live_out Union uses).
    * The insight here is we cannot allocate/assign register for def with the same register as
    * registers allocated for live_out temps.
@@ -140,19 +152,18 @@ module Helper = struct
    * make x86 assembly code generation easier, we don't allow uses and def to be assigned
    * to the same register. This can be more flexible for x86 assembly code generation.
    *)
-  let build_graph reginfo_instr =
-    let rec helper reginfo_instr adj =
-      match reginfo_instr with
+  let build_graph (lines : Abs_asm.line list) =
+    let rec helper (lines : Abs_asm.line list) adj =
+      match lines with
       | [] ->
         let vs = VMap.keys adj in
         let roots =
           List.fold vs ~init:VMap.empty ~f:(fun acc v -> VMap.set acc ~key:v ~data:v)
         in
         adj, roots
-      | h :: t ->
-        let reginfo, _ = h in
+      | line :: t ->
         (* Reg_info.print_line reginfo; *)
-        let defs = Reg_info.get_defs reginfo in
+        let defs = ops_to_vs line.defines in
         let adj =
           VSet.fold defs ~init:adj ~f:(fun adj_acc def ->
               (* build edges between defs *)
@@ -162,34 +173,33 @@ module Helper = struct
                 | Some s -> VSet.union s defs'
                 | None -> defs'
               in
-              let s_lo = reginfo.live_out in
+              let s_lo = ops_to_vs line.live_out in
               let s_u = VSet.union s_def_nbr s_lo in
               connect adj_acc def s_u)
         in
         helper t adj
     in
-    helper reginfo_instr VMap.empty
+    helper lines VMap.empty
   ;;
 
   (* Build coalesce graph. 
    * Connect def use when both requirements are meet.
    * 1) instruction move is true.
    * 2) edge (def, use) does not exist in interference graph. *)
-  let build_coalesce reginfo_instr adj_ig =
-    let rec _build_coalesce reginfo_instr adj =
-      match reginfo_instr with
+  let build_coalesce (lines : Abs_asm.line list) adj_ig =
+    let rec _build_coalesce (lines : Abs_asm.line list) adj =
+      match lines with
       | [] ->
         let edges =
           VMap.fold adj ~init:[] ~f:(fun ~key:u ~data:vs acc ->
               VSet.fold vs ~init:acc ~f:(fun acc v -> (u, v) :: acc))
         in
         adj, edges
-      | h :: t ->
-        let reginfo, _ = h in
-        if Reg_info.get_move reginfo
+      | line :: t ->
+        if line.move
         then (
-          let defs = Reg_info.get_defs reginfo in
-          let uses = Reg_info.get_uses reginfo in
+          let defs = ops_to_vs line.defines in
+          let uses = ops_to_vs line.uses in
           let adj =
             VSet.fold defs ~init:adj ~f:(fun adj_acc def ->
                 let def_nbr = VMap.find_exn adj_ig def in
@@ -203,7 +213,7 @@ module Helper = struct
     let adj_init =
       List.fold vs ~init:VMap.empty ~f:(fun acc v -> VMap.set acc ~key:v ~data:VSet.empty)
     in
-    _build_coalesce reginfo_instr adj_init
+    _build_coalesce lines adj_init
   ;;
 
   let rec dfs (node : t) (visited : bool VMap.t) (adj : VSet.t VMap.t) (roots : t VMap.t)
@@ -275,9 +285,9 @@ module Helper = struct
    * ccg: records node -> its root.
    * return: adj graph after treating all connected components 
    *         in coalesce graph as a single node.*)
-  let build_graph' reginfo_instr =
-    let ig_adj, _ = build_graph reginfo_instr in
-    let _, coa_edges = build_coalesce reginfo_instr ig_adj in
+  let build_graph' (lines : Abs_asm.line list) =
+    let ig_adj, _ = build_graph lines in
+    let _, coa_edges = build_coalesce lines ig_adj in
     let cliques = cliques coa_edges ig_adj in
     (* Print.print_adj cliques; *)
     let roots = ccg cliques in
@@ -307,21 +317,16 @@ module Lazy = struct
   let ecx = Register.RCX
   let edx = Register.RDX
 
-  let rec collect_vertex (lines : Abs_asm.line list) res =
-    match lines with
-    | [] -> res
-    | line :: t ->
-      let res =
-        List.fold (line.defines @ line.uses) ~init:res ~f:(fun acc u ->
-            VSet.union acc (IG.Vertex.of_abs u))
-      in
-      collect_vertex t res
-  ;;
-
-  let gen_result_dummy vertex_set =
+  let gen_result (lines : Abs_asm.line list) : (t * dest) option list =
     let cnt = ref 16 in
     let cache = ref Int.Map.empty in
-    let vertex_list = VSet.to_list vertex_set in
+    (* let vertex_list = VSet.to_list vertex_set in *)
+    let vertex_list =
+      List.fold lines ~init:[] ~f:(fun acc line ->
+          let vs = line.defines @ line.uses in
+          List.fold vs ~init:acc ~f:(fun acc v ->
+              (IG.Vertex.of_abs v |> VSet.to_list) @ acc))
+    in
     List.map vertex_list ~f:(fun vtx ->
         let dest =
           match vtx with
@@ -465,15 +470,12 @@ let gen_result (roots : t VMap.t) color : (t * dest) option list =
       | IG.Vertex.Reg _ -> None)
 ;;
 
-let regalloc (fdefn : Abs_asm.fdefn) : (t * dest) option list =
-  let lines = List.map fdefn.body ~f:(fun instr -> instr.line) in
-  let vertex_set = Lazy.collect_vertex lines VSet.empty in
-  if VSet.length vertex_set > threshold
-  then Lazy.gen_result_dummy vertex_set
+let gen_result (lines : Abs_asm.line list) (is_lazy : bool) : (t * dest) option list =
+  if is_lazy
+  then Lazy.gen_result lines
   else (
-    let reginfo_instrs = Program.gen_regalloc_info fdefn.body in
-    (* let adj, roots = Helper.build_graph reginfo_instrs in *)
-    let adj, roots = Helper.build_graph' reginfo_instrs in
+    (* let adj, roots = Helper.build_graph lines in *)
+    let adj, roots = Helper.build_graph' lines in
     let seq = seo adj in
     let color = greedy seq adj VMap.empty in
     (* Print.print_adj adj;

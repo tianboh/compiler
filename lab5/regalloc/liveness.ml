@@ -43,13 +43,11 @@ let print_liveout (liveout : (int list * int list * int) list) =
 ;;
 
 (* map is a hash table from label to line number *)
-let rec gen_succ (inst_list : Abs_asm.instr list) (line_no : int) map =
-  match inst_list with
+let rec gen_succ (instrs : Abs_asm.instr list) (line_no : int) map =
+  match instrs with
   | [] -> map
   | h :: t ->
-    if Abs_asm.is_dummy h
-    then gen_succ t line_no map
-    else if Abs_asm.is_label h
+    if Abs_asm.is_label h
     then (
       let l = Abs_asm.get_label h in
       let map = Label.Map.set map ~key:l ~data:line_no in
@@ -86,15 +84,13 @@ let[@warning "-8"] _gen_df_info_cjump
   { gen; kill = []; succ; is_label = false; line_number }
 ;;
 
-let rec _gen_df_info_rev (inst_list : Abs_asm.instr list) line_number label_map res =
-  match inst_list with
+let rec _gen_df_info_rev (instrs : Abs_asm.instr list) line_number label_map res =
+  match instrs with
   | [] -> res
   | h :: t ->
     let line = h.line in
     let line' : Dfana_info.line option =
-      if Abs_asm.is_dummy h
-      then None
-      else if Abs_asm.is_label h
+      if Abs_asm.is_label h
       then (
         let succ = [ line_number + 1 ] in
         Some { gen = []; kill = []; succ; is_label = true; line_number })
@@ -120,34 +116,56 @@ let rec _gen_df_info_rev (inst_list : Abs_asm.instr list) line_number label_map 
 
 (* Generate information for each instruction. Info includes
  * gen, kill, succ, is_label, line_number *)
-let gen_df_info (inst_list : Abs_asm.instr list) : Dfana_info.line list =
+let gen_df_info (instrs : Abs_asm.instr list) : Dfana_info.line list =
   let label_map = Label.Map.empty in
-  let label_map = gen_succ inst_list 0 label_map in
-  let res_rev = _gen_df_info_rev inst_list 0 label_map [] in
+  let label_map = gen_succ instrs 0 label_map in
+  let res_rev = _gen_df_info_rev instrs 0 label_map [] in
   List.rev res_rev
 ;;
+
+module OpSet = Set.Make (Abs_asm.Op)
 
 (* Transform liveness information from int to temp. 
  * lo_int is the dataflow analysis result. *)
 let rec trans_liveness (lo_int : (int list * int list * int) list) res =
   match lo_int with
-  | [] -> res
+  | [] -> List.rev res
   | h :: t ->
-    let _, out_int_list, line_no = h in
+    let _, out_int_list, _ = h in
     let liveout =
-      List.fold out_int_list ~init:IG.Vertex.Set.empty ~f:(fun acc x ->
+      List.fold out_int_list ~init:[] ~f:(fun acc x ->
           if x >= Register.num_reg
-          then IG.Vertex.Set.add acc (IG.Vertex.T.Temp (Temp.of_int x))
-          else IG.Vertex.Set.add acc (IG.Vertex.T.Reg (Register.idx_reg x)))
+          then Abs_asm.Op.of_temp (Temp.of_int x) :: acc
+          else Abs_asm.Op.of_reg (Register.idx_reg x) :: acc)
     in
-    let res = Int.Map.set res ~key:line_no ~data:liveout in
+    let res = liveout :: res in
     trans_liveness t res
 ;;
 
-let gen_liveness (inst_list : Abs_asm.instr list) =
-  let df_info = gen_df_info inst_list in
-  (* print_df_info df_info; *)
-  let lo_int = Dfana.dfana df_info Args.Df_analysis.Backward_may in
-  (* print_liveout lo_int; *)
-  trans_liveness lo_int Int.Map.empty
+let rec is_lazy (lines : Abs_asm.line list) res =
+  match lines with
+  | [] -> IG.Vertex.Set.length res > Driver.threshold
+  | line :: t ->
+    let res =
+      List.fold (line.defines @ line.uses) ~init:res ~f:(fun acc u ->
+          IG.Vertex.Set.union acc (IG.Vertex.of_abs u))
+    in
+    is_lazy t res
+;;
+
+let gen_liveness (instrs : Abs_asm.instr list) : Abs_asm.line list * bool =
+  let lines = List.map instrs ~f:(fun instr -> instr.line) in
+  let is_lazy = is_lazy lines IG.Vertex.Set.empty in
+  if is_lazy
+  then lines, is_lazy
+  else (
+    let df_info = gen_df_info instrs in
+    (* print_df_info df_info; *)
+    let lo_int = Dfana.dfana df_info Args.Df_analysis.Backward_may in
+    (* print_liveout lo_int; *)
+    let live_outs = trans_liveness lo_int [] in
+    ( List.map2_exn lines live_outs ~f:(fun line lo ->
+          let live_out = if line.move then lo else line.uses @ lo in
+          { line with live_out })
+    , is_lazy ))
 ;;

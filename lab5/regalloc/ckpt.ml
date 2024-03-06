@@ -4,9 +4,11 @@ module Size = Var.Size
 module Register = Var.X86_reg.Logic
 module IG = Interference_graph
 module Inst_reg_info = Json_reader.Lab1_checkpoint
+module Abs_asm = Abs_asm.Inst
+module OpSet = Set.Make (Abs_asm.Op)
 
 let gen_VertexSet (l : string list) =
-  let rec _gen_VertexList (l : string list) (res : IG.Vertex.t list) =
+  let rec _gen_VertexList (l : string list) (res : Abs_asm.Op.t list) =
     match l with
     | [] -> res
     | h :: t ->
@@ -18,14 +20,14 @@ let gen_VertexSet (l : string list) =
           let str_l = String.split_on_chars ~on:[ 't' ] h in
           let idx = Int.of_string (List.last_exn str_l) in
           let temp = Temp.create' idx in
-          _gen_VertexList t (IG.Vertex.T.Temp temp :: res)
+          _gen_VertexList t (Abs_asm.Op.Temp temp :: res)
         | 'r' | 's' | 'e' ->
           let reg = Register.str_to_reg h in
-          _gen_VertexList t (IG.Vertex.T.Reg reg :: res)
+          _gen_VertexList t (Abs_asm.Op.Reg reg :: res)
         | _ -> _gen_VertexList t res))
   in
   let l = _gen_VertexList l [] in
-  IG.Vertex.Set.of_list l
+  OpSet.of_list l
 ;;
 
 (* When read from json file(l1 checkpoint), we need to transform
@@ -33,16 +35,17 @@ let gen_VertexSet (l : string list) =
    We will ignore register string during transformation because we
    only need to assign temp to registers.
 *)
-let transform_str_to_temp (line : Inst_reg_info.line) : Program.line =
-  { defs = gen_VertexSet [ line.define ]
-  ; uses = gen_VertexSet line.uses
-  ; live_out = gen_VertexSet line.live_out
+let transform_str_to_temp (line : Inst_reg_info.line) : Abs_asm.line =
+  { defines = gen_VertexSet [ line.define ] |> OpSet.to_list
+  ; uses = gen_VertexSet line.uses |> OpSet.to_list
+  ; live_out = gen_VertexSet line.live_out |> OpSet.to_list
   ; move = line.move
-  ; line_number = line.line_number
   }
 ;;
 
-let transform_json_to_temp (program : Inst_reg_info.program) =
+(* { uses : Op.t list; defines : Op.t list; live_out : Op.t list; move : bool } *)
+
+let transform_json_to_temp (program : Inst_reg_info.program) : Abs_asm.line list =
   List.map program ~f:(fun line -> transform_str_to_temp line)
 ;;
 
@@ -61,17 +64,16 @@ let transform_vertices_to_json (vertices : (IG.Vertex.t * Driver.dest) option li
   List.map vertices ~f:(fun x -> transform_vertex_to_json x)
 ;;
 
-let regalloc_ckpt (prog : Program.line list) : (IG.Vertex.t * Driver.dest) option list =
-  let prog_dummy = List.map prog ~f:(fun x -> x, Abs_asm.Inst.Comment "") in
-  let adj, roots = Driver.Helper.build_graph prog_dummy in
+let regalloc_ckpt (lines : Abs_asm.line list) : (IG.Vertex.t * Driver.dest) option list =
+  (* let adj, roots = Driver.Helper.build_graph lines in
   let seq = Driver.seo adj in
   let vertex_to_reg = IG.Vertex.Map.empty in
-  let color = Driver.greedy seq adj vertex_to_reg in
+  let color = Driver.greedy seq adj vertex_to_reg in *)
   (* Print.print_adj adj;
   printf "SEO order\n";
   let seq_l = List.map seq ~f:(fun x -> IG.Print.pp_vertex x) in
   List.iter ~f:(printf "%s ") seq_l;
   Print.print_vertex_to_dest color;
   printf "\n"; *)
-  Driver.gen_result roots color
+  Driver.gen_result lines false
 ;;
