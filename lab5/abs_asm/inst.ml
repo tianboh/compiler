@@ -11,50 +11,6 @@ module Register = Var.X86_reg.Logic
 module Temp = Var.Temp
 module Label = Util.Label
 module Symbol = Util.Symbol
-
-module Op = struct
-  type t =
-    | Imm of Int64.t
-    | Temp of Temp.t
-    | Reg of Register.t
-    | Above_frame of Int64.t
-  [@@deriving sexp, compare, hash]
-
-  let pp = function
-    | Imm n -> "$" ^ Int64.to_string n
-    | Temp t -> Temp.name t
-    | Reg r -> Register.pp r
-    | Above_frame af -> sprintf "%Ld(%%rbp)" af
-  ;;
-
-  let of_imm i = Imm i
-  let of_temp t = Temp t
-  let of_reg (reg : Register.t) = Reg reg
-  let of_af af = Above_frame af
-
-  let is_temp = function
-    | Temp _ -> true
-    | _ -> false
-  ;;
-
-  let is_reg = function
-    | Reg _ -> true
-    | _ -> false
-  ;;
-
-  let get_temp_exn t =
-    match t with
-    | Temp t -> t
-    | _ -> failwith "expect temp"
-  ;;
-
-  let get_reg_exn t =
-    match t with
-    | Reg r -> r
-    | _ -> failwith "expect temp"
-  ;;
-end
-
 module Sop : Var.Sized.Sized_Interface with type i = Op.t = Var.Sized.Wrapper (Op)
 module Addr = Var.Addr.Wrapper (Register)
 module Mem = Var.Sized.Wrapper (Addr)
@@ -69,7 +25,6 @@ module St = struct
 end
 
 module StMap = Map.Make (St)
-module Line = Regalloc_util.Line.Wrapper (Op)
 
 type binop =
   | Plus
@@ -89,7 +44,7 @@ type binop =
   | Less_eq
   | Not_eq
 
-type _instr =
+type instr =
   | Binop of
       { op : binop
       ; dest : Sop.t
@@ -132,16 +87,6 @@ type _instr =
   | Directive of string
   | Comment of string
 
-type instr =
-  { data : _instr
-  ; line : Line.t
-  }
-
-type section =
-  { name : instr (* This can only be of type label in instr *)
-  ; content : instr list
-  }
-
 type fdefn =
   { func_name : string
   ; body : instr list
@@ -161,75 +106,74 @@ let to_int_list (ops : Op.t list) : int list =
 
 (* Functions for regalloc *)
 let is_move (instr : i) : bool =
-  match instr.data with
+  match instr with
   | Move _ | Cast _ -> true
   | _ -> false
 ;;
 
 let is_dummy (instr : i) : bool =
-  match instr.data with
+  match instr with
   | Directive _ | Comment _ -> true
   | _ -> false
 ;;
 
 let get_cjump_targets_exn (instr : i) : Label.t * Label.t =
-  match instr.data with
+  match instr with
   | CJump cjp -> cjp.target_true, cjp.target_false
   | _ -> failwith "expect cjump"
 ;;
 
 let get_jump_target_exn (instr : i) : Label.t =
-  match instr.data with
+  match instr with
   | Jump jp -> jp
   | _ -> failwith "expect jump"
 ;;
 
 (* Functions for CFG interface *)
 let is_label (instr : i) : bool =
-  match instr.data with
+  match instr with
   | Label _ -> true
   | _ -> false
 ;;
 
 let is_jump (instr : i) : bool =
-  match instr.data with
+  match instr with
   | Jump _ -> true
   | _ -> false
 ;;
 
 let is_cjump (instr : i) : bool =
-  match instr.data with
+  match instr with
   | CJump _ -> true
   | _ -> false
 ;;
 
 let is_return (instr : i) : bool =
-  match instr.data with
+  match instr with
   | Ret -> true
   | _ -> false
 ;;
 
 let is_raise (instr : i) : bool =
-  match instr.data with
+  match instr with
   | Fcall f -> if phys_equal f.func_name Symbol.Fname.raise then true else false
   | _ -> false
 ;;
 
 let[@warning "-27"] is_assert (i : instr) : bool = false
-let empty_line () : Line.t = { defines = []; uses = []; live_out = []; move = Not }
-let label (l : Label.t) : i = { data = Label l; line = empty_line () }
-let jump (target : Label.t) : i = { data = Jump target; line = empty_line () }
-let ret () : i = { data = Ret; line = empty_line () }
+let label (l : Label.t) : i = Label l
+let jump (target : Label.t) : i = Jump target
+let ret () : i = Ret
 
 let get_label (instr : instr) : Label.t =
-  match instr.data with
+  match instr with
   | Label l -> l
   | _ -> failwith "expect instr to be label"
 ;;
 
 (* Given jump/conditional jump, return target label list. *)
 let next (instr : instr) : Label.t list =
-  match instr.data with
+  match instr with
   | Jump jp -> [ jp ]
   | CJump cjp -> [ cjp.target_false; cjp.target_true ]
   | _ -> failwith "expect jump or cond jump"
@@ -237,19 +181,19 @@ let next (instr : instr) : Label.t list =
 
 (* Replace target of Jump *)
 let replace_target (instr : instr) (target : Label.t) : instr =
-  match instr.data with
-  | Jump _ -> { instr with data = Jump target }
+  match instr with
+  | Jump _ -> Jump target
   | _ -> failwith "expect jump for taget"
 ;;
 
 (* Replace old target to new target for CJump *)
 let replace_ctarget (instr : instr) (old_target : Label.t) (new_target : Label.t) : instr =
-  match instr.data with
+  match instr with
   | CJump cjp ->
     if Label.equal cjp.target_false old_target
-    then { instr with data = CJump { cjp with target_false = new_target } }
+    then CJump { cjp with target_false = new_target }
     else if Label.equal cjp.target_true old_target
-    then { instr with data = CJump { cjp with target_true = new_target } }
+    then CJump { cjp with target_true = new_target }
     else failwith "old target do not match to cond jump"
   | _ -> failwith "expect cond jump to replace target"
 ;;
@@ -262,7 +206,7 @@ let filter_st (sop : Sop.t) : t list =
 
 (* Functions for SSA, reg alloc instr interface *)
 let get_def (instr : i) : t list =
-  match instr.data with
+  match instr with
   | Binop binop -> filter_st binop.dest
   | Cast cast -> [ cast.dest ]
   | Move move -> filter_st move.dest
@@ -280,7 +224,7 @@ let get_def (instr : i) : t list =
 ;;
 
 let get_uses (instr : i) : t list =
-  match instr.data with
+  match instr with
   | Binop binop -> filter_st binop.lhs @ filter_st binop.rhs
   | Fcall fcall -> List.map fcall.args ~f:filter_st |> List.concat
   | Cast cast -> [ cast.src ]
@@ -305,39 +249,34 @@ let sop_to_st_exn (sop : Sop.t) : St.t =
 
 let replace_def (instr : i) (dic : (t * t) list) : i =
   let dic = StMap.of_alist_exn dic in
-  match instr.data with
+  match instr with
   | Binop binop ->
     if sop_is_st binop.dest
     then (
       let dest_old = sop_to_st_exn binop.dest in
       let dest_new = Map.find_exn dic dest_old in
-      let data = Binop { binop with dest = St.to_Sop dest_new } in
-      { instr with data })
+      Binop { binop with dest = St.to_Sop dest_new })
     else instr
   | Cast cast ->
     let dest = Map.find_exn dic cast.dest in
-    let data = Cast { cast with dest } in
-    { instr with data }
+    Cast { cast with dest }
   | Move move ->
     if sop_is_st move.dest
     then (
       let dest_old = sop_to_st_exn move.dest in
       let dest_new = Map.find_exn dic dest_old in
-      let data = Move { move with dest = St.to_Sop dest_new } in
-      { instr with data })
+      Move { move with dest = St.to_Sop dest_new })
     else instr
   | Pop pop ->
     if sop_is_st pop
     then (
       let var_old = sop_to_st_exn pop in
       let var_new = Map.find_exn dic var_old in
-      let data = Pop (St.to_Sop var_new) in
-      { instr with data })
+      Pop (St.to_Sop var_new))
     else instr
   | Load load ->
     let dest = Map.find_exn dic load.dest in
-    let data = Load { load with dest } in
-    { instr with data }
+    Load { load with dest }
   | CJump _
   | Fcall _
   | Jump _
@@ -370,41 +309,34 @@ let replace_uses (instr : i) (dic : (t * t) list) : i =
           else failwith "duplicate src to different dests")
         else StMap.set acc ~key:src ~data:dest)
   in
-  match instr.data with
+  match instr with
   | Binop binop ->
     let lhs = _replace_uses binop.lhs dic in
     let rhs = _replace_uses binop.rhs dic in
-    let data = Binop { binop with lhs; rhs } in
-    { instr with data }
+    Binop { binop with lhs; rhs }
   | Fcall fcall ->
     let args = List.map fcall.args ~f:(fun arg -> _replace_uses arg dic) in
-    let data = Fcall { fcall with args } in
-    { instr with data }
+    Fcall { fcall with args }
   | Cast cast ->
     let src_sop = _replace_uses (St.to_Sop cast.src) dic in
     (match src_sop.data with
     | Temp t ->
       let src = St.wrap src_sop.size t in
-      let data = Cast { cast with src } in
-      { instr with data }
+      Cast { cast with src }
     | _ -> failwith "expect cast temp")
   | Move move ->
     let src = _replace_uses move.src dic in
-    let data = Move { move with src } in
-    { instr with data }
+    Move { move with src }
   | CJump cjp ->
     let lhs = _replace_uses cjp.lhs dic in
     let rhs = _replace_uses cjp.rhs dic in
-    let data = CJump { cjp with lhs; rhs } in
-    { instr with data }
+    CJump { cjp with lhs; rhs }
   | Pop pop ->
     let var = _replace_uses pop dic in
-    let data = Pop var in
-    { instr with data }
+    Pop var
   | Store store ->
     let src = _replace_uses store.src dic in
-    let data = Store { store with src } in
-    { instr with data }
+    Store { store with src }
   | Load _ | Push _ | Label _ | Ret | Jump _ | Directive _ | Comment _ -> instr
 ;;
 
@@ -412,11 +344,9 @@ let new_t (t : t) : t = Temp.create () |> St.wrap t.size
 
 let assign (st : t) (v : Int64.t) : i =
   let dest = Op.of_temp st.data in
-  let line : Line.t = { defines = [ dest ]; uses = []; live_out = []; move = Copy } in
   let dest = Sop.wrap st.size dest in
   let src = Sop.wrap st.size (Op.of_imm v) in
-  let data = Move { dest; src } in
-  { data; line }
+  Move { dest; src }
 ;;
 
 let pp_binop = function
@@ -439,7 +369,7 @@ let pp_binop = function
 ;;
 
 let pp_inst (inst : i) =
-  match inst.data with
+  match inst with
   | Binop binop ->
     sprintf
       "%s <-- %s %s %s"

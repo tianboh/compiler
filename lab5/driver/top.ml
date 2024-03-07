@@ -27,7 +27,7 @@ module CFG_ABS = Cfg.Impt.Wrapper (Abs_asm.Inst)
 module SSA_IR = Ssa.Impt.Wrapper (Ir_tree.Inst) (CFG_IR)
 module SSA_QUAD = Ssa.Impt.Wrapper (Quads.Inst) (CFG_QUAD)
 module SSA_ABS = Ssa.Impt.Wrapper (Abs_asm.Inst) (CFG_ABS)
-module ABSRegalloc = Regalloc_util.Line.Wrapper (Abs_asm.Inst.Op)
+module ABSRegalloc = Regalloc_util.Line.Wrapper (Abs_asm.Op)
 
 (* Command line arguments *)
 type cmd_line_args =
@@ -200,28 +200,41 @@ let compile (cmd : cmd_line_args) : unit =
   | Abstract_assem ->
     let file = cmd.filename ^ ".abs" in
     say_if cmd.verbose (fun () -> sprintf "Writing abstract assem to %s..." file);
-    let abs = Abs_asm.Trans.gen quad [] in
-    File.dump_abs file abs
+    let abs_lines = Abs_asm.Trans.gen quad [] in
+    let abs_fdefns =
+      List.map abs_lines ~f:(fun tuple ->
+          let fdefn, _ = tuple in
+          fdefn)
+    in
+    File.dump_abs file abs_fdefns
   | X86_64 ->
     let file = cmd.filename ^ ".s" in
     say_if cmd.verbose (fun () -> sprintf "Writing x86 assem to %s..." file);
     let abs = Abs_asm.Trans.gen quad [] in
+    let abs_lines = Abs_asm.Trans.gen quad [] in
+    let abs_fdefns =
+      List.map abs_lines ~f:(fun tuple ->
+          let fdefn, _ = tuple in
+          fdefn)
+    in
     (* let[@warning "-26"] abs' =
       List.map abs ~f:(fun fdefn ->
           let body = SSA_ABS.run [] fdefn.body in
           { fdefn with body })
     in *)
-    say_if cmd.dump_conv (fun () -> Abs_asm.Inst.pp_program abs "");
+    say_if cmd.dump_conv (fun () -> Abs_asm.Inst.pp_program abs_fdefns "");
     let progs =
-      List.map abs ~f:(fun fdefn ->
+      List.map abs ~f:(fun fdefn_tuple ->
           Var.X86_reg.Spill.reset ();
-          let lines, is_lazy = Regalloc.Liveness.gen_liveness fdefn.body in
+          let fdefn, lines = fdefn_tuple in
+          let body = List.zip_exn fdefn.body lines in
+          let lines, is_lazy = Regalloc.Liveness.gen_liveness body in
           let reg_alloc_info = ABSRegalloc.gen_result lines is_lazy in
           let instrs = X86_asm.Trans.gen fdefn reg_alloc_info in
           fdefn.func_name, instrs)
     in
     let _, instrs = List.unzip progs in
-    let fnames = List.map abs ~f:(fun f -> f.func_name) in
+    let fnames = List.map abs_fdefns ~f:(fun f -> f.func_name) in
     let instrs = List.concat instrs in
     File.dump_x86 file fnames instrs
 ;;

@@ -64,10 +64,14 @@ module type Sig = sig
     ; move : move
     }
 
-  val gen_result : t list -> bool -> (IG.Vertex.t * IG.dest) option list
+  val empty_line : unit -> t
 end
 
-module Wrapper (I : Op) : Sig with type op = I.t = struct
+module Wrapper (I : Op) : sig
+  include Sig with type op = I.t
+
+  val gen_result : t list -> bool -> (IG.Vertex.t * IG.dest) option list
+end = struct
   type op = I.t
 
   type move =
@@ -84,6 +88,8 @@ module Wrapper (I : Op) : Sig with type op = I.t = struct
     ; live_out : op list
     ; move : move
     }
+
+  let empty_line () = { defines = []; uses = []; live_out = []; move = Not }
 
   let of_abs (op : op) : VSet.t =
     if I.is_temp op

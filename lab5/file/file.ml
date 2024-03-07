@@ -42,11 +42,8 @@ let dump_abs file_name (program : Abs.program) =
   let program = Abs.pp_program program "" in
   Out_channel.with_file file_name ~f:(fun out ->
       let output_instr instr = Out_channel.fprintf out "\t%s\n" (Abs.pp_inst instr) in
-      output_instr
-        { data = Abs.Directive (".file\t\"" ^ file_name ^ "\"")
-        ; line = Abs.empty_line ()
-        };
-      output_instr { data = Abs.Directive ".text"; line = Abs.empty_line () });
+      output_instr (Abs.Directive (".file\t\"" ^ file_name ^ "\""));
+      output_instr (Abs.Directive ".text"));
   Out_channel.with_file
     file_name
     ~f:(fun out -> Out_channel.fprintf out "%s\n" program)

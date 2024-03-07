@@ -270,7 +270,7 @@ let rec _codegen_w_reg_rev
   | [] -> res
   | h :: t ->
     (* printf "src:%s\n" (Src.pp_inst h); *)
-    (match h.data with
+    (match h with
     | Binop bin_op ->
       let dest = trans_operand bin_op.dest reg_alloc_info in
       let lhs = trans_operand bin_op.lhs reg_alloc_info in
