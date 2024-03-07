@@ -9,6 +9,7 @@
   x86_asm
   var
   regalloc
+  regalloc_util
   util
   front
   semantic

@@ -18,7 +18,8 @@ module Temp = Var.Temp
 module Register = Var.X86_reg.Logic
 module Dfana = Flow.Dfana
 module Label = Util.Label
-module IG = Interference_graph
+module IG = Regalloc_util.Interference_graph
+module VSet = IG.Vertex.Set
 
 let print_line (line : Dfana_info.line) =
   printf "\n{gen: ";
@@ -55,7 +56,7 @@ let rec gen_succ (instrs : Abs_asm.instr list) (line_no : int) map =
     else gen_succ t (line_no + 1) map
 ;;
 
-let[@warning "-8"] _gen_df_info_helper (line_number : int) (line : Abs_asm.line) =
+let[@warning "-8"] _gen_df_info_helper (line_number : int) (line : Abs_asm.Line.t) =
   let uses = line.uses in
   let defs = line.defines in
   let gen = Int.Set.of_list (Abs_asm.to_int_list uses) in
@@ -69,7 +70,7 @@ let[@warning "-8"] _gen_df_info_helper (line_number : int) (line : Abs_asm.line)
 
 let[@warning "-8"] _gen_df_info_cjump
     line_number
-    (line : Abs_asm.line)
+    (line : Abs_asm.Line.t)
     target_true
     target_false
     label_map
@@ -142,18 +143,25 @@ let rec trans_liveness (lo_int : (int list * int list * int) list) res =
     trans_liveness t res
 ;;
 
-let rec is_lazy (lines : Abs_asm.line list) res =
+let of_abs (op : Abs_asm.Op.t) : VSet.t =
+  match op with
+  | Temp t -> VSet.of_list [ Temp t ]
+  | Reg r -> VSet.of_list [ Reg r ]
+  | _ -> VSet.empty
+;;
+
+let rec is_lazy (lines : Abs_asm.Line.t list) res =
   match lines with
-  | [] -> IG.Vertex.Set.length res > Driver.threshold
+  | [] -> IG.Vertex.Set.length res > 2000
   | line :: t ->
     let res =
       List.fold (line.defines @ line.uses) ~init:res ~f:(fun acc u ->
-          IG.Vertex.Set.union acc (IG.Vertex.of_abs u))
+          IG.Vertex.Set.union acc (of_abs u))
     in
     is_lazy t res
 ;;
 
-let gen_liveness (instrs : Abs_asm.instr list) : Abs_asm.line list * bool =
+let gen_liveness (instrs : Abs_asm.instr list) : Abs_asm.Line.t list * bool =
   let lines = List.map instrs ~f:(fun instr -> instr.line) in
   let is_lazy = is_lazy lines IG.Vertex.Set.empty in
   if is_lazy
@@ -165,7 +173,11 @@ let gen_liveness (instrs : Abs_asm.instr list) : Abs_asm.line list * bool =
     (* print_liveout lo_int; *)
     let live_outs = trans_liveness lo_int [] in
     ( List.map2_exn lines live_outs ~f:(fun line lo ->
-          let live_out = if line.move then lo else line.uses @ lo in
+          let live_out =
+            match line.move with
+            | Copy | Phi -> lo
+            | Not -> line.uses @ lo
+          in
           { line with live_out })
     , is_lazy ))
 ;;

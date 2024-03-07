@@ -36,11 +36,11 @@ module Reg_logic = Var.X86_reg.Logic
 module Reg_hard = Var.X86_reg.Hard
 module Reg_spill = Var.X86_reg.Spill
 module Label = Util.Label
-module IG = Regalloc.Interference_graph
+module IG = Regalloc_util.Interference_graph
 module Regalloc = Regalloc.Driver
 module Symbol = Util.Symbol
 
-let trans_operand (operand : Src.Sop.t) (reg_alloc_info : Regalloc.dest IG.Vertex.Map.t)
+let trans_operand (operand : Src.Sop.t) (reg_alloc_info : IG.dest IG.Vertex.Map.t)
     : Dest.Sop.t
   =
   let size = operand.size in
@@ -48,8 +48,8 @@ let trans_operand (operand : Src.Sop.t) (reg_alloc_info : Regalloc.dest IG.Verte
   | Temp t ->
     let dest = IG.Vertex.Map.find_exn reg_alloc_info (IG.Vertex.T.Temp t) in
     (match dest with
-    | Regalloc.Reg r -> Dest.Op.of_reg r |> Dest.Sop.wrap size
-    | Regalloc.Spill s ->
+    | IG.Reg r -> Dest.Op.of_reg r |> Dest.Sop.wrap size
+    | IG.Spill s ->
       let id = Reg_spill.get_idx1 s in
       -id |> Int64.of_int |> Dest.Op.of_stack Reg_logic.RBP |> Dest.Sop.wrap size)
   | Imm i -> Dest.Op.of_imm i |> Dest.Sop.wrap size
@@ -263,7 +263,7 @@ let gen_x86_inst_bin
 let rec _codegen_w_reg_rev
     (res : Dest.instr list)
     (inst_list : Src.instr list)
-    (reg_alloc_info : Regalloc.dest IG.Vertex.Map.t)
+    (reg_alloc_info : IG.dest IG.Vertex.Map.t)
     (reg_swap : Reg_logic.t)
   =
   match inst_list with
@@ -486,7 +486,7 @@ let rec transform (insts_rev : Dest.instr list) (acc : Dest.instr list) : Dest.i
     transform t acc
 ;;
 
-let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * Regalloc.dest) option list)
+let gen (fdefn : Src.fdefn) (reg_alloc_info : (IG.Vertex.t * IG.dest) option list)
     : Dest.instr list
   =
   let size = `QWORD in

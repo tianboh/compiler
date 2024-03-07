@@ -31,6 +31,28 @@ module Op = struct
   let of_temp t = Temp t
   let of_reg (reg : Register.t) = Reg reg
   let of_af af = Above_frame af
+
+  let is_temp = function
+    | Temp _ -> true
+    | _ -> false
+  ;;
+
+  let is_reg = function
+    | Reg _ -> true
+    | _ -> false
+  ;;
+
+  let get_temp_exn t =
+    match t with
+    | Temp t -> t
+    | _ -> failwith "expect temp"
+  ;;
+
+  let get_reg_exn t =
+    match t with
+    | Reg r -> r
+    | _ -> failwith "expect temp"
+  ;;
 end
 
 module Sop : Var.Sized.Sized_Interface with type i = Op.t = Var.Sized.Wrapper (Op)
@@ -47,13 +69,7 @@ module St = struct
 end
 
 module StMap = Map.Make (St)
-
-type line =
-  { uses : Op.t list
-  ; defines : Op.t list
-  ; live_out : Op.t list
-  ; move : bool
-  }
+module Line = Regalloc_util.Line.Wrapper (Op)
 
 type binop =
   | Plus
@@ -118,7 +134,7 @@ type _instr =
 
 type instr =
   { data : _instr
-  ; line : line
+  ; line : Line.t
   }
 
 type section =
@@ -200,7 +216,7 @@ let is_raise (instr : i) : bool =
 ;;
 
 let[@warning "-27"] is_assert (i : instr) : bool = false
-let empty_line () = { defines = []; uses = []; live_out = []; move = false }
+let empty_line () : Line.t = { defines = []; uses = []; live_out = []; move = Not }
 let label (l : Label.t) : i = { data = Label l; line = empty_line () }
 let jump (target : Label.t) : i = { data = Jump target; line = empty_line () }
 let ret () : i = { data = Ret; line = empty_line () }
@@ -396,7 +412,7 @@ let new_t (t : t) : t = Temp.create () |> St.wrap t.size
 
 let assign (st : t) (v : Int64.t) : i =
   let dest = Op.of_temp st.data in
-  let line = { defines = [ dest ]; uses = []; live_out = []; move = true } in
+  let line : Line.t = { defines = [ dest ]; uses = []; live_out = []; move = Copy } in
   let dest = Sop.wrap st.size dest in
   let src = Sop.wrap st.size (Op.of_imm v) in
   let data = Move { dest; src } in

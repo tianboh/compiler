@@ -1,26 +1,21 @@
 open Core
-module Abs_asm = Abs_asm.Inst
-module X86_reg = Var.X86_reg.Logic
 module Temp = Var.Temp
 
 module Vertex = struct
   module T = struct
     type t =
-      | Reg of X86_reg.t
+      | Reg of Var.X86_reg.Logic.t
       | Temp of Temp.t
     [@@deriving compare, hash, sexp]
   end
 
   include T
   include Comparable.Make (T)
-
-  let of_abs (operand : Abs_asm.Op.t) : Set.t =
-    match operand with
-    | Abs_asm.Op.Temp t -> Set.of_list [ Temp t ]
-    | Abs_asm.Op.Imm _ | Abs_asm.Op.Above_frame _ -> Set.empty
-    | Abs_asm.Op.Reg r -> Set.of_list [ Reg r ]
-  ;;
 end
+
+type dest =
+  | Reg of Var.X86_reg.Logic.t
+  | Spill of Var.X86_reg.Spill.t
 
 module Edge = struct
   module T = struct
@@ -40,7 +35,7 @@ module Print = struct
   open Printf
 
   let pp_vertex = function
-    | Vertex.Reg reg -> X86_reg.pp reg
+    | Vertex.Reg reg -> Var.X86_reg.Logic.pp reg
     | Vertex.Temp temp -> Temp.name temp
   ;;
 

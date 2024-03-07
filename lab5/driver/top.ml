@@ -27,6 +27,7 @@ module CFG_ABS = Cfg.Impt.Wrapper (Abs_asm.Inst)
 module SSA_IR = Ssa.Impt.Wrapper (Ir_tree.Inst) (CFG_IR)
 module SSA_QUAD = Ssa.Impt.Wrapper (Quads.Inst) (CFG_QUAD)
 module SSA_ABS = Ssa.Impt.Wrapper (Abs_asm.Inst) (CFG_ABS)
+module ABSRegalloc = Regalloc_util.Line.Wrapper (Abs_asm.Inst.Op)
 
 (* Command line arguments *)
 type cmd_line_args =
@@ -215,7 +216,7 @@ let compile (cmd : cmd_line_args) : unit =
       List.map abs ~f:(fun fdefn ->
           Var.X86_reg.Spill.reset ();
           let lines, is_lazy = Regalloc.Liveness.gen_liveness fdefn.body in
-          let reg_alloc_info = Regalloc.Driver.gen_result lines is_lazy in
+          let reg_alloc_info = ABSRegalloc.gen_result lines is_lazy in
           let instrs = X86_asm.Trans.gen fdefn reg_alloc_info in
           fdefn.func_name, instrs)
     in
@@ -226,18 +227,10 @@ let compile (cmd : cmd_line_args) : unit =
 ;;
 
 let run (cmd : cmd_line_args) : unit =
-  let f = cmd.filename in
-  match cmd.regalloc_only, cmd.df_type with
-  | true, No_analysis
-  | false, Forward_may
-  | false, Forward_must
-  | false, Backward_may
-  | false, Backward_must -> Ckpt.process_checkpoint f cmd.regalloc_only cmd.df_type
-  | _, _ ->
-    (try compile cmd with
-    | Util.Error_msg.Error ->
-      prerr_endline "Compilation failed.";
-      exit 1)
+  try compile cmd with
+  | Util.Error_msg.Error ->
+    prerr_endline "Compilation failed.";
+    exit 1
 ;;
 
 (* Compiler entry point
