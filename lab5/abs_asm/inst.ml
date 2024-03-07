@@ -96,14 +96,6 @@ type program = fdefn list
 type i = instr
 type t = St.t [@@deriving sexp, compare, hash]
 
-let to_int_list (ops : Op.t list) : int list =
-  List.fold ops ~init:[] ~f:(fun acc x ->
-      match x with
-      | Temp t -> t.id :: acc
-      | Reg r -> Register.get_idx r :: acc
-      | Above_frame _ | Imm _ -> acc)
-;;
-
 (* Functions for regalloc *)
 let is_move (instr : i) : bool =
   match instr with

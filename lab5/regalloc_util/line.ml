@@ -70,7 +70,7 @@ end
 module Wrapper (I : Op) : sig
   include Sig with type op = I.t
 
-  val gen_result : t list -> bool -> (IG.Vertex.t * IG.dest) option list
+  val gen_alloc : t list -> bool -> (IG.Vertex.t * IG.dest) option list
 end = struct
   type op = I.t
 
@@ -520,8 +520,7 @@ end = struct
           | IG.Vertex.Reg _ -> None)
     ;;
 
-    let gen_result (lines : t list) (is_lazy : bool) : (IG.Vertex.t * IG.dest) option list
-      =
+    let gen_alloc (lines : t list) (is_lazy : bool) : (IG.Vertex.t * IG.dest) option list =
       if is_lazy
       then gen_result' lines
       else (

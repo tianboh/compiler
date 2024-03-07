@@ -42,3 +42,23 @@ let get_reg_exn t =
   | Reg r -> r
   | _ -> failwith "expect temp"
 ;;
+
+let to_temp_exn (op : t) =
+  match op with
+  | Temp t -> t
+  | _ -> failwith "expect temp"
+;;
+
+let to_reg_exn (op : t) =
+  match op with
+  | Reg t -> t
+  | _ -> failwith "expect temp"
+;;
+
+let to_int_list (ops : t list) : int list =
+  List.fold ops ~init:[] ~f:(fun acc x ->
+      match x with
+      | Temp t -> t.id :: acc
+      | Reg r -> Register.get_idx r :: acc
+      | Above_frame _ | Imm _ -> acc)
+;;

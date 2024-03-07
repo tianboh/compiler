@@ -29,6 +29,9 @@ module SSA_QUAD = Ssa.Impt.Wrapper (Quads.Inst) (CFG_QUAD)
 module SSA_ABS = Ssa.Impt.Wrapper (Abs_asm.Inst) (CFG_ABS)
 module ABSRegalloc = Regalloc_util.Line.Wrapper (Abs_asm.Op)
 
+module ABSLiveness =
+  Regalloc.Liveness.Wrapper (Abs_asm.Op) (Abs_asm.Inst) (Abs_asm.Trans.Line)
+
 (* Command line arguments *)
 type cmd_line_args =
   { verbose : bool
@@ -228,8 +231,8 @@ let compile (cmd : cmd_line_args) : unit =
           Var.X86_reg.Spill.reset ();
           let fdefn, lines = fdefn_tuple in
           let body = List.zip_exn fdefn.body lines in
-          let lines, is_lazy = Regalloc.Liveness.gen_liveness body in
-          let reg_alloc_info = ABSRegalloc.gen_result lines is_lazy in
+          let lines, is_lazy = ABSLiveness.gen_liveness body in
+          let reg_alloc_info = ABSRegalloc.gen_alloc lines is_lazy in
           let instrs = X86_asm.Trans.gen fdefn reg_alloc_info in
           fdefn.func_name, instrs)
     in
