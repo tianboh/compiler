@@ -52,18 +52,27 @@ Once semantic analysis is finished, it generates TST(Typed Syntax Tree). TST kee
 Memory access order and sanity check can be tricky. So C0 gives dynamic semantic to clarify this ambiguity. Check [concepts](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/13-dynamic-notes.pdf), [pointer, array](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/14-mutable-notes.pdf) and [struct](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/15-structs-notes.pdf) for details.
 
 Here are two simple examples to illustrate the importance of dynamic semantics.
-
-*p = 1/0
+int* p = NULL;
+*p = 1/0;
 
 This leads to div-by-zero error.
 
 and 
-
-**p = 1/0.
+int** p = NULL;
+**p = 1/0;
 
 This leads to illegal memory access error.
 
-The general idea for memory access is to evaluate from left to right. If lvalue is memory access, evaluate this address before assignment(in the last). However, notice that calculating address itself may lead to other errors. The reason why **p lead to illegal memory access is that *p should be evaluated first(not **p), and this leads to a illegal memory access error. This also explains why *p = 1/0 leads to div-by-zero error because p is legal and then 1/0 is measured. [Here(section 5)](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/14-mutable-notes.pdf) gives a more elaborated explanation for above two cases.
+In C/C++, the order of evaluation of assignment operations a = b is strictly specified by the standard:
+
+The right-hand expression (RHS) is fully evaluated first (calculating the value to be stored).
+
+The left-hand expression (LHS) is evaluated later (determining the storage location).
+
+The assignment operation is performed last (storing the value of RHS into the address of LHS).
+
+But the key details are:
+When the left-hand expression (LHS) itself is a compound expression (such as involving a dereference operation *p), its sub-expressions (such as p) may be evaluated earlier than the right-hand expression (RHS), because the address calculation of LHS requires the evaluation of the sub-expression to be completed first. [Here(section 5)](https://www.cs.cmu.edu/afs/cs/academic/class/15411-f20/www/lec/14-mutable-notes.pdf) gives a more elaborated explanation for above two cases.
 
 ## IR tree
 The IR data structure provides assembly-like statements and expressions. High-level controlflow statements in AST, like while and if, are translated to low-level jump and conditional jump in IR. Ternary operation are also translated to statements with jump.
