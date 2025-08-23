@@ -140,3 +140,12 @@ Abstract assembly code is translated to x86-64 machine code based on the informa
 * RCX is preserved for SAL and SAR.
 * Safety check for SAL and SAR is done by cmp and jump tp fpe handler.
 * Based on allocated memory, provide callee function rsp subtraction value.
+
+## How to test and debug
+```
+bin/c0c -ex86-64 ../tests/test/test.l4 -l ../runtime/15411-l4.h0
+
+gcc -g -m64 -no-pie ../runtime/run411.o ../tests/test/test.l4.s -o ../log/test/test-l4.exe
+
+../gradecompiler ../tests/l4-basic
+```
