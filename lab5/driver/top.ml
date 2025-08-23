@@ -59,9 +59,8 @@ let cmd_line_term : cmd_line_args Cmdliner.Term.t =
    * in the body of e2.
    *)
   let module Let_syntax = struct
-    let return = Term.pure
-    let map ~f a = Term.(return f $ a)
-    let both a b = Term.(pure Tuple2.create $ a $ b)
+    let map ~f a = Term.(const f $ a)
+    let both a b = Term.(const (fun x y -> (x, y)) $ a $ b)
   end
   in
   let flag info = Arg.value (Arg.flag info) in
@@ -238,8 +237,11 @@ let run (cmd : cmd_line_args) : unit =
  *)
 let main () =
   let open Cmdliner in
-  let cmd_line_info = Term.info "c0c" ~doc:"Compile a c0c source file." in
-  match Term.eval (cmd_line_term, cmd_line_info) with
-  | `Ok cmd_line -> run cmd_line
-  | result -> Term.exit result
+  let cmd_line_term_unit = Term.(const run $ cmd_line_term) in
+  
+  let cmd = Cmd.v 
+    (Cmd.info "c0c" ~doc:"Compile a c0c source file.") 
+    cmd_line_term_unit
+  in
+  Stdlib.exit (Cmd.eval cmd)
 ;;
