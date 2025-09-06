@@ -17,15 +17,9 @@ module Symbol = Util.Symbol
 module Size = Var.Size
 
 module Op = struct
-  type t =
-    | Imm of Int64.t
-    | Temp of Temp.t
+  type t = Imm of Int64.t | Temp of Temp.t
 
-  let pp = function
-    | Imm i -> Int64.to_string i
-    | Temp t -> Temp.name t
-  ;;
-
+  let pp = function Imm i -> Int64.to_string i | Temp t -> Temp.name t
   let of_int i = Imm i
   let of_t t = Temp t
 end
@@ -39,16 +33,12 @@ end = struct
   include Var.Sized.Wrapper (Op)
 
   let to_t sop : Temp.t =
-    match sop.data with
-    | Temp t -> t
-    | Imm _ -> failwith "imm cannot to t"
-  ;;
+    match sop.data with Temp t -> t | Imm _ -> failwith "imm cannot to t"
 
   let to_St sop =
     match sop.data with
     | Temp t -> St.wrap sop.size t
     | _ -> failwith "to_St expect temp"
-  ;;
 end
 
 and St : sig
@@ -64,7 +54,9 @@ end = struct
 end
 
 module Addr : Var.Addr.Sig with type i = Sop.t = Var.Addr.Wrapper (Sop)
-module Mem : Var.Sized.Sized_Interface with type i = Addr.t = Var.Sized.Wrapper (Addr)
+
+module Mem : Var.Sized.Sized_Interface with type i = Addr.t =
+  Var.Sized.Wrapper (Addr)
 
 type binop =
   | Plus
@@ -85,115 +77,71 @@ type binop =
   | Not_eq
 
 type instr =
-  | Binop of
-      { op : binop
-      ; dest : St.t
-      ; lhs : Sop.t
-      ; rhs : Sop.t
-      }
-  | Fcall of
-      { func_name : Symbol.t
-      ; dest : St.t option
-      ; args : Sop.t list
-      }
-  | Cast of
-      { (* Do not generate new temporary. 
-         * Only change the size of temporary. *)
-        dest : St.t
-      ; src : St.t
-      }
-  | Mov of
-      { dest : St.t
-      ; src : Sop.t
-      }
+  | Binop of { op : binop; dest : St.t; lhs : Sop.t; rhs : Sop.t }
+  | Fcall of { func_name : Symbol.t; dest : St.t option; args : Sop.t list }
+  | Cast of {
+      (* Do not generate new temporary. 
+       * Only change the size of temporary. *)
+      dest : St.t;
+      src : St.t;
+    }
+  | Mov of { dest : St.t; src : Sop.t }
   | Jump of { target : Label.t }
-  | CJump of
-      { lhs : Sop.t
-      ; op : binop
-      ; rhs : Sop.t
-      ; target_true : Label.t
-      ; target_false : Label.t
-      }
+  | CJump of {
+      lhs : Sop.t;
+      op : binop;
+      rhs : Sop.t;
+      target_true : Label.t;
+      target_false : Label.t;
+    }
   | Ret of { var : Sop.t option }
-  | Load of
-      { src : Mem.t
-      ; dest : St.t
-      }
-  | Store of
-      { src : Sop.t
-      ; dest : Mem.t
-      }
+  | Load of { src : Mem.t; dest : St.t }
+  | Store of { src : Sop.t; dest : Mem.t }
   | Label of Label.t
   | Directive of string
   | Comment of string
 
-type fdefn =
-  { func_name : Symbol.t
-  ; body : instr list
-  ; pars : St.t list
-  }
-
+type fdefn = { func_name : Symbol.t; body : instr list; pars : St.t list }
 type program = fdefn list
 type t = instr
 
 (* Functions for CFG interface *)
-let is_label = function
-  | Label _ -> true
-  | _ -> false
-;;
-
-let is_jump = function
-  | Jump _ -> true
-  | _ -> false
-;;
-
-let is_cjump = function
-  | CJump _ -> true
-  | _ -> false
-;;
-
-let is_return = function
-  | Ret _ -> true
-  | _ -> false
-;;
-
+let is_label = function Label _ -> true | _ -> false
+let is_jump = function Jump _ -> true | _ -> false
+let is_cjump = function CJump _ -> true | _ -> false
+let is_return = function Ret _ -> true | _ -> false
 let[@warning "-27"] is_assert (i : instr) : bool = false
 let label (l : Label.t) = Label l
 let jump (target : Label.t) : instr = Jump { target }
 let ret () : instr = Ret { var = None }
 
 let get_label (instr : instr) : Label.t =
-  match instr with
-  | Label l -> l
-  | _ -> failwith "expect instr to be label"
-;;
+  match instr with Label l -> l | _ -> failwith "expect instr to be label"
 
 (* Given jump/conditional jump, return target label list. *)
-let next (instr : instr) : Label.t list =
+let get_targets (instr : instr) : Label.t list =
   match instr with
   | Jump jp -> [ jp.target ]
   | CJump cjp -> [ cjp.target_false; cjp.target_true ]
   | _ -> failwith "expect jump or cond jump"
-;;
 
 (* Replace target of Jump *)
 let replace_target (instr : instr) (target : Label.t) : instr =
   match instr with
   | Jump _ -> Jump { target }
   | _ -> failwith "expect jump for taget"
-;;
 
 (* Replace old target to new target for CJump *)
-let replace_ctarget (instr : instr) (old_target : Label.t) (new_target : Label.t) : instr =
+let replace_ctarget (instr : instr) (old_target : Label.t)
+    (new_target : Label.t) : instr =
   match instr with
   | CJump cjp ->
-    if Label.equal cjp.target_false old_target
-    then CJump { cjp with target_false = new_target }
-    else if Label.equal cjp.target_true old_target
-    then CJump { cjp with target_true = new_target }
-    else failwith "old target do not match to cond jump"
+      if Label.equal cjp.target_false old_target then
+        CJump { cjp with target_false = new_target }
+      else if Label.equal cjp.target_true old_target then
+        CJump { cjp with target_true = new_target }
+      else failwith "old target do not match to cond jump"
   | _ -> failwith "expect cond jump to replace target"
-;;
 
 (* functions that format assembly output *)
 
@@ -214,59 +162,53 @@ let pp_binop = function
   | Less -> "<"
   | Less_eq -> "<="
   | Not_eq -> "!="
-;;
 
 let pp_inst = function
   | Binop binop ->
-    sprintf
-      "%s <-- %s %s %s"
-      (St.pp binop.dest)
-      (Sop.pp binop.lhs)
-      (pp_binop binop.op)
-      (Sop.pp binop.rhs)
+      sprintf "%s <-- %s %s %s" (St.pp binop.dest) (Sop.pp binop.lhs)
+        (pp_binop binop.op) (Sop.pp binop.rhs)
   (* | Mov mv -> sprintf "%s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src) *)
   | Mov mv ->
-    if Size.compare (mv.src.size :> Size.t) (mv.dest.size :> Size.t) <> 0
-    then failwith (sprintf "move size mismatch %s -> %s" (Sop.pp mv.src) (St.pp mv.dest));
-    sprintf "%s <-- %s" (St.pp mv.dest) (Sop.pp mv.src)
+      if Size.compare (mv.src.size :> Size.t) (mv.dest.size :> Size.t) <> 0 then
+        failwith
+          (sprintf "move size mismatch %s -> %s" (Sop.pp mv.src) (St.pp mv.dest));
+      sprintf "%s <-- %s" (St.pp mv.dest) (Sop.pp mv.src)
   | Cast cast ->
-    sprintf
-      "cast %s <-- %s"
-      (Temp.name' cast.dest.data cast.dest.size)
-      (Temp.name' cast.src.data cast.src.size)
+      sprintf "cast %s <-- %s"
+        (Temp.name' cast.dest.data cast.dest.size)
+        (Temp.name' cast.src.data cast.src.size)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
   | CJump cjp ->
-    sprintf
-      "cjump(%s %s %s) %s, %s"
-      (Sop.pp cjp.lhs)
-      (pp_binop cjp.op)
-      (Sop.pp cjp.rhs)
-      (Label.name cjp.target_true)
-      (Label.name cjp.target_false)
+      sprintf "cjump(%s %s %s) %s, %s" (Sop.pp cjp.lhs) (pp_binop cjp.op)
+        (Sop.pp cjp.rhs)
+        (Label.name cjp.target_true)
+        (Label.name cjp.target_false)
   | Label label -> sprintf "%s" (Label.content label)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
-  | Ret ret ->
-    (match ret.var with
-    | None -> sprintf "return"
-    | Some var -> sprintf "return %s" (Sop.pp var))
-  | Fcall call ->
-    (match call.dest with
-    | None ->
-      sprintf
-        "%s(%s)"
-        (Symbol.name call.func_name)
-        (List.map call.args ~f:(fun arg -> Sop.pp arg) |> String.concat ~sep:", ")
-    | Some dest ->
-      sprintf
-        "%s <- %s(%s)"
-        (Temp.name' dest.data dest.size)
-        (Symbol.name call.func_name)
-        (List.map call.args ~f:(fun arg -> Sop.pp arg) |> String.concat ~sep:", "))
+  | Ret ret -> (
+      match ret.var with
+      | None -> sprintf "return"
+      | Some var -> sprintf "return %s" (Sop.pp var))
+  | Fcall call -> (
+      match call.dest with
+      | None ->
+          sprintf "%s(%s)"
+            (Symbol.name call.func_name)
+            (List.map call.args ~f:(fun arg -> Sop.pp arg)
+            |> String.concat ~sep:", ")
+      | Some dest ->
+          sprintf "%s <- %s(%s)"
+            (Temp.name' dest.data dest.size)
+            (Symbol.name call.func_name)
+            (List.map call.args ~f:(fun arg -> Sop.pp arg)
+            |> String.concat ~sep:", "))
   | Load load ->
-    sprintf "load %s <- %s" (Temp.name' load.dest.data load.dest.size) (Mem.pp load.src)
-  | Store store -> sprintf "store %s <- %s" (Mem.pp store.dest) (Sop.pp store.src)
-;;
+      sprintf "load %s <- %s"
+        (Temp.name' load.dest.data load.dest.size)
+        (Mem.pp load.src)
+  | Store store ->
+      sprintf "store %s <- %s" (Mem.pp store.dest) (Sop.pp store.src)
 
 let pp_fdefn (fdefn : fdefn) =
   let pars_str =
@@ -278,13 +220,11 @@ let pp_fdefn (fdefn : fdefn) =
   in
   let func_name = Symbol.name fdefn.func_name in
   sprintf "%s(%s)\n%s\n" func_name pars_str body_str
-;;
 
 let rec pp_program (program : fdefn list) res =
   match program with
   | [] -> res
   | h :: t ->
-    let fdefn_str = pp_fdefn h ^ "\n" in
-    let res = res ^ fdefn_str in
-    pp_program t res
-;;
+      let fdefn_str = pp_fdefn h ^ "\n" in
+      let res = res ^ fdefn_str in
+      pp_program t res
