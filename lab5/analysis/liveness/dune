@@ -1,6 +1,6 @@
 (library
  (name liveness)
- (libraries core cfg mydf quads regalloc)
+ (libraries core var cfg mydf quads)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))

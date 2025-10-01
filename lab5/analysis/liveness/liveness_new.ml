@@ -7,7 +7,7 @@ module QCFG = Cfg.Impt.Wrapper (Quads.Inst)
   module Set = Set.Make (Var.Temp)
 end *)
 
-module LivenessInfo = Regalloc.Interference_graph.Vertex
+module LivenessInfo = Interference_graph.Vertex
 
 module LivenessType = struct
   let meet_type = Mydf.Sig.May
