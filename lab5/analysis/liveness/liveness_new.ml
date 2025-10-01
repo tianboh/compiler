@@ -1,5 +1,5 @@
 open Core
-module QCFG = Cfg.Impt.Wrapper (Quads.Inst)
+module AbsCFG = Cfg.Impt.Wrapper (Abs_asm.Inst)
 
 (* module LivenessInfo = struct
   type t = Var.Temp.t [@@deriving sexp, compare]
@@ -15,13 +15,16 @@ module LivenessType = struct
 end
 
 module LivenessInstr = struct
-  include Quads.Inst
+  include Abs_asm.Inst
   include LivenessInfo
 
   let sop_to_vertex (sop : Sop.t) : t option =
-    match sop.data with Temp t -> Some (Temp t) | Imm _ -> None
+    match sop.data with
+    | Temp t -> Some (Temp t)
+    | Reg r -> Some (Reg r)
+    | Imm _ | Above_frame _ -> None
 
-  let st_to_vertex (st : St.t) : t = Temp (St.to_t st)
+  let st_to_vertex (st : St.t) : t = Temp st.data
 
   let to_vertex (sop_list : Sop.t list) (st_list : St.t list) : t list =
     List.fold_left sop_list ~init:[] ~f:(fun acc sop ->
@@ -32,35 +35,33 @@ module LivenessInstr = struct
   let get_gen (instr : instr) : Set.t =
     let vertex_list =
       match instr with
-      | Binop binop -> to_vertex [ binop.lhs; binop.rhs ] [ binop.dest ]
+      | Binop binop -> to_vertex [ binop.lhs; binop.rhs ] []
       | Fcall fcall -> to_vertex fcall.args []
       | Cast cast -> to_vertex [] [ cast.src ]
       | Mov mov -> to_vertex [ mov.src ] []
       | CJump cjmp -> to_vertex [ cjmp.lhs; cjmp.rhs ] []
-      | Ret ret -> (
-          match ret.var with Some var -> to_vertex [ var ] [] | None -> [])
+      | Push push -> to_vertex [ push.var ] []
       | Store store -> to_vertex [ store.src ] []
-      | Jump _ | Load _ | Label _ | Directive _ | Comment _ -> []
+      | Jump _ | Load _ | Label _ | Ret _ | Pop _ | Directive _ | Comment _ ->
+          []
     in
     Set.of_list vertex_list
 
   let get_kill (instr : instr) : Set.t =
     let vertex_list =
       match instr with
-      | Binop binop -> to_vertex [] [ binop.dest ]
-      | Fcall fcall -> (
-          match fcall.dest with
-          | Some dest -> to_vertex [] [ dest ]
-          | None -> [])
+      | Binop binop -> to_vertex [ binop.dest ] []
+      | Fcall _ -> [ Reg Register.RAX ]
       | Cast cast -> to_vertex [] [ cast.dest ]
-      | Mov mov -> to_vertex [] [ mov.dest ]
+      | Mov mov -> to_vertex [ mov.dest ] []
+      | Pop pop -> to_vertex [ pop.var ] []
       | Load load -> to_vertex [] [ load.dest ]
-      | Jump _ | CJump _ | Store _ | Label _ | Ret _ | Directive _ | Comment _
-        ->
+      | Jump _ | CJump _ | Store _ | Label _ | Ret _ | Push _ | Directive _
+      | Comment _ ->
           []
     in
     Set.of_list vertex_list
 end
 
 module LANA =
-  Mydf.Impt.DFWrapper (QCFG) (LivenessInfo) (LivenessInstr) (LivenessType)
+  Mydf.Impt.DFWrapper (AbsCFG) (LivenessInfo) (LivenessInstr) (LivenessType)

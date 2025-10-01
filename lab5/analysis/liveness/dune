@@ -1,6 +1,6 @@
 (library
  (name liveness)
- (libraries core var cfg mydf quads)
+ (libraries core var cfg mydf abs_asm)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))
