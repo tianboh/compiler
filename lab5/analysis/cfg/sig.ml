@@ -59,6 +59,6 @@ module type CFGInterface = sig
   val get_exit : bbmap -> bb
 
   (* Return basic blocks. Add entry and exit block automatically. *)
-  val build_bb : i list -> bbmap
+  val build_bb : i list -> bbmap * Label.t list
   val to_instrs : bbmap -> Label.t list -> i list
 end

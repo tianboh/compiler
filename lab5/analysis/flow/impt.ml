@@ -167,4 +167,11 @@ functor
       in
       let bbmap = initBBs cfg_bbmap in
       process_bbs bbmap [ start_block.label ]
+
+    let to_instrs (bbmap : bbmap) (label_order : Label.t list) : instr list =
+      List.fold_left label_order ~init:[] ~f:(fun acc label ->
+          let bb = Label.Map.find_exn bbmap label in
+          let bb_instrs = bb.instrs in
+          List.rev bb_instrs @ acc)
+      |> List.rev
   end

@@ -89,6 +89,7 @@ struct
     match label_order with
     | [] -> bbmap
     | h :: t ->
+        printf "_build_ps label %s" (Label.name h);
         let bb = Label.Map.find_exn bbmap h in
         let succs =
           List.fold_left bb.instrs ~init:[] ~f:(fun acc h ->
@@ -133,7 +134,7 @@ struct
           | None -> failwith "update non-exist label"))
 
   (* Build basic blocks with entry and exit block *)
-  let build_bb (instrs : i list) : bbmap =
+  let build_bb (instrs : i list) : bbmap * Label.t list =
     let instrs = add_entry_exit instrs |> eliminate_fallthrough [] in
     let bbs = Label.Map.empty in
     let label_order =
@@ -144,7 +145,7 @@ struct
     let bbmap =
       _build_bb instrs [] None bbs |> _build_ps label_order |> _handl_exit
     in
-    bbmap
+    (bbmap, label_order)
 
   let to_instrs (bbs : bbmap) (order : Label.t list) =
     List.map order ~f:(fun l ->

@@ -1,4 +1,6 @@
 open Core
+module Label = Util.Label
+module AbsCFG = Liveness.Liveness_new.AbsCFG
 
 (*
  * This file contains necessary functions to allocate registers
@@ -31,9 +33,9 @@ module Temp = Var.Temp
 module Size = Var.Size
 module Register = Var.X86_reg.Logic
 module Spill = Var.X86_reg.Spill
-module Reg_info = Program
 module Abs_asm = Abs_asm.Inst
 module IG = Liveness.Interference_graph
+module LANA = Liveness.Liveness_new.LANA
 
 type dest = Reg of Register.t | Spill of Spill.t
 
@@ -98,44 +100,53 @@ module Helper = struct
         IG.Vertex.Map.set adj ~key:v ~data:s_res)
 
   (* Build interference graph based on def and (live_out Union uses).
-   * The insight here is we cannot allocate/assign register for def with the same register as
-   * registers allocated for live_out temps.
-   * Theoretically, we don't need to build edge between def and uses. But In order to 
-   * make x86 assembly code generation easier, we don't allow uses and def to be assigned
-   * to the same register. This can be more flexible for x86 assembly code generation.
+   * The insight here is we cannot allocate/assign register for def with 
+   * the same register as registers allocated for live_out temps.
    *)
-  let rec build_graph reginfo_instr adj =
-    match reginfo_instr with
-    | [] -> adj
-    | h :: t ->
-        let reginfo, _ = h in
-        (* Reg_info.print_line reginfo; *)
-        let defs = Reg_info.get_defs reginfo in
-        let adj =
-          IG.Vertex.Set.fold defs ~init:adj ~f:(fun acc_adj def ->
-              (* build edges between defs *)
-              let defs' =
-                IG.Vertex.Set.diff defs (IG.Vertex.Set.of_list [ def ])
-              in
-              let s_def_nbr =
-                match IG.Vertex.Map.find adj def with
-                | Some s -> IG.Vertex.Set.union s defs'
-                | None -> defs'
-              in
-              let s_lo = reginfo.live_out in
-              let s_u = IG.Vertex.Set.union s_def_nbr s_lo in
-              build_vtx_vtxs acc_adj def s_u)
-        in
-        build_graph t adj
+  let build_graph_by_block (bb : LANA.bb)
+      (interf_graph : IG.Vertex.Set.t IG.Vertex.Map.t) :
+      IG.Vertex.Set.t IG.Vertex.Map.t =
+    let rec build_graph_by_instrs (instrs : LANA.instr list)
+        (interf_graph : IG.Vertex.Set.t IG.Vertex.Map.t) :
+        IG.Vertex.Set.t IG.Vertex.Map.t =
+      match instrs with
+      | [] -> interf_graph
+      | h :: t ->
+          let defs = h.info.kill_ in
+          let liveout = h.info.out_ in
+          let interf_graph =
+            IG.Vertex.Set.fold defs ~init:interf_graph
+              ~f:(fun interf_graph_acc def ->
+                (* build edges between defs *)
+                let defs' =
+                  IG.Vertex.Set.diff defs (IG.Vertex.Set.of_list [ def ])
+                in
+                let s_def_nbr =
+                  match IG.Vertex.Map.find interf_graph def with
+                  | Some s -> IG.Vertex.Set.union s defs'
+                  | None -> defs'
+                in
+                let s_lo = liveout in
+                let s_u = IG.Vertex.Set.union s_def_nbr s_lo in
+                build_vtx_vtxs interf_graph_acc def s_u)
+          in
+          build_graph_by_instrs t interf_graph
+    in
+    build_graph_by_instrs bb.instrs interf_graph
+
+  let build_graph (dfCFG : LANA.bbmap) : IG.Vertex.Set.t IG.Vertex.Map.t =
+    Label.Map.fold dfCFG ~init:IG.Vertex.Map.empty
+      ~f:(fun ~key:_ ~data:bb_body intef_graph_acc ->
+        build_graph_by_block bb_body intef_graph_acc)
 
   (* Table store info from vertex to number which will be used in seo. *)
-  let gen_vertex_table prog =
-    let rec helper prog hash =
+  let init_vertex_table (prog : LANA.instr list) =
+    let rec helper (prog : LANA.instr list) hash =
       match prog with
       | [] -> hash
       | h :: t ->
-          let defs = Reg_info.get_defs h in
-          let uses = Reg_info.get_uses h in
+          let defs = h.info.kill_ in
+          let uses = h.info.gen_ in
           let vs = IG.Vertex.Set.union defs uses in
           let hash =
             IG.Vertex.Set.fold vs ~init:hash ~f:(fun acc_hash def_ ->
@@ -258,7 +269,7 @@ let rec _seo_rev adj vertex_table seq =
       _seo_rev adj vertex_table seq_new
 
 let seo adj prog =
-  let vertex_table = Helper.gen_vertex_table prog in
+  let vertex_table = Helper.init_vertex_table prog in
   let seo_rev = _seo_rev adj vertex_table [] in
   List.rev seo_rev
 
@@ -330,12 +341,12 @@ let rec greedy seq adj vertex_to_dest =
           in
           greedy t adj vertex_to_dest)
 
-let rec gen_result (color : dest IG.Vertex.Map.t) prog =
+let rec gen_result (color : dest IG.Vertex.Map.t) (prog : LANA.instr list) =
   match prog with
   | [] -> []
   | h :: t ->
-      let defs = Reg_info.get_defs h in
-      let uses = Reg_info.get_uses h in
+      let defs = h.info.kill_ in
+      let uses = h.info.gen_ in
       let vs = IG.Vertex.Set.union defs uses in
       let assign_l =
         IG.Vertex.Set.fold vs ~init:[] ~f:(fun acc v ->
@@ -355,20 +366,12 @@ let regalloc (fdefn : Abs_asm.fdefn) : (IG.Vertex.t * dest) option list =
   if IG.Vertex.Set.length vertex_set > threshold then
     Lazy.gen_result_dummy vertex_set
   else
-    let reginfo_instrs = Program.gen_regalloc_info fdefn.body in
-    let adj = Helper.build_graph reginfo_instrs IG.Vertex.Map.empty in
-    let prog =
-      List.fold_left reginfo_instrs ~init:[] ~f:(fun acc line ->
-          let reginfo, _ = line in
-          reginfo :: acc)
-    in
-    let seq = seo adj prog in
+    let instrs_raw = fdefn.body in
+    let bb_cfg, label_order = AbsCFG.build_bb instrs_raw in
+    let df_graph = LANA.run bb_cfg in
+    let instrs_df = LANA.to_instrs df_graph label_order in
+    let intef_graph = Helper.build_graph df_graph in
+    let seq = seo intef_graph instrs_df in
     let vertex_to_dest = IG.Vertex.Map.empty in
-    let color = greedy seq adj vertex_to_dest in
-    (* Print.print_adj adj;
-    printf "SEO order\n";
-    let seq_l = List.map seq ~f:(fun x -> IG.Print.pp_vertex x) in
-    List.iter ~f:(printf "%s ") seq_l;
-    Print.print_vertex_to_dest color;
-    printf "\n%!"; *)
-    gen_result color prog
+    let color = greedy seq intef_graph vertex_to_dest in
+    gen_result color instrs_df
