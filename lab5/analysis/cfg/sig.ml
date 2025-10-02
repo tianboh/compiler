@@ -38,6 +38,7 @@ module type InstrInterface = sig
 
   (* Replace old target to new target for CJump *)
   val replace_ctarget : t -> Label.t -> Label.t -> t
+  val pp_inst : t -> string
 end
 
 module type CFGInterface = sig
@@ -61,4 +62,5 @@ module type CFGInterface = sig
   (* Return basic blocks. Add entry and exit block automatically. *)
   val build_bb : i list -> bbmap * Label.t list
   val to_instrs : bbmap -> Label.t list -> i list
+  val pp_inst : i -> string
 end

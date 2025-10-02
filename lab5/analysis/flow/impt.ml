@@ -34,6 +34,19 @@ functor
 
     type bbmap = bb Label.Map.t
 
+    let pp_info (info : info) : string =
+      let gen_str = info.gen_ |> Info.Set.sexp_of_t |> Sexp.to_string_hum in
+      let kill_str = info.kill_ |> Info.Set.sexp_of_t |> Sexp.to_string_hum in
+      let in_str = info.in_ |> Info.Set.sexp_of_t |> Sexp.to_string_hum in
+      let out_str = info.out_ |> Info.Set.sexp_of_t |> Sexp.to_string_hum in
+      sprintf "gen: %s, kill: %s, in: %s, out: %s" gen_str kill_str in_str
+        out_str
+
+    let pp_inst (instr : instr) : string =
+      let instr_info = pp_info instr.info in
+      let instr_code = CFG.pp_inst instr.instr in
+      sprintf "instr: %s \t info: %s\n" instr_code instr_info
+
     let meet (i1 : Info.Set.t) (i2 : Info.Set.t) : Info.Set.t =
       match DFType.meet_type with
       | Sig.May -> Info.Set.union i1 i2

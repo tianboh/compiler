@@ -1,22 +1,7 @@
 (library
  (name compiler)
- (libraries
-  core
-  cmdliner
-  yojson
-  json_reader
-  args
-  x86_asm
-  var
-  regalloc
-  util
-  front
-  semantic
-  abs_asm
-  flow
-  ssa
-  file
-  cfg)
+ (libraries core cmdliner yojson json_reader args x86_asm var regalloc util
+  front semantic abs_asm ssa file cfg)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))

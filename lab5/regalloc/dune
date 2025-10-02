@@ -1,6 +1,6 @@
 (library
  (name regalloc)
- (libraries core var ir_tree abs_asm json_reader flow analysis liveness util)
+ (libraries core var ir_tree abs_asm json_reader analysis liveness util)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))

@@ -80,4 +80,6 @@ module type Dataflow = functor
   val process_bbs : bbmap -> Label.t list -> bbmap
   val run : CFG.bbmap -> bbmap
   val to_instrs : bbmap -> Label.t list -> instr list
+  val pp_info : info -> string
+  val pp_inst : instr -> string
 end

@@ -329,12 +329,6 @@ let rec greedy seq adj vertex_to_dest =
       | IG.Vertex.T.Temp temp ->
           let nbr = IG.Vertex.Map.find_exn adj h in
           let dest = alloc nbr vertex_to_dest in
-          (* let () =
-        match dest with
-        | Reg r ->
-          printf "alloc %s for %s\n" (Var.X86_reg.Logic.ppr) (Temp.name temp)
-        | Spill s -> printf "alloc %s for %s\n" (Spill.pp s) (Temp.name temp)
-      in *)
           let vertex_to_dest =
             IG.Vertex.Map.set vertex_to_dest ~key:(IG.Vertex.T.Temp temp)
               ~data:dest
@@ -370,6 +364,7 @@ let regalloc (fdefn : Abs_asm.fdefn) : (IG.Vertex.t * dest) option list =
     let bb_cfg, label_order = AbsCFG.build_bb instrs_raw in
     let df_graph = LANA.run bb_cfg in
     let instrs_df = LANA.to_instrs df_graph label_order in
+    (* List.iter instrs_df ~f:(fun instr -> printf "%s\n" (LANA.pp_inst instr)); *)
     let intef_graph = Helper.build_graph df_graph in
     let seq = seo intef_graph instrs_df in
     let vertex_to_dest = IG.Vertex.Map.empty in

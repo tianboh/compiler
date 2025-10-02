@@ -81,7 +81,7 @@ struct
                 }
               in
               let bbs = Label.Map.set bbs ~key:l ~data:bb in
-              _build_bb t [ h ] (Some l) bbs
+              _build_bb t [ h ] (Some (I.get_label h)) bbs
         else _build_bb t (h :: bb_instrs) bb_label bbs
 
   (* update predecessors and successors for each bb *)
@@ -89,7 +89,7 @@ struct
     match label_order with
     | [] -> bbmap
     | h :: t ->
-        printf "_build_ps label %s" (Label.name h);
+        (* printf "_build_ps label %s\n" (Label.name h); *)
         let bb = Label.Map.find_exn bbmap h in
         let succs =
           List.fold_left bb.instrs ~init:[] ~f:(fun acc h ->
@@ -136,14 +136,16 @@ struct
   (* Build basic blocks with entry and exit block *)
   let build_bb (instrs : i list) : bbmap * Label.t list =
     let instrs = add_entry_exit instrs |> eliminate_fallthrough [] in
-    let bbs = Label.Map.empty in
     let label_order =
       List.fold_left instrs ~init:[] ~f:(fun acc h ->
           if I.is_label h then I.get_label h :: acc else acc)
       |> List.rev
     in
+    let bbmap_init = Label.Map.empty in
+    (* List.iter instrs ~f:(fun instr -> printf "%s\n" (I.pp_inst instr)); *)
     let bbmap =
-      _build_bb instrs [] None bbs |> _build_ps label_order |> _handl_exit
+      _build_bb instrs [] None bbmap_init
+      |> _build_ps label_order |> _handl_exit
     in
     (bbmap, label_order)
 
@@ -152,4 +154,6 @@ struct
         let bb = Label.Map.find_exn bbs l in
         bb.instrs)
     |> List.concat
+
+  let pp_inst (instr : i) : string = I.pp_inst instr
 end
