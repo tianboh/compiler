@@ -50,7 +50,17 @@ module LivenessInstr = struct
   let get_kill (instr : instr) : Set.t =
     let vertex_list =
       match instr with
-      | Binop binop -> to_vertex [ binop.dest ] []
+      | Binop binop -> (
+          match binop.op with
+          | Times -> Reg Register.RAX :: to_vertex [ binop.dest ] []
+          | Divided_by | Modulo ->
+              [ Reg Register.RAX; Reg Register.RDX ]
+              @ to_vertex [ binop.dest ] []
+          | Right_shift | Left_shift ->
+              Reg Register.RCX :: to_vertex [ binop.dest ] []
+          | Plus | Minus | And | Or | Xor | Equal_eq | Greater | Greater_eq
+          | Less | Less_eq | Not_eq ->
+              to_vertex [ binop.dest ] [])
       | Fcall _ -> [ Reg Register.RAX ]
       | Cast cast -> to_vertex [] [ cast.dest ]
       | Mov mov -> to_vertex [ mov.dest ] []
