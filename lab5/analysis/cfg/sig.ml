@@ -63,4 +63,5 @@ module type CFGInterface = sig
   val build_bb : i list -> bbmap * Label.t list
   val to_instrs : bbmap -> Label.t list -> i list
   val pp_inst : i -> string
+  val pp_bbmap : bbmap -> unit
 end

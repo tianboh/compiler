@@ -156,4 +156,16 @@ struct
     |> List.concat
 
   let pp_inst (instr : i) : string = I.pp_inst instr
+
+  let pp_bbmap (bbmap : bbmap) : unit =
+    Label.Map.iter bbmap ~f:(fun bb ->
+        printf "====== %s =====\n" (Label.name bb.label);
+        printf "instrs:\n";
+        List.iter bb.instrs ~f:(fun instr -> printf "\t%s\n" (pp_inst instr));
+        printf "preds:\n";
+        List.iter bb.preds ~f:(fun pred -> printf "\t%s" (Label.name pred));
+        printf "\n";
+        printf "succs:\n";
+        List.iter bb.succs ~f:(fun succ -> printf "\t%s" (Label.name succ));
+        printf "\n\n")
 end
