@@ -100,8 +100,17 @@ module Helper = struct
         IG.Vertex.Map.set adj ~key:v ~data:s_res)
 
   (* Build interference graph based on def and (live_out Union uses).
-   * The insight here is we cannot allocate/assign register for def with 
-   * the same register as registers allocated for live_out temps.
+   * Theoretically, inteference graph only requires to link def and liveout
+   * However, when we transform abs asm to x86 asm, we are transfrom from
+   * dest = inst op1 op2 to dest = inst op. Consider following example
+   * abs asm: t1 = t2 - t3;
+   * x86 asm: mov t1, t2
+   *          sub t1, t3
+   * regalloc based on abs asm is totally fine, but may face problems in this
+   * transformation: t1 may use same reg as t3, so when we move t2 to t1, we are
+   * also erasing operand t3. 
+   * To avoid this problem, we restrict destination not share same register as
+   * operands. This helps transformation from abs asm to x86 asm.
    *)
   let build_graph_by_block (bb : LANA.bb)
       (interf_graph : IG.Vertex.Set.t IG.Vertex.Map.t) :
@@ -113,7 +122,7 @@ module Helper = struct
       | [] -> interf_graph
       | h :: t ->
           let defs = h.info.kill_ in
-          let liveout = h.info.out_ in
+          let liveout = IG.Vertex.Set.union h.info.out_ h.info.gen_ in
           let interf_graph =
             IG.Vertex.Set.fold defs ~init:interf_graph
               ~f:(fun interf_graph_acc def ->
@@ -369,4 +378,5 @@ let regalloc (fdefn : Abs_asm.fdefn) : (IG.Vertex.t * dest) option list =
     let seq = seo intef_graph instrs_df in
     let vertex_to_dest = IG.Vertex.Map.empty in
     let color = greedy seq intef_graph vertex_to_dest in
+    (* Print.print_vertex_to_dest color; *)
     gen_result color instrs_df
