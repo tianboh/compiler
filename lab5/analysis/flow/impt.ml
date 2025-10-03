@@ -54,8 +54,8 @@ functor
 
     let transfer (i : info) : Info.Set.t =
       match DFType.direction with
-      | Sig.Forward -> Info.Set.union i.gen_ (Info.Set.inter i.in_ i.kill_)
-      | Sig.Backward -> Info.Set.union i.gen_ (Info.Set.inter i.out_ i.kill_)
+      | Sig.Forward -> Info.Set.union i.gen_ (Info.Set.diff i.in_ i.kill_)
+      | Sig.Backward -> Info.Set.union i.gen_ (Info.Set.diff i.out_ i.kill_)
 
     let find_next_bb (cur_lab : Label.t) (bbmap : bbmap) : Label.t list =
       let bb = Label.Map.find_exn bbmap cur_lab in
@@ -121,6 +121,7 @@ functor
         match instrs with
         | [] -> List.rev acc
         | h :: t ->
+            (* printf "helper inst %s" (pp_inst h); *)
             let info =
               match DFType.direction with
               | Sig.Forward ->
@@ -138,7 +139,10 @@ functor
                     | Some prev_info -> prev_info.in_
                   in
                   let in_ = transfer { h.info with out_ } in
-                  { h.info with in_; out_ }
+                  (* printf "before transfer: %s\n" (pp_info h.info); *)
+                  let ret = { h.info with in_; out_ } in
+                  (* printf "after transfer: %s\n" (pp_info ret); *)
+                  ret
             in
             let instr = { h with info } in
             helper t (Some info) (instr :: acc)
@@ -159,20 +163,28 @@ functor
       match worklist with
       | [] -> bbmap
       | h :: t -> (
+          (* printf "process bb %s\n" (Label.name h); *)
           let bb_old = Label.Map.find_exn bbmap h in
           let bb_new = process_bb bb_old in
           let bbmap = Label.Map.set bbmap ~key:bb_old.label ~data:bb_new in
           match DFType.direction with
           | Sig.Forward ->
-              if Info.Set.equal bb_old.info.out_ bb_new.info.out_ then
-                process_bbs bbmap t
+              let term_cond =
+                Info.Set.equal bb_old.info.out_ bb_new.info.out_
+                && not (List.length bb_new.instrs = 1)
+              in
+              if term_cond then process_bbs bbmap t
               else process_bbs bbmap (t @ bb_new.succs)
           | Sig.Backward ->
-              if Info.Set.equal bb_old.info.in_ bb_new.info.in_ then
-                process_bbs bbmap t
+              let term_cond =
+                Info.Set.equal bb_old.info.in_ bb_new.info.in_
+                && not (List.length bb_new.instrs = 1)
+              in
+              if term_cond then process_bbs bbmap t
               else process_bbs bbmap (t @ bb_new.preds))
 
     let run (cfg_bbmap : CFG.bbmap) : bbmap =
+      (* CFG.pp_bbmap cfg_bbmap; *)
       let start_block =
         match DFType.direction with
         | Sig.Forward -> CFG.get_entry cfg_bbmap
