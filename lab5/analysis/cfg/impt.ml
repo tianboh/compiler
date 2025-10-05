@@ -29,6 +29,21 @@ struct
 
   let get_entry (bbs : bbmap) : bb = Label.Map.find_exn bbs entry_label
   let get_exit (bbs : bbmap) : bb = Label.Map.find_exn bbs exit_label
+  let pp_inst (instr : i) : string = I.pp_inst instr
+
+  let pp_bb (bb : bb) : unit =
+    printf "====== %s =====\n%!" (Label.name bb.label);
+    printf "instrs:\n%!";
+    List.iter bb.instrs ~f:(fun instr -> printf "\t%s\n%!" (pp_inst instr));
+    printf "preds:\n%!";
+    List.iter bb.preds ~f:(fun pred -> printf "\t%s%!" (Label.name pred));
+    printf "\n%!";
+    printf "succs:\n%!";
+    List.iter bb.succs ~f:(fun succ -> printf "\t%s%!" (Label.name succ));
+    printf "\n\n%!"
+
+  let pp_bbmap (bbmap : bbmap) : unit =
+    Label.Map.iter bbmap ~f:(fun bb -> pp_bb bb)
 
   (* Build a basic block, and add label, instrs info. preds and succss
    * is addad later in _build_ps *)
@@ -66,10 +81,9 @@ struct
     match label_order with
     | [] -> bbmap
     | h :: t ->
-        (* printf "_build_ps label %s\n" (Label.name h); *)
         let bb = Label.Map.find_exn bbmap h in
         let succs =
-          List.fold_left bb.instrs ~init:[] ~f:(fun acc h ->
+          List.fold_left bb.instrs ~init:bb.succs ~f:(fun acc h ->
               if I.is_jump h || I.is_cjump h then I.get_targets h @ acc else acc)
         in
         (* Update successor fields of bb *)
@@ -90,7 +104,7 @@ struct
   (* Block with no successor is predecessor of exit block. This happens
    * when block is terminated with a return instruction.
    * Their successors will be updated, but no jump instruction is added. *)
-  let _handl_exit (bbmap : bbmap) : bbmap =
+  let _handle_exit (bbmap : bbmap) : bbmap =
     (* Gather blocks with no successors. *)
     let non_succ_bb_list =
       Label.Map.fold bbmap ~init:[] ~f:(fun ~key:_ ~data acc ->
@@ -134,9 +148,11 @@ struct
       |> Label.Map.set ~key:entry_label ~data:entry_block
       |> Label.Map.set ~key:exit_label ~data:exit_block
     in
-    (* List.iter instrs ~f:(fun instr -> printf "%s\n" (I.pp_inst instr)); *)
+    (* List.iter instrs ~f:(fun instr -> printf "%s\n%!" (I.pp_inst instr)); *)
     let bbmap =
-      bbmap |> _build_ps (entry_label :: label_order) |> _handl_exit
+      bbmap
+      |> _build_ps ((entry_label :: label_order) @ [ exit_label ])
+      |> _handle_exit
     in
     (bbmap, (entry_label :: label_order) @ [ exit_label ])
 
@@ -145,18 +161,4 @@ struct
         let bb = Label.Map.find_exn bbs l in
         bb.instrs)
     |> List.concat
-
-  let pp_inst (instr : i) : string = I.pp_inst instr
-
-  let pp_bbmap (bbmap : bbmap) : unit =
-    Label.Map.iter bbmap ~f:(fun bb ->
-        printf "====== %s =====\n" (Label.name bb.label);
-        printf "instrs:\n";
-        List.iter bb.instrs ~f:(fun instr -> printf "\t%s\n" (pp_inst instr));
-        printf "preds:\n";
-        List.iter bb.preds ~f:(fun pred -> printf "\t%s" (Label.name pred));
-        printf "\n";
-        printf "succs:\n";
-        List.iter bb.succs ~f:(fun succ -> printf "\t%s" (Label.name succ));
-        printf "\n\n")
 end
