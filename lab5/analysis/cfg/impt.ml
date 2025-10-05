@@ -27,8 +27,8 @@ struct
 
   type bbmap = bb Label.Map.t
 
-  let get_entry (bbs : bbmap) : bb = Label.Map.find_exn bbs entry_label
-  let get_exit (bbs : bbmap) : bb = Label.Map.find_exn bbs exit_label
+  let get_entry_bb (bbs : bbmap) : bb = Label.Map.find_exn bbs entry_label
+  let get_exit_bb (bbs : bbmap) : bb = Label.Map.find_exn bbs exit_label
   let pp_inst (instr : i) : string = I.pp_inst instr
 
   let pp_bb (bb : bb) : unit =

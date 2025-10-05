@@ -121,7 +121,7 @@ functor
         match instrs with
         | [] -> List.rev acc
         | h :: t ->
-            (* printf "helper inst %s" (pp_inst h); *)
+            (* printf "helper inst %s\n%!" (pp_inst h); *)
             let info =
               match DFType.direction with
               | Sig.Forward ->
@@ -161,39 +161,44 @@ functor
       in
       { bb with info = bb_info; instrs = instrs_refined }
 
-    let rec process_bbs (bbmap : bbmap) (worklist : Label.t list) : bbmap =
-      match worklist with
-      | [] -> bbmap
-      | h :: t -> (
-          (* printf "process bb %s\n" (Label.name h); *)
-          let bb_old = Label.Map.find_exn bbmap h in
-          let bb_new = process_bb bb_old in
-          let bbmap = Label.Map.set bbmap ~key:bb_old.label ~data:bb_new in
-          match DFType.direction with
-          | Sig.Forward ->
-              let term_cond =
-                Info.Set.equal bb_old.info.out_ bb_new.info.out_
-                && not (List.is_empty bb_new.instrs)
-              in
-              if term_cond then process_bbs bbmap t
-              else process_bbs bbmap (t @ bb_new.succs)
-          | Sig.Backward ->
-              let term_cond =
-                Info.Set.equal bb_old.info.in_ bb_new.info.in_
-                && not (List.is_empty bb_new.instrs)
-              in
-              if term_cond then process_bbs bbmap t
-              else process_bbs bbmap (t @ bb_new.preds))
+    let process_bbs (bbmap : bbmap) (start : Label.t) : bbmap =
+      let rec helper (bbmap : bbmap) (worklist : Label.t list) : bbmap =
+        match worklist with
+        | [] -> bbmap
+        | h :: t -> (
+            (* printf "process bb %s\n" (Label.name h); *)
+            let bb_old = Label.Map.find_exn bbmap h in
+            let bb_new = process_bb bb_old in
+            let bbmap = Label.Map.set bbmap ~key:bb_old.label ~data:bb_new in
+            match DFType.direction with
+            | Sig.Forward ->
+                let term_cond =
+                  Info.Set.equal bb_old.info.out_ bb_new.info.out_
+                  && not (Label.equal h start)
+                in
+                if term_cond then helper bbmap t
+                else helper bbmap (t @ bb_new.succs)
+            | Sig.Backward ->
+                let term_cond =
+                  Info.Set.equal bb_old.info.in_ bb_new.info.in_
+                  && not (Label.equal h start)
+                in
+                (* printf "bbnew info in: %s\n"
+                  (bb_new.info.in_ |> Info.Set.sexp_of_t |> Sexp.to_string_hum); *)
+                if term_cond then helper bbmap t
+                else helper bbmap (t @ bb_new.preds))
+      in
+      helper bbmap [ start ]
 
     let run (cfg_bbmap : CFG.bbmap) : bbmap =
       (* CFG.pp_bbmap cfg_bbmap; *)
       let start_block =
         match DFType.direction with
-        | Sig.Forward -> CFG.get_entry cfg_bbmap
-        | Sig.Backward -> CFG.get_exit cfg_bbmap
+        | Sig.Forward -> CFG.get_entry_bb cfg_bbmap
+        | Sig.Backward -> CFG.get_exit_bb cfg_bbmap
       in
       let bbmap = initBBs cfg_bbmap in
-      process_bbs bbmap [ start_block.label ]
+      process_bbs bbmap start_block.label
 
     let to_instrs (bbmap : bbmap) (label_order : Label.t list) : instr list =
       List.fold_left label_order ~init:[] ~f:(fun acc label ->
