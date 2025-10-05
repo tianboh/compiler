@@ -49,13 +49,7 @@ end = struct
     | h :: t ->
         if I.is_terminator h then
           match t with
-          | [] ->
-              let synth_label =
-                Label.label (Some ("synth" ^ string_of_int next_synth_id))
-              in
-              let synth_label_instr = I.label synth_label in
-              add_synthetic_label (next_synth_id + 1) (h :: acc_instrs)
-                [ synth_label_instr ]
+          | [] -> List.rev (h :: acc_instrs)
           | next :: _ ->
               if I.is_label next then
                 add_synthetic_label next_synth_id (h :: acc_instrs) t
