@@ -1,5 +1,5 @@
 open Core
-module AbsCFG = Cfg.Impt.Wrapper (Abs_asm.Inst)
+module AbsCFG = Analysis_cfg.Impt.Wrapper (Abs_asm.Inst)
 
 (* module LivenessInfo = struct
   type t = Var.Temp.t [@@deriving sexp, compare]

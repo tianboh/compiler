@@ -9,6 +9,9 @@
 module Label = Util.Label
 open Core
 
+let entry_label = Label.label (Some "entry")
+let exit_label = Label.label (Some "exit")
+
 module Wrapper (I : Sig.InstrInterface) : Sig.CFGInterface with type i = I.t =
 struct
   type set = Label.Set.t
@@ -24,34 +27,8 @@ struct
 
   type bbmap = bb Label.Map.t
 
-  let entry_label = Label.label (Some "entry")
-  let exit_label = Label.label (Some "exit")
   let get_entry (bbs : bbmap) : bb = Label.Map.find_exn bbs entry_label
   let get_exit (bbs : bbmap) : bb = Label.Map.find_exn bbs exit_label
-
-  let add_entry_exit (instrs : i list) =
-    (I.label entry_label :: instrs) @ [ I.label exit_label ]
-
-  (* Make sure no fallthrough between basic blocks. 
-   * Add unconditional jump instr if fallthrough is detected. *)
-  let rec eliminate_fallthrough (acc_instrs : i list) (instrs : i list) : i list
-      =
-    match instrs with
-    | [] -> List.rev acc_instrs
-    | h :: t ->
-        if I.is_label h then
-          match acc_instrs with
-          (* h is entry label *)
-          | [] -> eliminate_fallthrough (h :: acc_instrs) t
-          | prev_instr :: _ ->
-              if
-                I.is_jump prev_instr || I.is_cjump prev_instr
-                || I.is_return prev_instr
-              then eliminate_fallthrough (h :: acc_instrs) t
-              else
-                let jump_instr = I.jump (I.get_label h) in
-                eliminate_fallthrough (h :: jump_instr :: acc_instrs) t
-        else eliminate_fallthrough (h :: acc_instrs) t
 
   (* Build a basic block, and add label, instrs info. preds and succss
    * is addad later in _build_ps *)
@@ -135,19 +112,33 @@ struct
 
   (* Build basic blocks with entry and exit block *)
   let build_bb (instrs : i list) : bbmap * Label.t list =
-    let instrs = add_entry_exit instrs |> eliminate_fallthrough [] in
     let label_order =
       List.fold_left instrs ~init:[] ~f:(fun acc h ->
           if I.is_label h then I.get_label h :: acc else acc)
       |> List.rev
     in
-    let bbmap_init = Label.Map.empty in
+    let bbmap = _build_bb instrs [] None Label.Map.empty in
+    let entry_block =
+      {
+        label = entry_label;
+        instrs = [];
+        preds = [];
+        succs = [ List.hd_exn label_order ];
+      }
+    in
+    let exit_block =
+      { label = exit_label; instrs = []; preds = []; succs = [] }
+    in
+    let bbmap =
+      bbmap
+      |> Label.Map.set ~key:entry_label ~data:entry_block
+      |> Label.Map.set ~key:exit_label ~data:exit_block
+    in
     (* List.iter instrs ~f:(fun instr -> printf "%s\n" (I.pp_inst instr)); *)
     let bbmap =
-      _build_bb instrs [] None bbmap_init
-      |> _build_ps label_order |> _handl_exit
+      bbmap |> _build_ps (entry_label :: label_order) |> _handl_exit
     in
-    (bbmap, label_order)
+    (bbmap, (entry_label :: label_order) @ [ exit_label ])
 
   let to_instrs (bbs : bbmap) (order : Label.t list) =
     List.map order ~f:(fun l ->

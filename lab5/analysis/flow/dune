@@ -1,6 +1,6 @@
 (library
  (name mydf)
- (libraries core util cfg)
+ (libraries core util analysis_cfg)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))

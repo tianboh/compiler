@@ -3,7 +3,7 @@ module Label = Util.Label
 
 module DFWrapper : Sig.Dataflow =
 functor
-  (CFG : Cfg.Sig.CFGInterface)
+  (CFG : Analysis_cfg.Sig.CFGInterface)
   (Info : Sig.Info)
   (Instr : sig
              type instr
@@ -150,12 +150,14 @@ functor
       let instrs_refined = helper instrs_init None [] in
       let bb_info =
         match DFType.direction with
-        | Sig.Forward ->
-            let last = List.last_exn instrs_refined in
-            { bb.info with out_ = last.info.out_ }
-        | Sig.Backward ->
-            let last = List.last_exn instrs_refined in
-            { bb.info with in_ = last.info.in_ }
+        | Sig.Forward -> (
+            match List.last instrs_refined with
+            | Some instr -> { bb.info with out_ = instr.info.out_ }
+            | None -> bb.info)
+        | Sig.Backward -> (
+            match List.last instrs_refined with
+            | Some instr -> { bb.info with in_ = instr.info.in_ }
+            | None -> bb.info)
       in
       { bb with info = bb_info; instrs = instrs_refined }
 
@@ -171,14 +173,14 @@ functor
           | Sig.Forward ->
               let term_cond =
                 Info.Set.equal bb_old.info.out_ bb_new.info.out_
-                && not (List.length bb_new.instrs = 1)
+                && not (List.is_empty bb_new.instrs)
               in
               if term_cond then process_bbs bbmap t
               else process_bbs bbmap (t @ bb_new.succs)
           | Sig.Backward ->
               let term_cond =
                 Info.Set.equal bb_old.info.in_ bb_new.info.in_
-                && not (List.length bb_new.instrs = 1)
+                && not (List.is_empty bb_new.instrs)
               in
               if term_cond then process_bbs bbmap t
               else process_bbs bbmap (t @ bb_new.preds))

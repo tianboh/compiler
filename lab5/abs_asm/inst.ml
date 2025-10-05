@@ -125,6 +125,10 @@ let is_label = function Label _ -> true | _ -> false
 let is_jump = function Jump _ -> true | _ -> false
 let is_cjump = function CJump _ -> true | _ -> false
 let is_return = function Ret _ -> true | _ -> false
+
+let is_terminator (instr : t) : bool =
+  is_jump instr || is_cjump instr || is_return instr
+
 let[@warning "-27"] is_assert (i : instr) : bool = false
 let empty_line () = { defines = []; uses = []; live_out = []; move = false }
 let label (l : Label.t) = Label { label = l; line = empty_line () }

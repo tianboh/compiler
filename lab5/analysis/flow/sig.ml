@@ -37,7 +37,7 @@ module type DFType = sig
 end
 
 module type Dataflow = functor
-  (CFG : Cfg.Sig.CFGInterface)
+  (CFG : Analysis_cfg.Sig.CFGInterface)
   (Info : Info)
   (Instr : sig
              type instr

@@ -9,7 +9,8 @@
  * CFG has one entry and one exit block, each block is linked through
  * either jump or cjump. No fall through edge is allowed between blocks.
  * Jump instruction is inserted if fallthrough is detected from original code.
- * Each block is guaranteed to terminated with a terminator.
+ * Each block is guaranteed to terminated with a terminator(jump, cjump, ret).
+ * Block may not start with label(like unreachable block)
  *
  * Author: Tianbo Hao <tianboh@alumni.cmu.edu>
  *)
@@ -22,6 +23,7 @@ module type InstrInterface = sig
   val is_jump : t -> bool
   val is_cjump : t -> bool
   val is_return : t -> bool
+  val is_terminator : t -> bool
   val is_assert : t -> bool
   val label : Label.t -> t
   val jump : Label.t -> t
@@ -32,12 +34,6 @@ module type InstrInterface = sig
 
   (* Given jump/conditional jump, return target label list. *)
   val get_targets : t -> Label.t list
-
-  (* Replace target of Jump *)
-  val replace_target : t -> Label.t -> t
-
-  (* Replace old target to new target for CJump *)
-  val replace_ctarget : t -> Label.t -> Label.t -> t
   val pp_inst : t -> string
 end
 

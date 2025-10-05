@@ -1,6 +1,6 @@
 (library
- (name analysis_cfg)
- (libraries core util)
+ (name transform)
+ (libraries core util analysis_cfg)
  (inline_tests)
  (preprocess
   (pps ppx_jane ppx_expect)))
