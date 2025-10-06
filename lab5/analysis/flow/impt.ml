@@ -86,6 +86,8 @@ functor
             dfinstr :: acc)
         |> List.rev
       in
+      (* List.iter instrs ~f:(fun instr ->
+          printf "init BB instr %s\n%!" (pp_inst instr)); *)
       { label; instrs; preds; succs; info }
 
     let initBBs (cfg_bbmap : CFG.bbmap) : bbmap =
@@ -95,11 +97,17 @@ functor
           Label.Map.set acc ~key:label ~data:bb)
 
     let process_bb (bb : bb) : bb =
+      (* List.iter bb.instrs ~f:(fun instr ->
+          printf "bb instr old order %s\n%!" (pp_inst instr)); *)
       let instrs_order =
         match DFType.direction with
         | Sig.Forward -> bb.instrs
-        | Sig.Backward -> List.rev bb.instrs
+        | Sig.Backward ->
+            (* printf "rev instr\n%!"; *)
+            List.rev bb.instrs
       in
+      (* List.iter instrs_order ~f:(fun instr ->
+          printf "bb instr order %s\n%!" (pp_inst instr)); *)
       (* Initialize first instruction in field. For backward, out field. 
        * Remember, first instruction in is the same as bb in.
        * Last instruction out is the same as block out *)
@@ -158,7 +166,13 @@ functor
             | Some instr -> { bb.info with in_ = instr.info.in_ }
             | None -> bb.info)
       in
-      { bb with info = bb_info; instrs = instrs_refined }
+      (* reorder instrs for backward *)
+      let instrs_refined_reorder =
+        match DFType.direction with
+        | Forward -> instrs_refined
+        | Backward -> List.rev instrs_refined
+      in
+      { bb with info = bb_info; instrs = instrs_refined_reorder }
 
     (* top is full set for must analysis, and empty set for may analysis *)
     let process_bbs (bbmap : bbmap) (start : Label.t) (top : Info.Set.t) : bbmap
@@ -217,8 +231,8 @@ functor
                     printf "bb_new info in_: %s\n"
                       (bb_new.info.in_ |> Info.Set.sexp_of_t
                      |> Sexp.to_string_hum)
-                  in
-                  let () = printf "bb %s add\n\t" (Label.name h) in
+                  in *)
+                  (* let () = printf "bb %s add\n\t" (Label.name h) in
                   let () =
                     List.iter bb_new.preds ~f:(fun pred ->
                         printf "%s\t" (Label.name pred))
