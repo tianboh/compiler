@@ -84,12 +84,18 @@ functor
             let instr_info = { instr_info with gen_ = gen; kill_ = kill } in
             let dfinstr = { instr; info = instr_info } in
             dfinstr :: acc)
-        |> List.rev
+      in
+      let instrs =
+        match DFType.direction with
+        | Forward -> List.rev instrs
+        | Backward -> instrs
       in
       (* List.iter instrs ~f:(fun instr ->
           printf "init BB instr %s\n%!" (pp_inst instr)); *)
       { label; instrs; preds; succs; info }
 
+    (* For performance consideration, backward analysis reverse
+     * instruction order here. *)
     let initBBs (cfg_bbmap : CFG.bbmap) : bbmap =
       Label.Map.fold cfg_bbmap ~init:Label.Map.empty
         ~f:(fun ~key:label ~data:cfgbb acc ->
@@ -99,20 +105,13 @@ functor
     let process_bb (bb : bb) : bb =
       (* List.iter bb.instrs ~f:(fun instr ->
           printf "bb instr old order %s\n%!" (pp_inst instr)); *)
-      let instrs_order =
-        match DFType.direction with
-        | Sig.Forward -> bb.instrs
-        | Sig.Backward ->
-            (* printf "rev instr\n%!"; *)
-            List.rev bb.instrs
-      in
       (* List.iter instrs_order ~f:(fun instr ->
           printf "bb instr order %s\n%!" (pp_inst instr)); *)
       (* Initialize first instruction in field. For backward, out field. 
        * Remember, first instruction in is the same as bb in.
        * Last instruction out is the same as block out *)
       let instrs_init =
-        match instrs_order with
+        match bb.instrs with
         | [] -> []
         | h :: t ->
             let info =
@@ -166,13 +165,7 @@ functor
             | Some instr -> { bb.info with in_ = instr.info.in_ }
             | None -> bb.info)
       in
-      (* reorder instrs for backward *)
-      let instrs_refined_reorder =
-        match DFType.direction with
-        | Forward -> instrs_refined
-        | Backward -> List.rev instrs_refined
-      in
-      { bb with info = bb_info; instrs = instrs_refined_reorder }
+      { bb with info = bb_info; instrs = instrs_refined }
 
     (* top is full set for must analysis, and empty set for may analysis *)
     let process_bbs (bbmap : bbmap) (start : Label.t) (top : Info.Set.t) : bbmap
@@ -249,9 +242,9 @@ functor
         | Sig.Forward -> CFG.get_entry_bb cfg_bbmap
         | Sig.Backward -> CFG.get_exit_bb cfg_bbmap
       in
-      let bbmap = initBBs cfg_bbmap in
+      let bbmap_inst_rev = initBBs cfg_bbmap in
       let top =
-        Label.Map.fold bbmap ~init:Info.Set.empty
+        Label.Map.fold bbmap_inst_rev ~init:Info.Set.empty
           ~f:(fun ~key:_ ~data:bb acc_outer ->
             match DFType.meet_type with
             | Must ->
@@ -262,7 +255,14 @@ functor
                     |> Info.Set.union instr.info.kill_)
             | May -> Info.Set.empty)
       in
-      process_bbs bbmap start_block.label top
+      let bb_map =
+        process_bbs bbmap_inst_rev start_block.label top
+        |> Label.Map.map ~f:(fun bb ->
+               match DFType.direction with
+               | Forward -> { bb with instrs = bb.instrs }
+               | Backward -> { bb with instrs = List.rev bb.instrs })
+      in
+      bb_map
 
     let to_instrs (bbmap : bbmap) (label_order : Label.t list) : instr list =
       List.fold_left label_order ~init:[] ~f:(fun acc label ->
