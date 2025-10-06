@@ -58,9 +58,9 @@ module LivenessInstr = struct
               @ to_vertex [ binop.dest ] []
           | Right_shift | Left_shift ->
               Reg Register.RCX :: to_vertex [ binop.dest ] []
-          | Plus | Minus | And | Or | Xor | Equal_eq | Greater | Greater_eq
-          | Less | Less_eq | Not_eq ->
-              to_vertex [ binop.dest ] [])
+          | Equal_eq | Greater | Greater_eq | Less | Less_eq | Not_eq ->
+              Reg Register.RAX :: to_vertex [ binop.dest ] []
+          | Plus | Minus | And | Or | Xor -> to_vertex [ binop.dest ] [])
       | Fcall _ -> [ Reg Register.RAX ]
       | Cast cast -> to_vertex [] [ cast.dest ]
       | Mov mov -> to_vertex [ mov.dest ] []
