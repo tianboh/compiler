@@ -95,11 +95,10 @@ functor
           Label.Map.set acc ~key:label ~data:bb)
 
     let process_bb (bb : bb) : bb =
-      let instrs = bb.instrs in
       let instrs_order =
         match DFType.direction with
-        | Sig.Forward -> instrs
-        | Sig.Backward -> List.rev instrs
+        | Sig.Forward -> bb.instrs
+        | Sig.Backward -> List.rev bb.instrs
       in
       (* Initialize first instruction in field. For backward, out field. 
        * Remember, first instruction in is the same as bb in.
@@ -161,32 +160,71 @@ functor
       in
       { bb with info = bb_info; instrs = instrs_refined }
 
-    let process_bbs (bbmap : bbmap) (start : Label.t) : bbmap =
+    (* top is full set for must analysis, and empty set for may analysis *)
+    let process_bbs (bbmap : bbmap) (start : Label.t) (top : Info.Set.t) : bbmap
+        =
       let rec helper (bbmap : bbmap) (worklist : Label.t list) : bbmap =
         match worklist with
         | [] -> bbmap
         | h :: t -> (
             (* printf "process bb %s\n" (Label.name h); *)
+            (* 1. Update basic block in or out before process it *)
             let bb_old = Label.Map.find_exn bbmap h in
-            let bb_new = process_bb bb_old in
-            let bbmap = Label.Map.set bbmap ~key:bb_old.label ~data:bb_new in
+            let bb_after_meet_info =
+              match DFType.direction with
+              | Forward ->
+                  let in_ =
+                    List.fold_left bb_old.preds ~init:top
+                      ~f:(fun acc pred_label ->
+                        let pred_bb = Label.Map.find_exn bbmap pred_label in
+                        meet acc pred_bb.info.out_)
+                  in
+                  { bb_old.info with in_ }
+              | Backward ->
+                  let out_ =
+                    List.fold_left bb_old.succs ~init:top
+                      ~f:(fun acc succ_label ->
+                        let succ_bb = Label.Map.find_exn bbmap succ_label in
+                        meet acc succ_bb.info.in_)
+                  in
+                  { bb_old.info with out_ }
+            in
+            let bb_after_meet = { bb_old with info = bb_after_meet_info } in
+            (* printf "bb_after_meet info out_: %s\n"
+              (bb_after_meet.info.out_ |> Info.Set.sexp_of_t
+             |> Sexp.to_string_hum); *)
+            (* 2. Process basic block based on new in or out *)
+            let bb_new = process_bb bb_after_meet in
+            let bbmap =
+              Label.Map.set bbmap ~key:bb_after_meet.label ~data:bb_new
+            in
             match DFType.direction with
             | Sig.Forward ->
                 let term_cond =
-                  Info.Set.equal bb_old.info.out_ bb_new.info.out_
+                  Info.Set.equal bb_after_meet.info.out_ bb_new.info.out_
                   && not (Label.equal h start)
                 in
                 if term_cond then helper bbmap t
                 else helper bbmap (t @ bb_new.succs)
             | Sig.Backward ->
                 let term_cond =
-                  Info.Set.equal bb_old.info.in_ bb_new.info.in_
+                  Info.Set.equal bb_after_meet.info.in_ bb_new.info.in_
                   && not (Label.equal h start)
                 in
-                (* printf "bbnew info in: %s\n"
-                  (bb_new.info.in_ |> Info.Set.sexp_of_t |> Sexp.to_string_hum); *)
                 if term_cond then helper bbmap t
-                else helper bbmap (t @ bb_new.preds))
+                else
+                  (* let () =
+                    printf "bb_new info in_: %s\n"
+                      (bb_new.info.in_ |> Info.Set.sexp_of_t
+                     |> Sexp.to_string_hum)
+                  in
+                  let () = printf "bb %s add\n\t" (Label.name h) in
+                  let () =
+                    List.iter bb_new.preds ~f:(fun pred ->
+                        printf "%s\t" (Label.name pred))
+                  in
+                  let () = printf "\n" in *)
+                  helper bbmap (t @ bb_new.preds))
       in
       helper bbmap [ start ]
 
@@ -198,7 +236,19 @@ functor
         | Sig.Backward -> CFG.get_exit_bb cfg_bbmap
       in
       let bbmap = initBBs cfg_bbmap in
-      process_bbs bbmap start_block.label
+      let top =
+        Label.Map.fold bbmap ~init:Info.Set.empty
+          ~f:(fun ~key:_ ~data:bb acc_outer ->
+            match DFType.meet_type with
+            | Must ->
+                List.fold_left bb.instrs ~init:acc_outer
+                  ~f:(fun acc_inner instr ->
+                    acc_inner
+                    |> Info.Set.union instr.info.gen_
+                    |> Info.Set.union instr.info.kill_)
+            | May -> Info.Set.empty)
+      in
+      process_bbs bbmap start_block.label top
 
     let to_instrs (bbmap : bbmap) (label_order : Label.t list) : instr list =
       List.fold_left label_order ~init:[] ~f:(fun acc label ->
