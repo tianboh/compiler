@@ -48,8 +48,8 @@ module LivenessInstr = struct
       | CJump cjmp -> to_vertex [ cjmp.lhs; cjmp.rhs ] []
       | Push push -> to_vertex [ push.var ] []
       | Store store -> to_vertex [ store.src ] []
-      | Jump _ | Load _ | Label _ | Ret _ | Pop _ | Directive _ | Comment _ ->
-          []
+      | Ret -> [ Reg Register.RAX ]
+      | Jump _ | Load _ | Label _ | Pop _ | Directive _ | Comment _ -> []
     in
     Set.of_list vertex_list
 
@@ -72,7 +72,7 @@ module LivenessInstr = struct
       | Mov mov -> to_vertex [ mov.dest ] []
       | Pop pop -> to_vertex [ pop.var ] []
       | Load load -> to_vertex [] [ load.dest ]
-      | Jump _ | CJump _ | Store _ | Label _ | Ret _ | Push _ | Directive _
+      | Jump _ | CJump _ | Store _ | Label _ | Ret | Push _ | Directive _
       | Comment _ ->
           []
     in

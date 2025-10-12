@@ -205,7 +205,7 @@ module Lazy = struct
             let res = IG.Vertex.Set.union res (trans_operand cjp.lhs) in
             let res = IG.Vertex.Set.union res (trans_operand cjp.rhs) in
             collect_vertex t res
-        | Ret _ -> collect_vertex t res
+        | Ret -> collect_vertex t res
         | Fcall fcall ->
             let res =
               List.fold fcall.args ~init:res ~f:(fun acc arg ->

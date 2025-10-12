@@ -45,13 +45,6 @@ module St = struct
     st.data |> Op.of_temp |> Sop.wrap size
 end
 
-type line = {
-  uses : Op.t list;
-  defines : Op.t list;
-  live_out : Op.t list;
-  move : bool;
-}
-
 type binop =
   | Plus
   | Minus
@@ -71,30 +64,28 @@ type binop =
   | Not_eq
 
 type instr =
-  | Binop of { op : binop; dest : Sop.t; lhs : Sop.t; rhs : Sop.t; line : line }
+  | Binop of { op : binop; dest : Sop.t; lhs : Sop.t; rhs : Sop.t }
   | Fcall of {
       (* return to rax by convention *)
       func_name : Symbol.t;
       args : Sop.t list;
-      line : line;
     }
-  | Cast of { dest : St.t; src : St.t; line : line }
-  | Mov of { dest : Sop.t; src : Sop.t; line : line }
-  | Jump of { target : Label.t; line : line }
+  | Cast of { dest : St.t; src : St.t }
+  | Mov of { dest : Sop.t; src : Sop.t }
+  | Jump of { target : Label.t }
   | CJump of {
       lhs : Sop.t;
       op : binop;
       rhs : Sop.t;
       target_true : Label.t;
       target_false : Label.t;
-      line : line;
     }
-  | Ret of { line : line }
-  | Label of { label : Label.t; line : line }
-  | Push of { var : Sop.t; line : line }
-  | Pop of { var : Sop.t; line : line }
-  | Load of { src : Mem.t; dest : St.t; line : line }
-  | Store of { src : Sop.t; dest : Mem.t; line : line }
+  | Ret
+  | Label of { label : Label.t }
+  | Push of { var : Sop.t }
+  | Pop of { var : Sop.t }
+  | Load of { src : Mem.t; dest : St.t }
+  | Store of { src : Sop.t; dest : Mem.t }
   | Directive of string
   | Comment of string
 
@@ -124,16 +115,15 @@ let to_int_list (ops : Op.t list) : int list =
 let is_label = function Label _ -> true | _ -> false
 let is_jump = function Jump _ -> true | _ -> false
 let is_cjump = function CJump _ -> true | _ -> false
-let is_return = function Ret _ -> true | _ -> false
+let is_return = function Ret -> true | _ -> false
 
 let is_terminator (instr : t) : bool =
   is_jump instr || is_cjump instr || is_return instr
 
 let[@warning "-27"] is_assert (i : instr) : bool = false
-let empty_line () = { defines = []; uses = []; live_out = []; move = false }
-let label (l : Label.t) = Label { label = l; line = empty_line () }
-let jump (target : Label.t) : instr = Jump { target; line = empty_line () }
-let ret () : instr = Ret { line = empty_line () }
+let label (l : Label.t) = Label { label = l }
+let jump (target : Label.t) : instr = Jump { target }
+let ret () : instr = Ret
 
 let get_label (instr : instr) : Label.t =
   match instr with
@@ -150,7 +140,7 @@ let next (instr : instr) : Label.t list =
 (* Replace target of Jump *)
 let replace_target (instr : instr) (target : Label.t) : instr =
   match instr with
-  | Jump jp -> Jump { jp with target }
+  | Jump _ -> Jump { target }
   | _ -> failwith "expect jump for taget"
 
 (* Replace old target to new target for CJump *)
@@ -206,7 +196,7 @@ let pp_inst inst =
   | Label label -> sprintf "%s" (Label.content label.label)
   | Directive dir -> sprintf "%s" dir
   | Comment comment -> sprintf "/* %s */" comment
-  | Ret _ -> sprintf "return"
+  | Ret -> sprintf "return"
   | Fcall fcall ->
       sprintf "fcall %s(%s)"
         (Symbol.name fcall.func_name)

@@ -285,7 +285,7 @@ let rec _codegen_w_reg_rev (res : Dest.instr list) (inst_list : Src.instr list)
           let insts = safe_mov dest src size in
           let insts_rev = List.rev insts in
           _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
-      | Ret _ ->
+      | Ret ->
           let insts = safe_ret () in
           let insts_rev = List.rev insts in
           _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap

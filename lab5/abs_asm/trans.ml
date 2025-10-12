@@ -31,11 +31,7 @@ module Trans = Transform.Cfg.Make (Inst)
 open Inst
 open Reg
 
-type line = Dest.line
 type instr = Dest.instr
-
-let empty_line () : Dest.line =
-  { defines = []; uses = []; live_out = []; move = false }
 
 let trans_binop (op : Src.binop) : Dest.binop =
   match op with
@@ -73,56 +69,35 @@ let[@warning "-8"] gen_binop_rev (Src.Binop bin) =
       trans_operand bin.lhs,
       trans_operand bin.rhs )
   in
-  let defines =
-    match op with
-    | Times -> [ dest.data; Dest.Op.of_reg RAX ]
-    | Divided_by | Modulo ->
-        [ dest.data; Dest.Op.of_reg RAX; Dest.Op.of_reg RDX ]
-    | Right_shift | Left_shift -> [ dest.data; Dest.Op.of_reg RCX ]
-    | Equal_eq | Greater | Greater_eq | Less | Less_eq | Not_eq ->
-        [ dest.data; Dest.Op.of_reg RAX ]
-    | _ -> [ dest.data ]
-  in
-  let uses = [ lhs.data; rhs.data ] in
-  let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
-  [ Dest.Binop { op; dest; lhs; rhs; line } ]
+  [ Dest.Binop { op; dest; lhs; rhs } ]
 
 let[@warning "-8"] gen_move_rev (Src.Mov move) =
   let dest, src =
     (trans_operand (Src.St.to_Sop move.dest), trans_operand move.src)
   in
-  let defines, uses = ([ dest.data ], [ src.data ]) in
-  let line = { defines; uses; live_out = []; move = true } in
-  [ Dest.Mov { dest; src; line } ]
+  [ Dest.Mov { dest; src } ]
 
 let[@warning "-8"] gen_jump_rev (Src.Jump jump) =
-  let line = empty_line () in
-  [ Dest.Jump { target = jump.target; line } ]
+  [ Dest.Jump { target = jump.target } ]
 
 let[@warning "-8"] gen_cjump_rev (Src.CJump cjump) =
   let lhs, rhs = (trans_operand cjump.lhs, trans_operand cjump.rhs) in
   let op = trans_binop cjump.op in
-  let line =
-    { defines = []; uses = [ lhs.data; rhs.data ]; live_out = []; move = false }
-  in
   let target_true = cjump.target_true in
   let target_false = cjump.target_false in
-  [ Dest.CJump { lhs; op; rhs; target_true; target_false; line } ]
+  [ Dest.CJump { lhs; op; rhs; target_true; target_false } ]
 
 let[@warning "-8"] gen_ret_rev (Src.Ret ret) (exit_label : Label.t) =
-  let line = empty_line () in
   let mov =
     match ret.var with
     | None -> []
     | Some var ->
         let src = trans_operand var in
         let size = get_size' src in
-        let defines, uses = ([ Dest.Op.of_reg RAX ], [ src.data ]) in
-        let line_mov = { line with defines; uses; move = true } in
         let dest = RAX |> Dest.Op.of_reg |> Dest.Sop.wrap size in
-        [ Dest.Mov { dest; src; line = line_mov } ]
+        [ Dest.Mov { dest; src } ]
   in
-  Dest.Jump { target = exit_label; line } :: mov
+  Dest.Jump { target = exit_label } :: mov
 
 let param_map (idx : int) : Dest.Op.t =
   let open Base.Int64 in
@@ -140,20 +115,16 @@ let set_size (operand : Dest.Sop.t) (size : Size.primitive) : Dest.Sop.t =
 
 (* alignment for %RSP. %RSP is multiple of 16 when calling function *)
 let gen_align (rsp : Sreg.t) : Dest.instr =
-  let defines, uses = ([ Dest.Op.Reg rsp.data ], [ Dest.Op.Reg rsp.data ]) in
-  let line = ({ defines; uses; live_out = []; move = false } : Dest.line) in
   let rhs = 8L |> Dest.Op.of_imm |> Dest.Sop.wrap `QWORD in
   let rsp = rsp.data |> Dest.Op.of_reg |> Dest.Sop.wrap rsp.size in
-  Dest.Binop { op = Dest.Minus; dest = rsp; lhs = rsp; rhs; line }
+  Dest.Binop { op = Dest.Minus; dest = rsp; lhs = rsp; rhs }
 
 let gen_release (rsp : Dest.Sop.t) (num_par : int) (align_size : int) =
-  let defines, uses = ([ rsp.data ], [ rsp.data ]) in
-  let line : Dest.line = { defines; uses; live_out = []; move = false } in
   let rhs =
     ((num_par - 6) * 8) + align_size
     |> Int64.of_int |> Dest.Op.of_imm |> Dest.Sop.wrap `QWORD
   in
-  Dest.Binop { op = Dest.Plus; dest = rsp; lhs = rsp; rhs; line }
+  Dest.Binop { op = Dest.Plus; dest = rsp; lhs = rsp; rhs }
 
 let gen_param_pass (params : Src.Sop.t list) : Dest.instr list =
   List.mapi params ~f:(fun idx arg ->
@@ -161,24 +132,13 @@ let gen_param_pass (params : Src.Sop.t list) : Dest.instr list =
       let size = get_size' src in
       if idx < 6 then
         let dest = param_map idx in
-        let defines = [ dest ] in
-        let uses = [ src.data ] in
-        let line = { defines; uses; live_out = []; move = true } in
-        let mov = Dest.Mov { dest = Dest.Sop.wrap size dest; src; line } in
-        mov
-      else
-        let defines = [] in
-        let uses = [ src.data ] in
-        let line = { defines; uses; live_out = []; move = false } in
-        let push = Dest.Push { var = src; line } in
-        push)
+        Dest.Mov { dest = Dest.Sop.wrap size dest; src }
+      else Dest.Push { var = src })
 
 let gen_fret (dest : Dest.Sop.t) =
-  let defines, uses = ([ dest.data ], [ Dest.Op.of_reg RAX ]) in
-  let line : Dest.line = { defines; uses; live_out = []; move = true } in
   let size = dest.size in
   let src : Dest.Sop.t = { data = Dest.Op.of_reg RAX; size } in
-  Dest.Mov { dest; src; line }
+  Dest.Mov { dest; src }
 
 (* Generate x86 instr with function call convention *)
 let[@warning "-8"] gen_fcall_rev (Src.Fcall fcall) =
@@ -189,12 +149,8 @@ let[@warning "-8"] gen_fcall_rev (Src.Fcall fcall) =
     | None -> None
   in
   let args = List.map fcall.args ~f:(fun arg -> trans_operand arg) in
-  let x86_regs = (RAX :: caller_saved) @ parameters in
-  let defines = List.map x86_regs ~f:(fun r -> Dest.Op.of_reg r) in
-  let uses = List.mapi fcall.args ~f:(fun idx _ -> param_map idx) in
-  let line = { defines; uses; live_out = []; move = false } in
   let par_insts = gen_param_pass fcall.args in
-  let fcall = Dest.Fcall { func_name; args; line } in
+  let fcall = Dest.Fcall { func_name; args } in
   let num_par = List.length par_insts in
   let need_align = num_par > 6 && num_par % 2 = 1 in
   let insts =
@@ -223,107 +179,56 @@ let gen_move_rev' (dest : Reg.t) (src : Src.Sop.t) :
   let reg = Sreg.wrap size dest in
   let dest = dest |> Dest.Op.of_reg |> Dest.Sop.wrap size in
   let src = trans_operand src in
-  let defines, uses = ([ dest.data ], [ src.data ]) in
-  let line = { uses; defines; live_out = []; move = true } in
-  (Dest.Mov { dest; src; line }, reg, src)
+  (Dest.Mov { dest; src }, reg, src)
 
 let[@warning "-8"] gen_load_rev (Src.Load load) : Dest.instr list =
   let size = load.dest.size in
   let base_quad, index_quad, scale, disp = Src.Addr.get load.src.data in
-  let base_mov, base_reg, base_src = gen_move_rev' heap_base base_quad in
+  let base_mov, base_reg, _ = gen_move_rev' heap_base base_quad in
   match index_quad with
   | Some index_quad' ->
-      let index_mov, index_reg, index_src =
-        gen_move_rev' heap_index index_quad'
-      in
+      let index_mov, index_reg, _ = gen_move_rev' heap_index index_quad' in
       let src =
         Dest.Addr.of_bisd base_reg.data (Some index_reg.data) scale disp
         |> Dest.Mem.wrap size
       in
       let dest = St.wrap load.dest.size load.dest.data in
-      let line =
-        {
-          uses = [ base_src.data; index_src.data ];
-          defines =
-            [
-              Op.of_reg base_reg.data;
-              Op.of_reg index_reg.data;
-              Op.of_temp dest.data;
-            ];
-          live_out = [];
-          move = false;
-        }
-      in
-      let load = Dest.Load { dest; src; line } in
+      let load = Dest.Load { dest; src } in
       [ load; index_mov; base_mov ]
   | None ->
       let src =
         Dest.Addr.of_bisd base_reg.data None scale disp |> Dest.Mem.wrap size
       in
       let dest = St.wrap load.dest.size load.dest.data in
-      let line =
-        {
-          uses = [ base_src.data ];
-          defines = [ Op.of_reg base_reg.data; Op.of_temp dest.data ];
-          live_out = [];
-          move = false;
-        }
-      in
-      let load = Dest.Load { dest; src; line } in
+      let load = Dest.Load { dest; src } in
       [ load; base_mov ]
 
 let[@warning "-8"] gen_store_rev (Src.Store store) : Dest.instr list =
   let size = store.dest.size in
   let base_quad, index_quad, scale, disp = Src.Addr.get store.dest.data in
-  let base_mov, base_reg, base_src = gen_move_rev' heap_base base_quad in
+  let base_mov, base_reg, _ = gen_move_rev' heap_base base_quad in
   match index_quad with
   | Some index_quad' ->
-      let offset_mov, index_reg, index_src =
-        gen_move_rev' heap_index index_quad'
-      in
+      let offset_mov, index_reg, _ = gen_move_rev' heap_index index_quad' in
       let dest =
         Dest.Addr.of_bisd base_reg.data (Some index_reg.data) scale disp
         |> Dest.Mem.wrap size
       in
       let src = trans_operand store.src in
-      let line =
-        {
-          uses = [ base_src.data; index_src.data; src.data ];
-          defines = [ Op.of_reg base_reg.data; Op.of_reg index_reg.data ];
-          live_out = [];
-          move = false;
-        }
-      in
-      let store = Dest.Store { dest; src; line } in
+      let store = Dest.Store { dest; src } in
       [ store; offset_mov; base_mov ]
   | None ->
       let dest =
         Dest.Addr.of_bisd base_reg.data None scale disp |> Dest.Mem.wrap size
       in
       let src = trans_operand store.src in
-      let line =
-        {
-          uses = [ base_src.data; src.data ];
-          defines = [ Op.of_reg base_reg.data ];
-          live_out = [];
-          move = false;
-        }
-      in
-      let store = Dest.Store { dest; src; line } in
+      let store = Dest.Store { dest; src } in
       [ store; base_mov ]
 
 let[@warning "-8"] gen_cast_rev (Src.Cast cast) : Dest.instr list =
   let dest = Dest.St.wrap cast.dest.size cast.dest.data in
   let src = Dest.St.wrap cast.src.size cast.src.data in
-  let line =
-    {
-      defines = [ Op.of_temp dest.data ];
-      uses = [ Op.of_temp src.data ];
-      move = false;
-      live_out = [];
-    }
-  in
-  let inst = Dest.Cast { dest; src; line } in
+  let inst = Dest.Cast { dest; src } in
   [ inst ]
 
 (* Generate instruction with x86 conventions *)
@@ -340,7 +245,7 @@ let rec gen_body (program : Src.instr list) (res : Dest.instr list)
         | Jump jump -> gen_jump_rev (Jump jump)
         | CJump cjump -> gen_cjump_rev (CJump cjump)
         | Ret ret -> gen_ret_rev (Ret ret) exit_label
-        | Label l -> [ Dest.Label { label = l; line = empty_line () } ]
+        | Label l -> [ Dest.Label { label = l } ]
         | Directive dir -> [ Dest.Directive dir ]
         | Comment cmt -> [ Dest.Comment cmt ]
         | Fcall fcall -> gen_fcall_rev (Fcall fcall)
@@ -354,11 +259,9 @@ let save_callee () : Dest.instr list =
   let size = `QWORD in
   List.fold callee_saved ~init:[] ~f:(fun acc r ->
       let t = Temp.create () |> Op.of_temp in
-      let defines, uses = ([ t ], [ Op.of_reg r ]) in
-      let line = { defines; uses; move = true; live_out = [] } in
       let dest = Dest.Sop.wrap size t in
       let src = r |> Op.of_reg |> Dest.Sop.wrap size in
-      let mov = Dest.Mov { dest; src; line } in
+      let mov = Dest.Mov { dest; src } in
       mov :: acc)
   |> List.rev
 
@@ -373,19 +276,9 @@ let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
              | Dest.Mov mov -> (mov.src, mov.dest)
              | _ -> failwith "mov missing"
            in
-           let line =
-             {
-               defines = [ dest.data ];
-               uses = [ src.data ];
-               live_out = [];
-               move = true;
-             }
-           in
-           Dest.Mov { dest; src; line })
+           Dest.Mov { dest; src })
   in
-  let line = empty_line () in
-  let line_ret = { line with uses = [ Dest.Op.of_reg RAX ] } in
-  let ret = Dest.Ret { line = line_ret } in
+  let ret = Dest.Ret in
   restore @ [ ret ]
 
 (* Generate assigning parameter passing code. Parameters are passed through
@@ -394,32 +287,18 @@ let gen_pars (pars : St.t list) : Dest.instr list =
   List.mapi pars ~f:(fun idx par ->
       let src = param_map idx in
       let dest = par.data |> Op.of_temp |> Sop.wrap par.size in
-      let defines = [ dest.data ] in
-      if idx < 6 then
-        let line = { defines; uses = [ src ]; live_out = []; move = true } in
-        [ Mov { dest; src = { data = src; size = par.size }; line } ]
+      if idx < 6 then [ Mov { dest; src = { data = src; size = par.size } } ]
       else
         let temp_sop = Temp.create () |> Op.of_temp |> Sop.wrap par.size in
         let temp_mem = Sop.wrap par.size src in
-        let line_load =
-          {
-            defines = [ temp_sop.data ];
-            uses = [ temp_mem.data ];
-            live_out = [];
-            move = true;
-          }
-        in
-        let load = Mov { dest = temp_sop; src = temp_mem; line = line_load } in
-        let line =
-          { defines; uses = [ temp_sop.data ]; live_out = []; move = true }
-        in
-        [ load; Mov { dest; src = temp_sop; line } ])
+        let load = Mov { dest = temp_sop; src = temp_mem } in
+        [ load; Mov { dest; src = temp_sop } ])
   |> List.concat
 
 let gen_section (prefix : string) (fname : Symbol.t) (content : Dest.instr list)
     : Dest.section * Label.t =
   let label = Label.label (Some (prefix ^ Symbol.name fname)) in
-  let name = Dest.Label { label; line = empty_line () } in
+  let name = Dest.Label { label } in
   ({ name; content }, label)
 
 let gen_program prologue body epilogue : instr list =
