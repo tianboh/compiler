@@ -36,7 +36,13 @@ module LivenessInstr = struct
     let vertex_list =
       match instr with
       | Binop binop -> to_vertex [ binop.lhs; binop.rhs ] []
-      | Fcall fcall -> to_vertex fcall.args []
+      | Fcall fcall ->
+          let x86_regs =
+            Reg Register.RAX
+            :: List.map (Register.caller_saved @ Register.parameters)
+                 ~f:(fun r -> Reg r)
+          in
+          x86_regs @ to_vertex fcall.args []
       | Cast cast -> to_vertex [] [ cast.src ]
       | Mov mov -> to_vertex [ mov.src ] []
       | CJump cjmp -> to_vertex [ cjmp.lhs; cjmp.rhs ] []

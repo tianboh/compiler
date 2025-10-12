@@ -103,10 +103,6 @@ functor
           Label.Map.set acc ~key:label ~data:bb)
 
     let process_bb (bb : bb) : bb =
-      (* List.iter bb.instrs ~f:(fun instr ->
-          printf "bb instr old order %s\n%!" (pp_inst instr)); *)
-      (* List.iter instrs_order ~f:(fun instr ->
-          printf "bb instr order %s\n%!" (pp_inst instr)); *)
       (* Initialize first instruction in field. For backward, out field. 
        * Remember, first instruction in is the same as bb in.
        * Last instruction out is the same as block out *)
@@ -224,8 +220,8 @@ functor
                     printf "bb_new info in_: %s\n"
                       (bb_new.info.in_ |> Info.Set.sexp_of_t
                      |> Sexp.to_string_hum)
-                  in *)
-                  (* let () = printf "bb %s add\n\t" (Label.name h) in
+                  in
+                  let () = printf "bb %s add\n\t" (Label.name h) in
                   let () =
                     List.iter bb_new.preds ~f:(fun pred ->
                         printf "%s\t" (Label.name pred))
