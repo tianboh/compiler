@@ -27,7 +27,7 @@ module Dest = Inst
 module Reg = Var.X86_reg.Logic
 module Sreg = Var.X86_reg.Hard
 module Size = Var.Size
-module Trans = Transform.Cfg.Make (Inst)
+module Trans = Transform.Utils.Make (Inst)
 open Inst
 open Reg
 
