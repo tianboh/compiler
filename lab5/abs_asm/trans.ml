@@ -27,7 +27,8 @@ module Dest = Inst
 module Reg = Var.X86_reg.Logic
 module Sreg = Var.X86_reg.Hard
 module Size = Var.Size
-module Trans = Transform.Utils.Make (Inst)
+module AbsCFG = Analysis_cfg.Impt.Wrapper (Inst)
+module Trans = Transform.Utils.Make (Inst) (AbsCFG)
 open Inst
 open Reg
 
@@ -327,6 +328,7 @@ let rec gen (program : Src.program) (res : Dest.program) : Dest.program =
         gen_program prologue body epilogue
         |> Trans.eliminate_fall_through
         |> Trans.add_synthetic_label 0 []
+        |> Trans.split_critical_edges
       in
       (* let prog = gen_program prologue body epilogue in *)
       let fdefn = { func_name = Symbol.name h.func_name; body = prog } in

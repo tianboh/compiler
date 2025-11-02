@@ -97,7 +97,9 @@ struct
           List.fold_left succs ~init:bbmap ~f:(fun acc_map succ ->
               Label.Map.update acc_map succ ~f:(function
                 | Some succ_bb -> { succ_bb with preds = h :: succ_bb.preds }
-                | None -> failwith "Predecessor bb not found"))
+                | None ->
+                    let err_msg = sprintf "bb %s not found" (Label.name succ) in
+                    failwith err_msg))
         in
         _build_ps t bbmap
 
@@ -161,4 +163,18 @@ struct
         let bb = Label.Map.find_exn bbs l in
         bb.instrs)
     |> List.concat
+
+  let get_rpo (bbs : bbmap) : Label.t list =
+    let entry = get_entry_bb bbs in
+    let visited = ref Label.Set.empty in
+    let order = ref [] in
+    let rec dfs (u_label : Label.t) : unit =
+      if not (Label.Set.mem !visited u_label) then (
+        visited := Label.Set.add !visited u_label;
+        let u_bb = Label.Map.find_exn bbs u_label in
+        List.iter u_bb.succs ~f:dfs;
+        order := u_label :: !order)
+    in
+    dfs entry.label;
+    !order
 end

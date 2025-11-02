@@ -121,14 +121,15 @@ let is_terminator (instr : t) : bool =
   is_jump instr || is_cjump instr || is_return instr
 
 let[@warning "-27"] is_assert (i : instr) : bool = false
-let label (l : Label.t) = Label { label = l }
-let jump (target : Label.t) : instr = Jump { target }
-let ret () : instr = Ret
 
 let get_label (instr : instr) : Label.t =
   match instr with
   | Label l -> l.label
   | _ -> failwith "expect instr to be label"
+
+let gen_ret () : instr = Ret
+let gen_label (l : Label.t) = Label { label = l }
+let gen_jump (target : Label.t) : t = Jump { target }
 
 (* Given jump/conditional jump, return target label list. *)
 let next (instr : instr) : Label.t list =

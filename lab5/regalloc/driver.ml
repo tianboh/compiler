@@ -370,6 +370,7 @@ let regalloc (fdefn : Abs_asm.fdefn) : (IG.Vertex.t * dest) option list =
     Lazy.gen_result_dummy vertex_set
   else
     let instrs_raw = fdefn.body in
+    (* printf "%s\n" (Abs_asm.pp_insts instrs_raw ""); *)
     let bb_cfg, label_order = AbsCFG.build_bb instrs_raw in
     let df_graph = LANA.run bb_cfg in
     let instrs_df = LANA.to_instrs df_graph label_order in

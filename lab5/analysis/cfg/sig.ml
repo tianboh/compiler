@@ -25,9 +25,6 @@ module type InstrInterface = sig
   val is_return : t -> bool
   val is_terminator : t -> bool
   val is_assert : t -> bool
-  val label : Label.t -> t
-  val jump : Label.t -> t
-  val ret : unit -> t
 
   (* Given label instr, get its label. Used to transform type *)
   val get_label : t -> Label.t
@@ -58,6 +55,11 @@ module type CFGInterface = sig
   (* Return basic blocks. Add entry and exit block automatically. *)
   val build_bb : i list -> bbmap * Label.t list
   val to_instrs : bbmap -> Label.t list -> i list
+
+  (* Get reverse postorder. On CFG, topoorder may not exist because cycle
+   * In this case, reverse postorder is a "best-effort" for it. On DAG,
+   * RPO is a one of many possible topological sort.*)
+  val get_rpo : bbmap -> Label.t list
   val pp_inst : i -> string
   val pp_bb : bb -> unit
   val pp_bbmap : bbmap -> unit
