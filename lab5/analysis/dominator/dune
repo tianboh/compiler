@@ -1,0 +1,6 @@
+(library
+ (name analysis_dominator)
+ (libraries core util analysis_cfg)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))
