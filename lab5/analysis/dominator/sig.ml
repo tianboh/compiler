@@ -11,9 +11,8 @@ module Label = Util.Label
 module type DominatorInterface = sig
   type bbmap
 
-  (* Given a node u, Label.Map.find_exn u returns u's immediate dominator *)
-  type tree = Label.t Label.Map.t
-
-  (* Build immediate dominator map from control flow bbmap *)
-  val build_idom : bbmap -> tree
+  (* Build dominator tree from control flow bbmap.
+   * Return a dominator tree map dtmap. 
+   * Given a node u, Label.Map.find_exn dtmap u returns u's immediate dominator *)
+  val build_dt : bbmap -> Label.t Label.Map.t
 end

@@ -4,65 +4,64 @@ open Core
 module Make (C : Analysis_cfg.Sig.CFGInterface) :
   Sig.DominatorInterface with type bbmap = C.bbmap = struct
   type bbmap = C.bbmap
-  type tree = Label.t Label.Map.t
-
-  (* Trackes immediate dominator of each block *)
-  let idom_tree = ref Label.Map.empty
-
-  (* Keep track of each block in reverse post order number. Key: bbmap label, value: index in rpo *)
-  let order = ref Label.Map.empty
-
-  (* reverse post order for bbmap *)
-  let rpo = ref []
-
-  (* Each bbmap corresponds to a function, init idom_tree and order for it *)
-  let init (bbmap : bbmap) : unit =
-    idom_tree := Label.Map.empty;
-    order := Label.Map.empty;
-    rpo := C.get_rpo bbmap;
-    order :=
-      List.foldi !rpo ~init:Label.Map.empty ~f:(fun index acc_map element ->
-          Label.Map.set acc_map ~key:element ~data:index);
-    let entry = List.hd_exn !rpo in
-    idom_tree := Label.Map.set !idom_tree ~key:entry ~data:entry
 
   (* Given u and v, return their first subcommon parent. *)
-  let rec intersect (u : Label.t) (v : Label.t) : Label.t =
-    let o1 = Label.Map.find_exn !order u in
-    let o2 = Label.Map.find_exn !order v in
+  let rec intersect (u : Label.t) (v : Label.t) (order : int Label.Map.t)
+      (idom_tree : Label.t Label.Map.t) : Label.t =
+    let o1 = Label.Map.find_exn order u in
+    let o2 = Label.Map.find_exn order v in
     if o1 = o2 then u
     else if o1 < o2 then
-      let p2 = Label.Map.find_exn !idom_tree v in
-      intersect u p2
+      let p2 = Label.Map.find_exn idom_tree v in
+      intersect u p2 order idom_tree
     else
-      let p1 = Label.Map.find_exn !idom_tree u in
-      intersect p1 v
+      let p1 = Label.Map.find_exn idom_tree u in
+      intersect p1 v order idom_tree
 
   (* Given a node u, find its processed preds *)
-  let find_processed_preds (u : Label.t) (bbmap : bbmap) : Label.t list =
+  let find_processed_preds (u : Label.t) (bbmap : bbmap)
+      (idom_tree : Label.t Label.Map.t) : Label.t list =
     let u_bb = Label.Map.find_exn bbmap u in
     let preds = u_bb.preds in
     List.fold_left preds ~init:[] ~f:(fun acc pred ->
-        if Label.Map.mem !idom_tree pred then pred :: acc else acc)
+        if Label.Map.mem idom_tree pred then pred :: acc else acc)
 
-  let idom (u : Label.t) (bbmap : bbmap) : Label.t =
-    let processed_preds = find_processed_preds u bbmap in
+  let idom (u : Label.t) (bbmap : bbmap) (order : int Label.Map.t)
+      (idom_tree : Label.t Label.Map.t) : Label.t =
+    let processed_preds = find_processed_preds u bbmap idom_tree in
     match processed_preds with
     | [] ->
         failwith
           "idom expect at least one processed pred as it is traversed by rpo"
     | h :: t ->
         List.fold_left t ~init:h ~f:(fun acc processed_pred ->
-            intersect acc processed_pred)
+            intersect acc processed_pred order idom_tree)
 
-  let build_idom (bbmap : bbmap) : tree =
+  let build_dt (bbmap : bbmap) : Label.t Label.Map.t =
+    (* Keep track of each block in reverse post order number. Key: bbmap label, value: index in rpo *)
+    let order = ref Label.Map.empty in
+    (* reverse post order for bbmap *)
+    let rpo = ref [] in
+    (* Trackes immediate dominator of each block *)
+    let idom_tree = ref Label.Map.empty in
+    (* Each bbmap corresponds to a function, init idom_tree and order for it *)
+    let init (bbmap : bbmap) : unit =
+      idom_tree := Label.Map.empty;
+      order := Label.Map.empty;
+      rpo := C.get_rpo bbmap;
+      order :=
+        List.foldi !rpo ~init:Label.Map.empty ~f:(fun index acc_map element ->
+            Label.Map.set acc_map ~key:element ~data:index);
+      let entry = List.hd_exn !rpo in
+      idom_tree := Label.Map.set !idom_tree ~key:entry ~data:entry
+    in
     init bbmap;
     let changed = ref true in
     let rpo_wo_entry = List.tl_exn !rpo in
     while !changed do
       changed := false;
       List.iter rpo_wo_entry ~f:(fun u ->
-          let u_idom_new = idom u bbmap in
+          let u_idom_new = idom u bbmap !order !idom_tree in
           match Label.Map.find !idom_tree u with
           | None ->
               idom_tree := Label.Map.set !idom_tree ~key:u ~data:u_idom_new;
