@@ -73,4 +73,30 @@ module Make (C : Analysis_cfg.Sig.CFGInterface) :
                 changed := true))
     done;
     !idom_tree
+
+  let build_df (bbmap : bbmap) (dt : Label.t Label.Map.t) :
+      Label.Set.t Label.Map.t =
+    let rpo = ref [] in
+    let df = ref Label.Map.empty in
+    (* Initialize df for every node *)
+    Label.Map.iter_keys bbmap ~f:(fun node ->
+        df := Label.Map.set !df ~key:node ~data:Label.Set.empty);
+    rpo := C.get_rpo bbmap;
+    (* Propagate dominace frontier using node *)
+    let process_node (node : Label.t) : unit =
+      let bb = Label.Map.find_exn bbmap node in
+      let preds = bb.preds in
+      if List.length preds >= 2 then
+        let dom_node = Label.Map.find_exn dt node in
+        List.iter preds ~f:(fun pred ->
+            let runner = ref pred in
+            while not (Label.equal !runner dom_node) do
+              (let current_set = Label.Map.find_exn !df !runner in
+               let new_set = Label.Set.add current_set node in
+               df := Label.Map.set !df ~key:!runner ~data:new_set);
+              runner := Label.Map.find_exn dt !runner
+            done)
+    in
+    List.iter !rpo ~f:(fun node -> process_node node);
+    !df
 end

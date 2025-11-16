@@ -15,4 +15,9 @@ module type DominatorInterface = sig
    * Return a dominator tree map dtmap. 
    * Given a node u, Label.Map.find_exn dtmap u returns u's immediate dominator *)
   val build_dt : bbmap -> Label.t Label.Map.t
+
+  (* Build dominance frontier using cfg and dominator tree. 
+   * Dominance frontier is expressed as Label.Set.t Label.Map.t
+   * Given a node u for df, return u's dominance frontier *)
+  val build_df : bbmap -> Label.t Label.Map.t -> Label.Set.t Label.Map.t
 end
