@@ -24,7 +24,7 @@
 open Core
 
 module T = struct
-  type t = { id : int } [@@deriving sexp, compare, hash]
+  type t = { id : int; size : Size.primitive } [@@deriving sexp, compare, hash]
 
   let pp (t : t) : string = sprintf "%%t%d" t.id
 end
@@ -36,29 +36,16 @@ let reset () = counter := 16
 let cache : t Int.Table.t = Int.Table.create ()
 
 (* create and create' cannot be used at the same time *)
-let create () : t =
+let create (size : Size.primitive) : t =
   let id = !counter in
   ignore (incr counter : unit);
-  let t = { id } in
+  let t = { id; size } in
   Hashtbl.add_exn cache ~key:id ~data:t;
   t
-;;
-
-(* Only used in checkpoint. *)
-let create' (id : int) : t =
-  let t = { id } in
-  Hashtbl.add_exn cache ~key:id ~data:t;
-  t
-;;
 
 let of_int (id : int) : t = Hashtbl.find_exn cache id
 let count () = !counter
-let name (t : t) : string = sprintf "%%t%d" t.id
-
-let name' (t : t) (size : Size.primitive) : string =
-  sprintf "%%t%d_%s" t.id (Size.pp_size size)
-;;
-
+let name (t : t) : string = sprintf "%%t%d_%s" t.id (Size.pp_size t.size)
 let get_id (t : t) = t.id
 
 include Comparable.Make (T)

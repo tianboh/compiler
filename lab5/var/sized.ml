@@ -12,11 +12,7 @@ end
 
 module type Sized_Interface = sig
   type i
-
-  type t =
-    { data : i
-    ; size : Size.primitive
-    }
+  type t = { data : i; size : Size.primitive }
 
   val get_data : t -> i
   val wrap : Size.primitive -> i -> t
@@ -27,14 +23,10 @@ end
 
 module Wrapper (M : Interface) : Sized_Interface with type i = M.t = struct
   type i = M.t
-
-  type t =
-    { data : i
-    ; size : Size.primitive
-    }
+  type t = { data : i; size : Size.primitive }
 
   let wrap size (exp : i) : t = { data = exp; size }
-  let pp (sexp : t) : string = M.pp sexp.data ^ "_" ^ Size.pp_size (sexp.size :> Size.t)
+  let pp (sexp : t) : string = M.pp sexp.data ^ "_" ^ Size.pp_size sexp.size
   let get_data sexp : i = sexp.data
   let get_size (sexp : t) : Size.t = (sexp.size :> Size.t)
   let get_size_p (sexp : t) : Size.primitive = sexp.size

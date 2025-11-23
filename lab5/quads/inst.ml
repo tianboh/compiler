@@ -173,14 +173,13 @@ let pp_inst = function
         (pp_binop binop.op) (Sop.pp binop.rhs)
   (* | Mov mv -> sprintf "%s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src) *)
   | Mov mv ->
-      if Size.compare (mv.src.size :> Size.t) (mv.dest.size :> Size.t) <> 0 then
+      if Size.compare' mv.src.size mv.dest.size <> 0 then
         failwith
           (sprintf "move size mismatch %s -> %s" (Sop.pp mv.src) (St.pp mv.dest));
       sprintf "%s <-- %s" (St.pp mv.dest) (Sop.pp mv.src)
   | Cast cast ->
-      sprintf "cast %s <-- %s"
-        (Temp.name' cast.dest.data cast.dest.size)
-        (Temp.name' cast.src.data cast.src.size)
+      sprintf "cast %s <-- %s" (Temp.name cast.dest.data)
+        (Temp.name cast.src.data)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
   | CJump cjp ->
       sprintf "cjump(%s %s %s) %s, %s" (Sop.pp cjp.lhs) (pp_binop cjp.op)
@@ -202,21 +201,18 @@ let pp_inst = function
             (List.map call.args ~f:(fun arg -> Sop.pp arg)
             |> String.concat ~sep:", ")
       | Some dest ->
-          sprintf "%s <- %s(%s)"
-            (Temp.name' dest.data dest.size)
+          sprintf "%s <- %s(%s)" (Temp.name dest.data)
             (Symbol.name call.func_name)
             (List.map call.args ~f:(fun arg -> Sop.pp arg)
             |> String.concat ~sep:", "))
   | Load load ->
-      sprintf "load %s <- %s"
-        (Temp.name' load.dest.data load.dest.size)
-        (Mem.pp load.src)
+      sprintf "load %s <- %s" (Temp.name load.dest.data) (Mem.pp load.src)
   | Store store ->
       sprintf "store %s <- %s" (Mem.pp store.dest) (Sop.pp store.src)
 
 let pp_fdefn (fdefn : fdefn) =
   let pars_str =
-    List.map fdefn.pars ~f:(fun par -> Temp.name' par.data par.size)
+    List.map fdefn.pars ~f:(fun par -> Temp.name par.data)
     |> String.concat ~sep:", "
   in
   let body_str =

@@ -90,7 +90,7 @@ let safe_mov (dest : Dest.Sop.t) (src : Dest.Sop.t) (size : Size.primitive) =
 
 (* Now we provide safe instruction to avoid source and destination are both memory. *)
 let safe_cast (dest : Dest.Sop.t) (src : Dest.Sop.t) =
-  if Size.compare (dest.size :> Size.t) (src.size :> Size.t) = 0 then
+  if Size.compare' dest.size src.size = 0 then
     [ Dest.Mov { dest; src; size = dest.size } ]
   else
     match (dest.data, src.data) with

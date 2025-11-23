@@ -259,7 +259,7 @@ let rec gen_body (program : Src.instr list) (res : Dest.instr list)
 let save_callee () : Dest.instr list =
   let size = `QWORD in
   List.fold callee_saved ~init:[] ~f:(fun acc r ->
-      let t = Temp.create () |> Op.of_temp in
+      let t = Temp.create size |> Op.of_temp in
       let dest = Dest.Sop.wrap size t in
       let src = r |> Op.of_reg |> Dest.Sop.wrap size in
       let mov = Dest.Mov { dest; src } in
@@ -290,7 +290,9 @@ let gen_pars (pars : St.t list) : Dest.instr list =
       let dest = par.data |> Op.of_temp |> Sop.wrap par.size in
       if idx < 6 then [ Mov { dest; src = { data = src; size = par.size } } ]
       else
-        let temp_sop = Temp.create () |> Op.of_temp |> Sop.wrap par.size in
+        let temp_sop =
+          Temp.create par.size |> Op.of_temp |> Sop.wrap par.size
+        in
         let temp_mem = Sop.wrap par.size src in
         let load = Mov { dest = temp_sop; src = temp_mem } in
         [ load; Mov { dest; src = temp_sop } ])

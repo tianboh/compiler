@@ -180,14 +180,13 @@ let pp_inst inst =
       sprintf "%s <-- %s %s %s" (Sop.pp binop.dest) (Sop.pp binop.lhs)
         (pp_binop binop.op) (Sop.pp binop.rhs)
   | Mov mv ->
-      if Size.compare (mv.dest.size :> Size.t) (mv.src.size :> Size.t) <> 0 then
+      if Size.compare' mv.dest.size mv.src.size <> 0 then
         failwith
           (sprintf "move mismatch %s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src));
       sprintf "%s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src)
   | Cast cast ->
-      sprintf "cast %s <-- %s"
-        (Temp.name' cast.dest.data cast.dest.size)
-        (Temp.name' cast.src.data cast.src.size)
+      sprintf "cast %s <-- %s" (Temp.name cast.dest.data)
+        (Temp.name cast.src.data)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
   | CJump cjp ->
       sprintf "cjump(%s %s %s) target_true: %s, target_false : %s"
@@ -206,9 +205,7 @@ let pp_inst inst =
   | Push push -> sprintf "push %s" (Sop.pp push.var)
   | Pop pop -> sprintf "pop %s " (Sop.pp pop.var)
   | Load load ->
-      sprintf "load %s <- %s"
-        (Temp.name' load.dest.data load.dest.size)
-        (Mem.pp load.src)
+      sprintf "load %s <- %s" (Temp.name load.dest.data) (Mem.pp load.src)
   | Store store ->
       sprintf "store %s <- %s" (Mem.pp store.dest) (Sop.pp store.src)
 
