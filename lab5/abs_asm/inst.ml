@@ -37,13 +37,7 @@ module Sop : Var.Sized.Sized_Interface with type i = Op.t =
 module Addr = Var.Addr.Wrapper (Register)
 module Mem = Var.Sized.Wrapper (Addr)
 
-module St = struct
-  include Var.Sized.Wrapper (Temp)
-
-  let to_Sop st =
-    let size = st.size in
-    st.data |> Op.of_temp |> Sop.wrap size
-end
+let t_to_Sop (t : Temp.t) : Sop.t = t |> Op.of_temp |> Sop.wrap t.size
 
 type binop =
   | Plus
@@ -70,7 +64,7 @@ type instr =
       func_name : Symbol.t;
       args : Sop.t list;
     }
-  | Cast of { dest : St.t; src : St.t }
+  | Cast of { dest : Temp.t; src : Temp.t }
   | Mov of { dest : Sop.t; src : Sop.t }
   | Jump of { target : Label.t }
   | CJump of {
@@ -84,7 +78,7 @@ type instr =
   | Label of { label : Label.t }
   | Push of { var : Sop.t }
   | Pop of { var : Sop.t }
-  | Load of { src : Mem.t; dest : St.t }
+  | Load of { src : Mem.t; dest : Temp.t }
   | Store of { src : Sop.t; dest : Mem.t }
   | Directive of string
   | Comment of string
@@ -185,8 +179,7 @@ let pp_inst inst =
           (sprintf "move mismatch %s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src));
       sprintf "%s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src)
   | Cast cast ->
-      sprintf "cast %s <-- %s" (Temp.name cast.dest.data)
-        (Temp.name cast.src.data)
+      sprintf "cast %s <-- %s" (Temp.name cast.dest) (Temp.name cast.src)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
   | CJump cjp ->
       sprintf "cjump(%s %s %s) target_true: %s, target_false : %s"
@@ -204,8 +197,7 @@ let pp_inst inst =
         |> String.concat ~sep:", ")
   | Push push -> sprintf "push %s" (Sop.pp push.var)
   | Pop pop -> sprintf "pop %s " (Sop.pp pop.var)
-  | Load load ->
-      sprintf "load %s <- %s" (Temp.name load.dest.data) (Mem.pp load.src)
+  | Load load -> sprintf "load %s <- %s" (Temp.name load.dest) (Mem.pp load.src)
   | Store store ->
       sprintf "store %s <- %s" (Mem.pp store.dest) (Sop.pp store.src)
 

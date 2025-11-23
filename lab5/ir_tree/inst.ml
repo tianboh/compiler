@@ -102,44 +102,30 @@ end [@warning "-37"]
 and Sexp : sig
   include Var.Sized.Sized_Interface with type i = Exp.t
 
-  val to_St : t -> St.t
+  val to_t : t -> Temp.t
 end = struct
   include Var.Sized.Wrapper (Exp)
 
-  let to_St (sexp : t) : St.t =
-    let size = get_size_p sexp in
+  let to_t (sexp : t) : Temp.t =
     let exp = get_data sexp in
-    let t = Exp.to_t exp in
-    St.wrap size t
+    Exp.to_t exp
 end
 
 and Mem : (Var.Sized.Sized_Interface with type i = Addr.t) =
   Var.Sized.Wrapper (Addr)
 
-and St : sig
-  include Var.Sized.Sized_Interface with type i = Temp.t
-
-  val to_Sexp : t -> Sexp.t
-end = struct
-  include Var.Sized.Wrapper (Temp)
-
-  let to_Sexp (st : t) : Sexp.t =
-    let size = get_size_p st in
-    let t = get_data st in
-    let exp = Exp.of_t t in
-    Sexp.wrap size exp
-end
+let t_to_Sexp (t : Temp.t) : Sexp.t = Exp.of_t t |> Sexp.wrap t.size
 
 type stm =
   | Cast of {
       (* Do not generate new temporary. 
        * Only change the size of temporary. *)
-      dest : St.t;
+      dest : Temp.t;
       src : Sexp.t;
     }
-  | Move of { dest : St.t; src : Sexp.t }
-  | Effect of { dest : St.t; lhs : Sexp.t; op : binop; rhs : Sexp.t }
-  | Fcall of { dest : St.t option; func_name : Symbol.t; args : Sexp.t list }
+  | Move of { dest : Temp.t; src : Sexp.t }
+  | Effect of { dest : Temp.t; lhs : Sexp.t; op : binop; rhs : Sexp.t }
+  | Fcall of { dest : Temp.t option; func_name : Symbol.t; args : Sexp.t list }
   | Return of Sexp.t option
   | Jump of Label.t
   | CJump of {
@@ -152,10 +138,10 @@ type stm =
   | Label of Label.t
   | Nop
   | Assert of Sexp.t
-  | Load of { src : Mem.t; dest : St.t }
+  | Load of { src : Mem.t; dest : Temp.t }
   | Store of { src : Sexp.t; dest : Mem.t }
 
-type fdefn = { func_name : Symbol.t; temps : St.t list; body : stm list }
+type fdefn = { func_name : Symbol.t; temps : Temp.t list; body : stm list }
 type program = fdefn list
 type t = stm
 
@@ -203,21 +189,23 @@ module Print = struct
   let pp_mem = Mem.pp
 
   let rec pp_stm = function
-    | Cast cast -> "cast " ^ St.pp cast.dest ^ "  <--  " ^ pp cast.src
+    | Cast cast -> "cast " ^ Temp.name cast.dest ^ "  <--  " ^ pp cast.src
     | Move mv ->
-        if Size.compare (Sexp.get_size mv.src) (St.get_size mv.dest) <> 0 then
+        if Size.compare (Sexp.get_size mv.src) (mv.dest.size :> Size.t) <> 0
+        then
           failwith
-            (sprintf "move size mismatch %s -> %s" (pp mv.src) (St.pp mv.dest));
-        St.pp mv.dest ^ "  <--  " ^ pp mv.src
+            (sprintf "move size mismatch %s -> %s" (pp mv.src)
+               (Temp.name mv.dest));
+        Temp.name mv.dest ^ "  <--  " ^ pp mv.src
     | Effect eft ->
-        sprintf "effect %s <- %s %s %s" (St.pp eft.dest) (pp eft.lhs)
+        sprintf "effect %s <- %s %s %s" (Temp.name eft.dest) (pp eft.lhs)
           (Exp.pp_binop eft.op) (pp eft.rhs)
     | Fcall c -> (
         let func_name = Symbol.name c.func_name in
         let args = List.map (fun arg -> pp arg) c.args |> String.concat ", " in
         match c.dest with
         | Some dest ->
-            let dest = St.pp dest in
+            let dest = Temp.name dest in
             sprintf "%s <- %s(%s)" dest func_name args
         | None -> sprintf "%s(%s)" func_name args)
     | Return e -> (
@@ -231,7 +219,7 @@ module Print = struct
     | Label l -> Label.content l
     | Nop -> "nop"
     | Assert asrt -> sprintf "assert(%s)" (pp asrt)
-    | Load ld -> sprintf "load %s <- %s" (St.pp ld.dest) (pp_mem ld.src)
+    | Load ld -> sprintf "load %s <- %s" (Temp.name ld.dest) (pp_mem ld.src)
     | Store st -> sprintf "store %s <- %s" (pp_mem st.dest) (pp st.src)
 
   and pp_stms (stms : stm list) =
@@ -240,7 +228,7 @@ module Print = struct
   let pp_fdefn fdefn =
     let func_name = Symbol.name fdefn.func_name in
     let pars_str =
-      List.map (fun temp -> St.pp temp) fdefn.temps |> String.concat ", "
+      List.map (fun temp -> Temp.name temp) fdefn.temps |> String.concat ", "
     in
     sprintf "%s(%s)\n" func_name pars_str ^ pp_stms fdefn.body
 

@@ -18,7 +18,6 @@ module Fname = Util.Symbol.Fname
 module Op = Quads.Op
 module Sop = Quads.Sop
 module Sexp = Tree.Sexp
-module St = Quads.St
 
 let munch_op : Tree.binop -> Quads.binop = function
   | Plus -> Plus
@@ -56,48 +55,52 @@ let munch_op : Tree.binop -> Quads.binop = function
  *
  * Cast operand(s) to align destination size.
  *)
-let rec munch_exp_acc (dest : St.t) (exp : Sexp.t) (rev_acc : Quads.instr list)
-    : Quads.instr list =
+let rec munch_exp_acc (dest : Temp.t) (exp : Sexp.t)
+    (rev_acc : Quads.instr list) : Quads.instr list =
   match exp.data with
   | Void -> rev_acc
   | Const i -> Mov { dest; src = Op.of_int i |> Sop.wrap dest.size } :: rev_acc
   | Temp t ->
-      let src, cast_instr = cast_helper dest.size (t |> St.wrap exp.size) in
-      (Quads.Mov { dest; src = St.to_Sop src } :: cast_instr) @ rev_acc
+      let src, cast_instr = cast_helper dest.size t in
+      (Quads.Mov { dest; src = Inst.t_to_Sop src } :: cast_instr) @ rev_acc
   | Binop binop -> munch_binop_acc dest (binop.op, binop.lhs, binop.rhs) rev_acc
   | BISD bisd ->
       let base, index, scale, disp = Tree.Addr.get bisd in
       munch_bisd_acc dest base index scale disp rev_acc
 
-and cast_helper (dest_size : Size.primitive) (st : St.t) :
-    St.t * Quads.instr list =
-  if Size.compare' dest_size st.size <> 0 then
-    let t = St.to_t st in
-    let st' = St.wrap dest_size t in
-    (st', [ Cast { dest = st'; src = st } ])
-  else (st, [])
+and cast_helper (dest_size : Size.primitive) (src : Temp.t) :
+    Temp.t * Quads.instr list =
+  if Size.compare' dest_size src.size <> 0 then
+    let dest = Temp.create dest_size in
+    (dest, [ Cast { dest; src } ])
+  else (src, [])
 
-and munch_bisd_acc (dest : St.t) (base : Sexp.t) (index : Sexp.t option)
+and munch_bisd_acc (dest : Temp.t) (base : Sexp.t) (index : Sexp.t option)
     (scale : Int64.t option) (disp : Int64.t option)
     (rev_acc : Quads.instr list) : Quads.instr list =
   let size = dest.size in
   match (disp, index, scale) with
   | None, None, _ | None, _, None -> munch_exp_acc dest base rev_acc
   | Some disp, None, _ | Some disp, _, None ->
-      let t_disp = Temp.create size |> St.wrap size in
-      let t_base = Temp.create size |> St.wrap size in
+      let t_disp = Temp.create size in
+      let t_base = Temp.create size in
       let rev_acc' =
         rev_acc |> munch_exp_acc t_base base
         |> munch_exp_acc t_disp (disp |> Tree.Exp.of_int |> Sexp.wrap size)
       in
       Quads.Binop
-        { op = Plus; dest; lhs = St.to_Sop t_base; rhs = St.to_Sop t_disp }
+        {
+          op = Plus;
+          dest;
+          lhs = Inst.t_to_Sop t_base;
+          rhs = Inst.t_to_Sop t_disp;
+        }
       :: rev_acc'
   | _, Some index, Some scale -> (
-      let t_base = Temp.create size |> St.wrap size in
-      let t_index = Temp.create size |> St.wrap size in
-      let t_scale = Temp.create size |> St.wrap size in
-      let t_offset = Temp.create size |> St.wrap size in
+      let t_base = Temp.create size in
+      let t_index = Temp.create size in
+      let t_scale = Temp.create size in
+      let t_offset = Temp.create size in
       let rev_acc' =
         rev_acc |> munch_exp_acc t_base base
         |> munch_exp_acc t_index index
@@ -108,8 +111,8 @@ and munch_bisd_acc (dest : St.t) (base : Sexp.t) (index : Sexp.t option)
           {
             op = Times;
             dest = t_offset;
-            lhs = St.to_Sop t_index;
-            rhs = St.to_Sop t_scale;
+            lhs = Inst.t_to_Sop t_index;
+            rhs = Inst.t_to_Sop t_scale;
           }
         :: rev_acc'
       in
@@ -119,26 +122,31 @@ and munch_bisd_acc (dest : St.t) (base : Sexp.t) (index : Sexp.t option)
             {
               op = Plus;
               dest;
-              lhs = St.to_Sop t_base;
-              rhs = St.to_Sop t_offset;
+              lhs = Inst.t_to_Sop t_base;
+              rhs = Inst.t_to_Sop t_offset;
             }
           :: rev_acc''
       | Some disp ->
-          let t_disp = Temp.create size |> St.wrap size in
+          let t_disp = Temp.create size in
           let ret =
             rev_acc''
             |> munch_exp_acc t_disp (disp |> Tree.Exp.of_int |> Sexp.wrap size)
           in
-          let t = Temp.create size |> St.wrap size in
+          let t = Temp.create size in
           [
             Quads.Binop
-              { op = Plus; dest; lhs = St.to_Sop t; rhs = St.to_Sop t_disp };
+              {
+                op = Plus;
+                dest;
+                lhs = Inst.t_to_Sop t;
+                rhs = Inst.t_to_Sop t_disp;
+              };
             Quads.Binop
               {
                 op = Plus;
                 dest = t;
-                lhs = St.to_Sop t_base;
-                rhs = St.to_Sop t_offset;
+                lhs = Inst.t_to_Sop t_base;
+                rhs = Inst.t_to_Sop t_offset;
               };
           ]
           @ ret)
@@ -150,21 +158,22 @@ and munch_bisd_acc (dest : St.t) (base : Sexp.t) (index : Sexp.t option)
  * Much like munch_exp, this returns the result of appending the
  * instructions in reverse to the accumulator argument, rev_acc.
  *)
-and munch_binop_acc (dest : St.t)
+and munch_binop_acc (dest : Temp.t)
     ((binop, e1, e2) : Tree.binop * Sexp.t * Sexp.t)
     (rev_acc : Quads.instr list) : Quads.instr list =
   let op = munch_op binop in
-  let t1 = Temp.create e1.size |> St.wrap e1.size in
-  let t2 = Temp.create e2.size |> St.wrap e2.size in
+  let t1 = Temp.create e1.size in
+  let t2 = Temp.create e2.size in
   let rev_acc' = rev_acc |> munch_exp_acc t1 e1 |> munch_exp_acc t2 e2 in
   let t1, cast1 = cast_helper dest.size t1 in
   let t2, cast2 = cast_helper dest.size t2 in
-  (Quads.Binop { op; dest; lhs = St.to_Sop t1; rhs = St.to_Sop t2 } :: cast2)
+  Quads.Binop { op; dest; lhs = Inst.t_to_Sop t1; rhs = Inst.t_to_Sop t2 }
+  :: cast2
   @ cast1 @ rev_acc'
 
 (* munch_exp dest exp
  * Generates instructions for dest <-- exp. *)
-and munch_exp : St.t -> Sexp.t -> Quads.instr list =
+and munch_exp : Temp.t -> Sexp.t -> Quads.instr list =
  fun dest exp ->
   (* Since munch_exp_acc returns the reversed accumulator, we must
    * reverse the list before returning. *)
@@ -172,11 +181,11 @@ and munch_exp : St.t -> Sexp.t -> Quads.instr list =
 
 and[@warning "-8"] munch_effect_rev (Tree.Effect eft) : Quads.instr list =
   let lhs_size = eft.lhs.size in
-  let lhs = Temp.create lhs_size |> St.wrap lhs_size in
+  let lhs = Temp.create lhs_size in
   let op = munch_op eft.op in
   let rhs_size = eft.rhs.size in
-  let rhs = Temp.create rhs_size |> St.wrap rhs_size in
-  let dest = St.wrap eft.dest.size eft.dest.data in
+  let rhs = Temp.create rhs_size in
+  let dest = eft.dest in
   let lhs_inst_rev = munch_exp_acc lhs eft.lhs [] in
   let rhs_inst_rev = munch_exp_acc rhs eft.rhs [] in
   let safety_check_rev =
@@ -198,7 +207,7 @@ and[@warning "-8"] munch_effect_rev (Tree.Effect eft) : Quads.instr list =
           Quads.Label l2;
           Quads.CJump
             {
-              lhs = St.to_Sop rhs;
+              lhs = Inst.t_to_Sop rhs;
               op = Quads.Less;
               rhs = zero;
               target_true = l3;
@@ -207,7 +216,7 @@ and[@warning "-8"] munch_effect_rev (Tree.Effect eft) : Quads.instr list =
           Quads.Label l1;
           Quads.CJump
             {
-              lhs = St.to_Sop rhs;
+              lhs = Inst.t_to_Sop rhs;
               op = Quads.Greater;
               rhs = shift_bound;
               target_true = l3;
@@ -217,22 +226,20 @@ and[@warning "-8"] munch_effect_rev (Tree.Effect eft) : Quads.instr list =
     | Divided_by | Modulo -> []
     | _ -> failwith "not effect binop"
   in
-  (Quads.Binop { dest; lhs = St.to_Sop lhs; op; rhs = St.to_Sop rhs }
+  (Quads.Binop { dest; lhs = Inst.t_to_Sop lhs; op; rhs = Inst.t_to_Sop rhs }
    :: safety_check_rev
   @ rhs_inst_rev)
   @ lhs_inst_rev
 
 (* Return a reversed Quads.instr list. *)
 and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
-  let sexp2st (exp : Sexp.t option) : St.t option =
-    match exp with
-    | Some e -> Some (Temp.create e.size |> St.wrap e.size)
-    | None -> None
+  let sexp2st (exp : Sexp.t option) : Temp.t option =
+    match exp with Some e -> Some (Temp.create e.size) | None -> None
   in
-  let st2sop (t : St.t option) : Sop.t option =
-    match t with None -> None | Some t -> Some (St.to_Sop t)
+  let st2sop (t : Temp.t option) : Sop.t option =
+    match t with None -> None | Some t -> Some (Inst.t_to_Sop t)
   in
-  let munch_helper (t : St.t option) (exp : Sexp.t option)
+  let munch_helper (t : Temp.t option) (exp : Sexp.t option)
       (rev_acc : Quads.instr list) : Quads.instr list =
     match (t, exp) with
     | None, None -> rev_acc
@@ -241,46 +248,45 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
   in
   let get_addr (base : Sexp.t) (index : Sexp.t option) (scale : Int64.t option)
       (disp : Int64.t option) : Quads.Addr.t * Quads.instr list =
-    let t_base = Temp.create base.size |> St.wrap base.size in
+    let t_base = Temp.create base.size in
     let t_index = sexp2st index in
     let rev_acc = munch_exp_acc t_base base [] in
     let rev_acc = munch_helper t_index index rev_acc in
-    let op_base = St.to_Sop t_base in
+    let op_base = Inst.t_to_Sop t_base in
     let op_index = st2sop t_index in
     (Quads.Addr.of_bisd op_base op_index scale disp, rev_acc)
   in
   match stm with
   | Tree.Cast cast ->
-      let dest = St.wrap cast.dest.size cast.dest.data in
-      let temp = Temp.create cast.src.size |> St.wrap cast.src.size in
+      let dest = cast.dest in
+      let temp = Temp.create cast.src.size in
       let move = munch_exp_acc temp cast.src [] in
       Quads.Cast { dest; src = temp } :: move
   | Tree.Move mv ->
-      let size, data = (mv.dest.size, mv.dest.data) in
-      let dest = St.wrap size data in
+      let dest = mv.dest in
       munch_exp_acc dest mv.src []
   | Tree.Return e -> (
       match e with
       | None -> [ Quads.Ret { var = None } ]
       | Some e ->
           let size = e.size in
-          let t = Temp.create size |> St.wrap size in
+          let t = Temp.create size in
           let inst = munch_exp_acc t e [] in
-          Quads.Ret { var = Some (St.to_Sop t) } :: inst)
+          Quads.Ret { var = Some (Inst.t_to_Sop t) } :: inst)
   | Jump jmp -> [ Quads.Jump { target = jmp } ]
   | Tree.CJump cjmp ->
       let lhs_size = cjmp.lhs.size in
-      let lhs = Temp.create lhs_size |> St.wrap lhs_size in
+      let lhs = Temp.create lhs_size in
       let op = munch_op cjmp.op in
       let rhs_size = cjmp.rhs.size in
-      let rhs = Temp.create rhs_size |> St.wrap rhs_size in
+      let rhs = Temp.create rhs_size in
       let lhs_inst_rev = munch_exp_acc lhs cjmp.lhs [] in
       let rhs_inst_rev = munch_exp_acc rhs cjmp.rhs [] in
       Quads.CJump
         {
-          lhs = St.to_Sop lhs;
+          lhs = Inst.t_to_Sop lhs;
           op;
-          rhs = St.to_Sop rhs;
+          rhs = Inst.t_to_Sop rhs;
           target_true = cjmp.target_true;
           target_false = cjmp.target_false;
         }
@@ -291,7 +297,7 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
   | Tree.Effect eft -> munch_effect_rev (Tree.Effect eft)
   | Tree.Assert asrt ->
       let size = asrt.size in
-      let exp = Temp.create size |> St.wrap size in
+      let exp = Temp.create size in
       let inst = munch_exp_acc exp asrt [] in
       let pass = Label.label None in
       let fail = Label.label None in
@@ -303,7 +309,7 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
         Quads.Label fail;
         Quads.CJump
           {
-            lhs = St.to_Sop exp;
+            lhs = Inst.t_to_Sop exp;
             op = Quads.Equal_eq;
             rhs = one;
             target_true = pass;
@@ -314,16 +320,14 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
   | Tree.Fcall fcall ->
       let args, args_stms_rev =
         List.map fcall.args ~f:(fun arg ->
-            let t = Temp.create arg.size |> St.wrap arg.size in
+            let t = Temp.create arg.size in
             let e = munch_exp_acc t arg [] in
-            (St.to_Sop t, e))
+            (Inst.t_to_Sop t, e))
         |> List.unzip
       in
       let args_stms_rev = List.concat args_stms_rev in
-      let dest : St.t option =
-        match fcall.dest with
-        | None -> None
-        | Some s -> Some { data = s.data; size = s.size }
+      let dest : Temp.t option =
+        match fcall.dest with None -> None | Some s -> Some s
       in
       let func_name = fcall.func_name in
       let call = Quads.Fcall { func_name; args; dest } in
@@ -332,16 +336,16 @@ and munch_stm_rev (stm : Tree.stm) : Quads.instr list =
       let base, index, scale, disp = Tree.Addr.get load.src.data in
       let addr, rev_acc = get_addr base index scale disp in
       let mem = Quads.Mem.wrap load.src.size addr in
-      let dest = St.wrap load.dest.size load.dest.data in
+      let dest = load.dest in
       let load = Quads.Load { src = mem; dest } in
       load :: rev_acc
   | Tree.Store store ->
       let base, index, scale, disp = Tree.Addr.get store.dest.data in
       let addr, rev_acc = get_addr base index scale disp in
       let mem = Quads.Mem.wrap store.dest.size addr in
-      let t_src = Temp.create store.src.size |> St.wrap store.src.size in
+      let t_src = Temp.create store.src.size in
       let rev_acc = munch_exp_acc t_src store.src rev_acc in
-      let src = St.to_Sop t_src in
+      let src = Inst.t_to_Sop t_src in
       let store = Quads.Store { src; dest = mem } in
       store :: rev_acc
 
@@ -354,10 +358,7 @@ and munch_stms stms res =
 
 let gen_fdefn (fdefn : Tree.fdefn) : Quads.fdefn =
   let body = munch_stms fdefn.body [] in
-  let pars =
-    List.map fdefn.temps ~f:(fun par : St.t ->
-        { data = par.data; size = par.size })
-  in
+  let pars = List.map fdefn.temps ~f:(fun par : Temp.t -> par) in
   { func_name = fdefn.func_name; body; pars }
 
 (* To codegen a series of statements, just concatenate the results of

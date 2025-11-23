@@ -25,7 +25,7 @@ let dump_quad file_name (program : Quad.program) =
           in
           let func_name = Symbol.name fdefn.func_name in
           let pars =
-            List.map fdefn.pars ~f:(fun par -> Temp.name par.data)
+            List.map fdefn.pars ~f:(fun par -> Temp.name par)
             |> String.concat ~sep:", "
           in
           output_instr

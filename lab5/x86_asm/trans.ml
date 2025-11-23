@@ -271,8 +271,8 @@ let rec _codegen_w_reg_rev (res : Dest.instr list) (inst_list : Src.instr list)
           let insts_rev = List.rev insts in
           _codegen_w_reg_rev (insts_rev @ res) t reg_alloc_info reg_swap
       | Cast cast ->
-          let dest_oprd = Src.St.to_Sop cast.dest in
-          let src_oprd = Src.St.to_Sop cast.src in
+          let dest_oprd = Src.t_to_Sop cast.dest in
+          let src_oprd = Src.t_to_Sop cast.src in
           let dest = trans_operand dest_oprd reg_alloc_info in
           let src = trans_operand src_oprd reg_alloc_info in
           let insts = safe_cast dest src in
@@ -336,7 +336,7 @@ let rec _codegen_w_reg_rev (res : Dest.instr list) (inst_list : Src.instr list)
           let src = trans_mem load.src in
           let size = load.src.size in
           let src_oprd = Dest.Mem.to_Sop src in
-          let dest_oprd = Src.St.to_Sop load.dest in
+          let dest_oprd = Src.t_to_Sop load.dest in
           let dest = trans_operand dest_oprd reg_alloc_info in
           let insts_rev =
             match dest.data with

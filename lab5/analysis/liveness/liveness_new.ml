@@ -24,9 +24,9 @@ module LivenessInstr = struct
     | Reg r -> Some (Reg r)
     | Imm _ | Above_frame _ -> None
 
-  let st_to_vertex (st : St.t) : t = Temp st.data
+  let st_to_vertex (t : Temp.t) : t = Temp t
 
-  let to_vertex (sop_list : Sop.t list) (st_list : St.t list) : t list =
+  let to_vertex (sop_list : Sop.t list) (st_list : Temp.t list) : t list =
     List.fold_left sop_list ~init:[] ~f:(fun acc sop ->
         let vop = sop_to_vertex sop in
         match vop with Some v -> v :: acc | None -> acc)

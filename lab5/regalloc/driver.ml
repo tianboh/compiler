@@ -196,8 +196,8 @@ module Lazy = struct
             let res = IG.Vertex.Set.union res (trans_operand mov.src) in
             collect_vertex t res
         | Cast cast ->
-            let dest = Abs_asm.St.to_Sop cast.dest in
-            let src = Abs_asm.St.to_Sop cast.src in
+            let dest = Abs_asm.t_to_Sop cast.dest in
+            let src = Abs_asm.t_to_Sop cast.src in
             let res = IG.Vertex.Set.union res (trans_operand dest) in
             let res = IG.Vertex.Set.union res (trans_operand src) in
             collect_vertex t res
@@ -219,7 +219,7 @@ module Lazy = struct
             let res = IG.Vertex.Set.union res (trans_operand pop.var) in
             collect_vertex t res
         | Load load ->
-            let dest = Abs_asm.St.to_Sop load.dest in
+            let dest = Abs_asm.t_to_Sop load.dest in
             let res = IG.Vertex.Set.union res (trans_operand dest) in
             collect_vertex t res
         | Store store ->

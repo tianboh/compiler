@@ -66,7 +66,7 @@ let get_size' (operand : Dest.Sop.t) : Size.primitive = operand.size
 let[@warning "-8"] gen_binop_rev (Src.Binop bin) =
   let op, dest, lhs, rhs =
     ( trans_binop bin.op,
-      trans_operand (Src.St.to_Sop bin.dest),
+      trans_operand (Src.t_to_Sop bin.dest),
       trans_operand bin.lhs,
       trans_operand bin.rhs )
   in
@@ -74,7 +74,7 @@ let[@warning "-8"] gen_binop_rev (Src.Binop bin) =
 
 let[@warning "-8"] gen_move_rev (Src.Mov move) =
   let dest, src =
-    (trans_operand (Src.St.to_Sop move.dest), trans_operand move.src)
+    (trans_operand (Src.t_to_Sop move.dest), trans_operand move.src)
   in
   [ Dest.Mov { dest; src } ]
 
@@ -146,7 +146,7 @@ let[@warning "-8"] gen_fcall_rev (Src.Fcall fcall) =
   let func_name = fcall.func_name in
   let dest =
     match fcall.dest with
-    | Some dest -> Some (trans_operand (Src.St.to_Sop dest))
+    | Some dest -> Some (trans_operand (Src.t_to_Sop dest))
     | None -> None
   in
   let args = List.map fcall.args ~f:(fun arg -> trans_operand arg) in
@@ -193,14 +193,14 @@ let[@warning "-8"] gen_load_rev (Src.Load load) : Dest.instr list =
         Dest.Addr.of_bisd base_reg.data (Some index_reg.data) scale disp
         |> Dest.Mem.wrap size
       in
-      let dest = St.wrap load.dest.size load.dest.data in
+      let dest = load.dest in
       let load = Dest.Load { dest; src } in
       [ load; index_mov; base_mov ]
   | None ->
       let src =
         Dest.Addr.of_bisd base_reg.data None scale disp |> Dest.Mem.wrap size
       in
-      let dest = St.wrap load.dest.size load.dest.data in
+      let dest = load.dest in
       let load = Dest.Load { dest; src } in
       [ load; base_mov ]
 
@@ -227,8 +227,8 @@ let[@warning "-8"] gen_store_rev (Src.Store store) : Dest.instr list =
       [ store; base_mov ]
 
 let[@warning "-8"] gen_cast_rev (Src.Cast cast) : Dest.instr list =
-  let dest = Dest.St.wrap cast.dest.size cast.dest.data in
-  let src = Dest.St.wrap cast.src.size cast.src.data in
+  let dest = cast.dest in
+  let src = cast.src in
   let inst = Dest.Cast { dest; src } in
   [ inst ]
 
@@ -284,10 +284,10 @@ let gen_epilogue (prologue : Dest.instr list) : Dest.instr list =
 
 (* Generate assigning parameter passing code. Parameters are passed through
  * registers(first 6 parameters) or memories(rest parameters) during function call. *)
-let gen_pars (pars : St.t list) : Dest.instr list =
+let gen_pars (pars : Temp.t list) : Dest.instr list =
   List.mapi pars ~f:(fun idx par ->
       let src = param_map idx in
-      let dest = par.data |> Op.of_temp |> Sop.wrap par.size in
+      let dest = par |> Op.of_temp |> Sop.wrap par.size in
       if idx < 6 then [ Mov { dest; src = { data = src; size = par.size } } ]
       else
         let temp_sop =
@@ -315,9 +315,7 @@ let rec gen (program : Src.program) (res : Dest.program) : Dest.program =
   match program with
   | [] -> List.rev res
   | h :: t ->
-      let pars =
-        List.map h.pars ~f:(fun par -> St.wrap par.size par.data) |> gen_pars
-      in
+      let pars = gen_pars h.pars in
       let save = save_callee () in
       let epilogue_content = gen_epilogue save in
       let prologue, _ = gen_section "pro_" h.func_name (save @ pars) in

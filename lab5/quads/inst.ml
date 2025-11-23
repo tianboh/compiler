@@ -27,31 +27,15 @@ end
 module rec Sop : sig
   include Var.Sized.Sized_Interface with type i = Op.t
 
-  val to_St : t -> St.t
   val to_t : t -> Temp.t
 end = struct
   include Var.Sized.Wrapper (Op)
 
   let to_t sop : Temp.t =
     match sop.data with Temp t -> t | Imm _ -> failwith "imm cannot to t"
-
-  let to_St sop =
-    match sop.data with
-    | Temp t -> St.wrap sop.size t
-    | _ -> failwith "to_St expect temp"
 end
 
-and St : sig
-  include Var.Sized.Sized_Interface with type i = Temp.t
-
-  val to_Sop : t -> Sop.t
-  val to_t : t -> Temp.t
-end = struct
-  include Var.Sized.Wrapper (Temp)
-
-  let to_Sop st = st.data |> Op.of_t |> Sop.wrap st.size
-  let to_t st = st.data
-end
+let t_to_Sop (t : Temp.t) = t |> Op.of_t |> Sop.wrap t.size
 
 module Addr : Var.Addr.Sig with type i = Sop.t = Var.Addr.Wrapper (Sop)
 
@@ -77,15 +61,15 @@ type binop =
   | Not_eq
 
 type instr =
-  | Binop of { op : binop; dest : St.t; lhs : Sop.t; rhs : Sop.t }
-  | Fcall of { func_name : Symbol.t; dest : St.t option; args : Sop.t list }
+  | Binop of { op : binop; dest : Temp.t; lhs : Sop.t; rhs : Sop.t }
+  | Fcall of { func_name : Symbol.t; dest : Temp.t option; args : Sop.t list }
   | Cast of {
       (* Do not generate new temporary. 
        * Only change the size of temporary. *)
-      dest : St.t;
-      src : St.t;
+      dest : Temp.t;
+      src : Temp.t;
     }
-  | Mov of { dest : St.t; src : Sop.t }
+  | Mov of { dest : Temp.t; src : Sop.t }
   | Jump of { target : Label.t }
   | CJump of {
       lhs : Sop.t;
@@ -95,13 +79,13 @@ type instr =
       target_false : Label.t;
     }
   | Ret of { var : Sop.t option }
-  | Load of { src : Mem.t; dest : St.t }
+  | Load of { src : Mem.t; dest : Temp.t }
   | Store of { src : Sop.t; dest : Mem.t }
   | Label of Label.t
   | Directive of string
   | Comment of string
 
-type fdefn = { func_name : Symbol.t; body : instr list; pars : St.t list }
+type fdefn = { func_name : Symbol.t; body : instr list; pars : Temp.t list }
 type program = fdefn list
 type t = instr
 
@@ -169,17 +153,17 @@ let pp_binop = function
 
 let pp_inst = function
   | Binop binop ->
-      sprintf "%s <-- %s %s %s" (St.pp binop.dest) (Sop.pp binop.lhs)
+      sprintf "%s <-- %s %s %s" (Temp.name binop.dest) (Sop.pp binop.lhs)
         (pp_binop binop.op) (Sop.pp binop.rhs)
   (* | Mov mv -> sprintf "%s <-- %s" (Sop.pp mv.dest) (Sop.pp mv.src) *)
   | Mov mv ->
       if Size.compare' mv.src.size mv.dest.size <> 0 then
         failwith
-          (sprintf "move size mismatch %s -> %s" (Sop.pp mv.src) (St.pp mv.dest));
-      sprintf "%s <-- %s" (St.pp mv.dest) (Sop.pp mv.src)
+          (sprintf "move size mismatch %s -> %s" (Sop.pp mv.src)
+             (Temp.name mv.dest));
+      sprintf "%s <-- %s" (Temp.name mv.dest) (Sop.pp mv.src)
   | Cast cast ->
-      sprintf "cast %s <-- %s" (Temp.name cast.dest.data)
-        (Temp.name cast.src.data)
+      sprintf "cast %s <-- %s" (Temp.name cast.dest) (Temp.name cast.src)
   | Jump jp -> sprintf "jump %s" (Label.name jp.target)
   | CJump cjp ->
       sprintf "cjump(%s %s %s) %s, %s" (Sop.pp cjp.lhs) (pp_binop cjp.op)
@@ -201,19 +185,17 @@ let pp_inst = function
             (List.map call.args ~f:(fun arg -> Sop.pp arg)
             |> String.concat ~sep:", ")
       | Some dest ->
-          sprintf "%s <- %s(%s)" (Temp.name dest.data)
+          sprintf "%s <- %s(%s)" (Temp.name dest)
             (Symbol.name call.func_name)
             (List.map call.args ~f:(fun arg -> Sop.pp arg)
             |> String.concat ~sep:", "))
-  | Load load ->
-      sprintf "load %s <- %s" (Temp.name load.dest.data) (Mem.pp load.src)
+  | Load load -> sprintf "load %s <- %s" (Temp.name load.dest) (Mem.pp load.src)
   | Store store ->
       sprintf "store %s <- %s" (Mem.pp store.dest) (Sop.pp store.src)
 
 let pp_fdefn (fdefn : fdefn) =
   let pars_str =
-    List.map fdefn.pars ~f:(fun par -> Temp.name par.data)
-    |> String.concat ~sep:", "
+    List.map fdefn.pars ~f:(fun par -> Temp.name par) |> String.concat ~sep:", "
   in
   let body_str =
     List.map fdefn.body ~f:(fun inst -> pp_inst inst) |> String.concat ~sep:"\n"

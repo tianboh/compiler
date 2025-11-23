@@ -25,8 +25,6 @@ open Core
 
 module T = struct
   type t = { id : int; size : Size.primitive } [@@deriving sexp, compare, hash]
-
-  let pp (t : t) : string = sprintf "%%t%d" t.id
 end
 
 include T
