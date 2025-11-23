@@ -1,0 +1,6 @@
+(library
+ (name ssa)
+ (libraries core util ir_tree var analysis_dominator analysis_cfg)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))
