@@ -125,6 +125,43 @@ let gen_ret () : instr = Ret
 let gen_label (l : Label.t) = Label { label = l }
 let gen_jump (target : Label.t) : t = Jump { target }
 
+let gen_mov (src : Temp.t) (dest : Temp.t) : t =
+  Mov
+    {
+      dest = Op.of_temp dest |> Sop.wrap dest.size;
+      src = Op.of_temp src |> Sop.wrap src.size;
+    }
+
+let sops_to_ts (sops : Sop.t list) : Temp.t list =
+  List.fold_left sops ~init:[] ~f:(fun acc sop ->
+      match sop.data with
+      | Temp t -> t :: acc
+      | Imm _ | Reg _ | Above_frame _ -> acc)
+
+(* Get lhs temporary(s) *)
+let get_defs (instr : t) : Temp.t list =
+  match instr with
+  | Binop binop -> sops_to_ts [ binop.dest ]
+  | Cast cast -> [ cast.dest ]
+  | Mov mov -> sops_to_ts [ mov.dest ]
+  | Load load -> [ load.dest ]
+  | Pop pop -> sops_to_ts [ pop.var ]
+  | Push _ | CJump _ | Jump _ | Store _ | Ret | Label _ | Directive _
+  | Comment _ | Fcall _ ->
+      []
+
+(* Get rhs temporary(s) *)
+let get_uses (instr : t) : Temp.t list =
+  match instr with
+  | Binop binop -> sops_to_ts [ binop.lhs; binop.rhs ]
+  | Fcall fcall -> sops_to_ts fcall.args
+  | Cast cast -> [ cast.src ]
+  | Mov mov -> sops_to_ts [ mov.src ]
+  | CJump cjump -> sops_to_ts [ cjump.lhs; cjump.rhs ]
+  | Push push -> sops_to_ts [ push.var ]
+  | Store store -> sops_to_ts [ store.src ]
+  | Load _ | Pop _ | Jump _ | Label _ | Ret | Directive _ | Comment _ -> []
+
 (* Given jump/conditional jump, return target label list. *)
 let next (instr : instr) : Label.t list =
   match instr with
@@ -149,6 +186,63 @@ let replace_ctarget (instr : instr) (old_target : Label.t)
         CJump { cjp with target_true = new_target }
       else failwith "old target do not match to cond jump"
   | _ -> failwith "expect cond jump to replace target"
+
+let replace_sop (sop : Sop.t) (old_temp : Temp.t) (new_temp : Temp.t) : Sop.t =
+  match sop.data with
+  | Temp t ->
+      if Temp.equal t old_temp then
+        Sop.wrap new_temp.size (new_temp |> Op.of_temp)
+      else sop
+  | _ -> sop
+
+let replace_temp (instr : t) (old_temp : Temp.t) (new_temp : Temp.t) : t =
+  let r_sop = replace_sop in
+  let r_temp temp old_temp new_temp =
+    if Temp.equal temp old_temp then new_temp else temp
+  in
+  match instr with
+  | Binop b ->
+      Binop
+        {
+          b with
+          dest = r_sop b.dest old_temp new_temp;
+          lhs = r_sop b.lhs old_temp new_temp;
+          rhs = r_sop b.rhs old_temp new_temp;
+        }
+  | Fcall f ->
+      Fcall
+        {
+          f with
+          args = List.map f.args ~f:(fun arg -> r_sop arg old_temp new_temp);
+        }
+  | Cast c ->
+      Cast
+        {
+          dest = r_temp c.dest old_temp new_temp;
+          src = r_temp c.src old_temp new_temp;
+        }
+  | Mov m ->
+      Mov
+        {
+          dest = r_sop m.dest old_temp new_temp;
+          src = r_sop m.src old_temp new_temp;
+        }
+  | CJump cjump ->
+      CJump
+        {
+          cjump with
+          lhs = r_sop cjump.lhs old_temp new_temp;
+          rhs = r_sop cjump.rhs old_temp new_temp;
+        }
+  | Push push -> Push { var = r_sop push.var old_temp new_temp }
+  | Pop pop -> Pop { var = r_sop pop.var old_temp new_temp }
+  | Load load -> Load { load with dest = r_temp load.dest old_temp new_temp }
+  | Store store -> Store { store with src = r_sop store.src old_temp new_temp }
+  | Ret -> Ret
+  | Jump j -> Jump j
+  | Label l -> Label l
+  | Directive dir -> Directive dir
+  | Comment cmt -> Comment cmt
 
 let pp_binop = function
   | Plus -> "+"
