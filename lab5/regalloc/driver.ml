@@ -82,7 +82,7 @@ end
 module Helper = struct
   (* Build edge between vertices and vertex *)
   let build_vtx_vtxs adj vertex vertices =
-    let s_vertex = IG.Vertex.Set.of_list [ vertex ] in
+    let s_vertex = IG.Vertex.Set.singleton vertex in
     let s_vertex_nbr =
       match IG.Vertex.Map.find adj vertex with
       | None -> IG.Vertex.Set.empty
@@ -128,7 +128,7 @@ module Helper = struct
               ~f:(fun interf_graph_acc def ->
                 (* build edges between defs *)
                 let defs' =
-                  IG.Vertex.Set.diff defs (IG.Vertex.Set.of_list [ def ])
+                  IG.Vertex.Set.diff defs (IG.Vertex.Set.singleton def)
                 in
                 let s_def_nbr =
                   match IG.Vertex.Map.find interf_graph def with
@@ -177,9 +177,9 @@ module Lazy = struct
 
   let trans_operand (operand : Abs_asm.Sop.t) =
     match operand.data with
-    | Abs_asm.Op.Temp t -> IG.Vertex.Set.of_list [ IG.Vertex.T.Temp t ]
+    | Abs_asm.Op.Temp t -> IG.Vertex.Set.singleton (IG.Vertex.T.Temp t)
     | Abs_asm.Op.Imm _ | Abs_asm.Op.Above_frame _ -> IG.Vertex.Set.empty
-    | Abs_asm.Op.Reg r -> IG.Vertex.Set.of_list [ IG.Vertex.T.Reg r ]
+    | Abs_asm.Op.Reg r -> IG.Vertex.Set.singleton (IG.Vertex.T.Reg r)
 
   let rec collect_vertex (prog : Abs_asm.instr list) res =
     match prog with
