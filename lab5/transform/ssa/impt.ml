@@ -218,4 +218,57 @@ struct
     in
     let entry_bb = Cfg.get_entry_bb bbmap in
     rename ssa_bbmap_init entry_bb.label !dom_tree_rev
+
+  let from_ssa (bbmap : ssa_bbmap) : Cfg.bbmap =
+    (* Store (src, dst) pairs to handle parallel copies correctly *)
+    let (phi_moves : (Temp.t * Temp.t) list Label.Map.t ref) =
+      ref Label.Map.empty
+    in
+    Label.Map.iter bbmap ~f:(fun ssa_bb ->
+        List.iter ssa_bb.instrs ~f:(function
+          | Instr _ -> ()
+          | Phi phi ->
+              let dst = phi.dst in
+              Label.Map.iteri phi.srcs ~f:(fun ~key:pred_label ~data:src ->
+                  let moves =
+                    match Label.Map.find !phi_moves pred_label with
+                    | None -> []
+                    | Some s -> s
+                  in
+                  phi_moves :=
+                    Label.Map.set !phi_moves ~key:pred_label
+                      ~data:((src, dst) :: moves))));
+    let (ret : Cfg.bbmap ref) = ref Label.Map.empty in
+    Label.Map.iteri bbmap ~f:(fun ~key:label ~data:ssa_bb ->
+        let moves_pairs =
+          match Label.Map.find !phi_moves label with None -> [] | Some s -> s
+        in
+        (* Generate moves using temps to handle parallel copies (swaps) *)
+        let reads, writes =
+          List.fold_left moves_pairs ~init:([], [])
+            ~f:(fun (acc_r, acc_w) (src, dst) ->
+              let tmp = Temp.create dst.size in
+              let read = Instr.gen_mov src tmp in
+              let write = Instr.gen_mov tmp dst in
+              (read :: acc_r, write :: acc_w))
+        in
+        let movs = List.rev reads @ List.rev writes in
+        let (instrs_rev : Instr.instr list) =
+          List.rev
+            (List.filter_map ssa_bb.instrs ~f:(function
+              | Phi _ -> None
+              | Instr i -> Some i))
+        in
+        let terminator, body_rev =
+          match instrs_rev with
+          | [] -> failwith "Block must have at least one instruction"
+          | last :: rest -> (last, rest)
+        in
+        (* Insert moves BEFORE the terminator *)
+        let instrs = List.rev body_rev @ movs @ [ terminator ] in
+        let (bb : Cfg.bb) =
+          { label; preds = ssa_bb.preds; succs = ssa_bb.succs; instrs }
+        in
+        ret := Label.Map.set !ret ~key:label ~data:bb);
+    !ret
 end
