@@ -29,6 +29,8 @@ module Sreg = Var.X86_reg.Hard
 module Size = Var.Size
 module AbsCFG = Analysis_cfg.Impt.Wrapper (Inst)
 module Trans = Transform.Utils.Make (Inst) (AbsCFG)
+module AbsDom = Analysis_dominator.Impt.Make (AbsCFG)
+module AbsSSA = Ssa.Impt.Make (Inst) (AbsCFG) (AbsDom)
 open Inst
 open Reg
 
@@ -330,6 +332,10 @@ let rec gen (program : Src.program) (res : Dest.program) : Dest.program =
         |> Trans.add_synthetic_label 0 []
         |> Trans.split_critical_edges
       in
+      let bbmap, label_list = AbsCFG.build_bb prog in
+      let ssa = AbsSSA.to_ssa bbmap in
+      let new_bbmap = AbsSSA.from_ssa ssa in
+      let new_prog = AbsCFG.to_instrs new_bbmap label_list in
       (* let prog = gen_program prologue body epilogue in *)
-      let fdefn = { func_name = Symbol.name h.func_name; body = prog } in
+      let fdefn = { func_name = Symbol.name h.func_name; body = new_prog } in
       gen t (fdefn :: res)

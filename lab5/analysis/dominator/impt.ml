@@ -76,6 +76,7 @@ module Make (C : Analysis_cfg.Sig.CFGInterface) :
 
   let build_df (bbmap : bbmap) (dt : Label.t Label.Map.t) :
       Label.Set.t Label.Map.t =
+    (* C.pp_bbmap bbmap; *)
     let rpo = ref [] in
     let df = ref Label.Map.empty in
     (* Initialize df for every node *)

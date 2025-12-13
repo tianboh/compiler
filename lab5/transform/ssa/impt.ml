@@ -174,7 +174,9 @@ struct
         | Some s -> s
       in
       Label.Set.iter children ~f:(fun child_label ->
-          search child_label dom_tree_rev);
+          (* entry block's children in rev idom tree have itself. We don't want infinite loop *)
+          if not (Label.equal bb_label child_label) then
+            search child_label dom_tree_rev);
       (* Current block process finished, pop current defined temp from stack *)
       List.iter bb.instrs ~f:(fun instr ->
           let defs =

@@ -45,6 +45,34 @@ struct
   let pp_bbmap (bbmap : bbmap) : unit =
     Label.Map.iter bbmap ~f:(fun bb -> pp_bb bb)
 
+  (* Remove illegal format, including
+   * 1. Unreachable block.
+   *)
+  let legalize (_bbmap : bbmap) (_order : Label.t list) : bbmap * Label.t list =
+    let (visited : Label.Set.t ref) = ref Label.Set.empty in
+    let rec dfs (u : Label.t) : unit =
+      if not (Label.Set.mem !visited u) then (
+        visited := Label.Set.add !visited u;
+        let bb = Label.Map.find_exn _bbmap u in
+        List.iter bb.succs ~f:(fun succ -> dfs succ))
+    in
+    dfs entry_label;
+    let (legal_bbmap : bbmap ref) = ref Label.Map.empty in
+    let (legal_order : Label.t list ref) = ref [] in
+    legal_order :=
+      List.filter _order ~f:(fun label -> Label.Set.mem !visited label);
+    List.iter !legal_order ~f:(fun label ->
+        let bb = Label.Map.find_exn _bbmap label in
+        let preds =
+          List.filter bb.preds ~f:(fun pred -> Label.Set.mem !visited pred)
+        in
+        let succs =
+          List.filter bb.succs ~f:(fun succ -> Label.Set.mem !visited succ)
+        in
+        legal_bbmap :=
+          Label.Map.set !legal_bbmap ~key:label ~data:{ bb with preds; succs });
+    (!legal_bbmap, !legal_order)
+
   (* Build a basic block, and add label, instrs info. preds and succss
    * is addad later in _build_ps *)
   let rec _build_bb (instrs : i list) (bb_instrs : i list)
@@ -156,7 +184,8 @@ struct
       |> _build_ps ((entry_label :: label_order) @ [ exit_label ])
       |> _handle_exit
     in
-    (bbmap, (entry_label :: label_order) @ [ exit_label ])
+    let order = (entry_label :: label_order) @ [ exit_label ] in
+    legalize bbmap order
 
   let to_instrs (bbs : bbmap) (order : Label.t list) =
     List.map order ~f:(fun l ->

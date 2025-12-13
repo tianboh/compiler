@@ -55,6 +55,7 @@ module type CFGInterface = sig
   (* Return basic blocks. Add entry and exit block automatically. *)
   val build_bb : i list -> bbmap * Label.t list
   val to_instrs : bbmap -> Label.t list -> i list
+  val legalize : bbmap -> Label.t list -> bbmap * Label.t list
 
   (* Get reverse postorder. On CFG, topoorder may not exist because cycle
    * In this case, reverse postorder is a "best-effort" for it. On DAG,
