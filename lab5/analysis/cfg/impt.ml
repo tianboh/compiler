@@ -48,7 +48,8 @@ struct
   (* Remove illegal format, including
    * 1. Unreachable block.
    *)
-  let legalize (_bbmap : bbmap) (_order : Label.t list) : bbmap * Label.t list =
+  let post_legalize (_bbmap : bbmap) (_order : Label.t list) :
+      bbmap * Label.t list =
     let (visited : Label.Set.t ref) = ref Label.Set.empty in
     let rec dfs (u : Label.t) : unit =
       if not (Label.Set.mem !visited u) then (
@@ -154,43 +155,167 @@ struct
           | Some exit_bb -> { exit_bb with preds = bb.label :: exit_bb.preds }
           | None -> failwith "update non-exist label"))
 
+  let eliminate_fall_through (instrs : I.t list) : I.t list =
+    let rec helper (acc_instrs : I.t list) (instrs : I.t list) : I.t list =
+      match instrs with
+      | [] -> List.rev acc_instrs
+      | h :: t ->
+          if I.is_label h then
+            match acc_instrs with
+            (* h is entry label *)
+            | [] -> helper (h :: acc_instrs) t
+            | prev_instr :: _ ->
+                if
+                  I.is_jump prev_instr || I.is_cjump prev_instr
+                  || I.is_return prev_instr
+                then helper (h :: acc_instrs) t
+                else
+                  let jump_instr = I.gen_jump (I.get_label h) in
+                  helper (h :: jump_instr :: acc_instrs) t
+          else helper (h :: acc_instrs) t
+    in
+    helper [] instrs
+
+  let rec add_synthetic_label (next_synth_id : int) (acc_instrs : I.t list)
+      (instrs : I.t list) : I.t list =
+    match instrs with
+    | [] -> List.rev acc_instrs
+    | h :: t ->
+        if I.is_terminator h then
+          match t with
+          | [] -> List.rev (h :: acc_instrs)
+          | next :: _ ->
+              if I.is_label next then
+                add_synthetic_label next_synth_id (h :: acc_instrs) t
+              else
+                let synth_label =
+                  Label.label (Some ("synth" ^ string_of_int next_synth_id))
+                in
+                let synth_label_instr = I.gen_label synth_label in
+                add_synthetic_label (next_synth_id + 1) (h :: acc_instrs)
+                  (synth_label_instr :: t)
+        else add_synthetic_label next_synth_id (h :: acc_instrs) t
+
+  let split_id = ref 0
+
+  (* Make sure each terminator is followed by a label. If not, add a synthetic label after it 
+   * This function ensures even unreachable instructions have a label, therefore they are
+   * in their own block. *)
+
+  let has_edge (u_label : Label.t) (v_label : Label.t) (bbmap : bbmap) : bool =
+    let u_bb = Label.Map.find_exn bbmap u_label in
+    List.mem u_bb.succs v_label ~equal:Label.equal
+
+  let is_critical_edge (u_label : Label.t) (v_label : Label.t) (bbmap : bbmap) :
+      bool =
+    let u_bb = Label.Map.find_exn bbmap u_label in
+    let v_bb = Label.Map.find_exn bbmap v_label in
+    let edge_uv_exist = has_edge u_label v_label bbmap in
+    let src_has_multi_dests =
+      if List.length u_bb.succs > 1 then true else false
+    in
+    let dest_has_multi_srcs =
+      if List.length v_bb.preds > 1 then true else false
+    in
+    edge_uv_exist && src_has_multi_dests && dest_has_multi_srcs
+
+  let split_edge (u_label : Label.t) (v_label : Label.t) (bbmap : bbmap) :
+      bbmap * Label.t =
+    let u_bb_old = Label.Map.find_exn bbmap u_label in
+    let v_bb_old = Label.Map.find_exn bbmap v_label in
+    assert (has_edge u_label v_label bbmap);
+    let label_name = sprintf "split_%d" !split_id in
+    split_id := !split_id + 1;
+    let new_label = Label.label' label_name in
+    let new_bb : bb =
+      {
+        label = new_label;
+        instrs = [ I.gen_label new_label; I.gen_jump v_label ];
+        preds = [ u_label ];
+        succs = [ v_label ];
+      }
+    in
+    let u_bb_instrs =
+      List.fold_left u_bb_old.instrs ~init:[] ~f:(fun acc instr ->
+          let new_instr =
+            if
+              I.is_jump instr
+              && List.mem (I.get_targets instr) v_label ~equal:Label.equal
+            then I.replace_target instr new_label
+            else if
+              I.is_cjump instr
+              && List.mem (I.get_targets instr) v_label ~equal:Label.equal
+            then I.replace_ctarget instr v_label new_label
+            else instr
+          in
+          new_instr :: acc)
+      |> List.rev
+    in
+    let u_bb_new_succs =
+      new_label
+      :: List.filter u_bb_old.succs ~f:(fun x -> not (Label.equal x v_label))
+    in
+    let u_bb_new =
+      { u_bb_old with instrs = u_bb_instrs; succs = u_bb_new_succs }
+    in
+    let v_bb_new_preds =
+      new_label
+      :: List.filter v_bb_old.preds ~f:(fun x -> not (Label.equal x u_label))
+    in
+    let v_bb_new = { v_bb_old with preds = v_bb_new_preds } in
+    let bbmap = Label.Map.set bbmap ~key:u_label ~data:u_bb_new in
+    let bbmap = Label.Map.set bbmap ~key:v_label ~data:v_bb_new in
+    let bbmap = Label.Map.set bbmap ~key:new_label ~data:new_bb in
+    (bbmap, new_label)
+
+  let split_critical_edges (bbmap : bbmap) (orders : Label.t list) :
+      bbmap * Label.t list =
+    let critical_edges : (Label.t * Label.t) list =
+      List.fold_right orders ~init:[] ~f:(fun u_label acc ->
+          let u_bb = Label.Map.find_exn bbmap u_label in
+          List.fold_right u_bb.succs ~init:acc ~f:(fun v_label acc_inner ->
+              if is_critical_edge u_label v_label bbmap then
+                (u_label, v_label) :: acc_inner
+              else acc_inner))
+    in
+    List.fold_left critical_edges ~init:(bbmap, orders)
+      ~f:(fun (current_bbmap, current_orders) edge ->
+        let u_label, v_label = edge in
+        let new_bbmap, new_label = split_edge u_label v_label current_bbmap in
+        let new_orders =
+          List.fold_right current_orders ~init:[] ~f:(fun l acc ->
+              if Label.equal l u_label then l :: new_label :: acc else l :: acc)
+        in
+        (new_bbmap, new_orders))
+
+  let pre_legalize (_instrs : i list) : i list =
+    eliminate_fall_through _instrs |> add_synthetic_label 0 []
+
   (* Build basic blocks with entry and exit block *)
-  let build_bb (instrs : i list) : bbmap * Label.t list =
-    let label_order =
+  let build_bb (_instrs : i list) : bbmap * Label.t list =
+    let instrs_w_ee =
+      (I.gen_label entry_label :: _instrs) @ [ I.gen_label exit_label ]
+    in
+    let instrs = pre_legalize instrs_w_ee in
+    let orders =
       List.fold_left instrs ~init:[] ~f:(fun acc h ->
           if I.is_label h then I.get_label h :: acc else acc)
       |> List.rev
     in
     let bbmap = _build_bb instrs [] None Label.Map.empty in
-    let entry_block =
-      {
-        label = entry_label;
-        instrs = [];
-        preds = [];
-        succs = [ List.hd_exn label_order ];
-      }
-    in
-    let exit_block =
-      { label = exit_label; instrs = []; preds = []; succs = [] }
-    in
-    let bbmap =
-      bbmap
-      |> Label.Map.set ~key:entry_label ~data:entry_block
-      |> Label.Map.set ~key:exit_label ~data:exit_block
-    in
+    let bbmap, orders = split_critical_edges bbmap orders in
     (* List.iter instrs ~f:(fun instr -> printf "%s\n%!" (I.pp_inst instr)); *)
-    let bbmap =
-      bbmap
-      |> _build_ps ((entry_label :: label_order) @ [ exit_label ])
-      |> _handle_exit
-    in
-    let order = (entry_label :: label_order) @ [ exit_label ] in
-    legalize bbmap order
+    let bbmap = bbmap |> _build_ps orders |> _handle_exit in
+    post_legalize bbmap orders
 
   let to_instrs (bbs : bbmap) (order : Label.t list) =
-    List.map order ~f:(fun l ->
-        let bb = Label.Map.find_exn bbs l in
-        bb.instrs)
+    List.filter order ~f:(fun label ->
+        if Label.equal label entry_label || Label.equal label exit_label then
+          false
+        else true)
+    |> List.map ~f:(fun l ->
+           let bb = Label.Map.find_exn bbs l in
+           bb.instrs)
     |> List.concat
 
   let get_rpo (bbs : bbmap) : Label.t list =

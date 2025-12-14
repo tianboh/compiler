@@ -195,6 +195,7 @@ struct
     !ssa_bbmap
 
   let to_ssa (bbmap : Cfg.bbmap) : ssa_bbmap =
+    (* Cfg.pp_bbmap bbmap; *)
     let dom_tree = Dom.build_dt bbmap in
     let frontier = Dom.build_df bbmap dom_tree in
     let (dom_tree_rev : Label.Set.t Label.Map.t ref) = ref Label.Map.empty in

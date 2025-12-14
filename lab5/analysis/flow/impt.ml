@@ -232,7 +232,6 @@ functor
       helper bbmap [ start ]
 
     let run (cfg_bbmap : CFG.bbmap) : bbmap =
-      (* CFG.pp_bbmap cfg_bbmap; *)
       let start_block =
         match DFType.direction with
         | Sig.Forward -> CFG.get_entry_bb cfg_bbmap

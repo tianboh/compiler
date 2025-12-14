@@ -31,6 +31,15 @@ module type InstrInterface = sig
 
   (* Given jump/conditional jump, return target label list. *)
   val get_targets : t -> Label.t list
+
+  (* Replace target of Jump *)
+  val replace_target : t -> Label.t -> t
+
+  (* Replace old target to new target for CJump *)
+  val replace_ctarget : t -> Label.t -> Label.t -> t
+  val gen_label : Label.t -> t
+  val gen_jump : Label.t -> t
+  val gen_ret : unit -> t
   val pp_inst : t -> string
 end
 
@@ -55,7 +64,8 @@ module type CFGInterface = sig
   (* Return basic blocks. Add entry and exit block automatically. *)
   val build_bb : i list -> bbmap * Label.t list
   val to_instrs : bbmap -> Label.t list -> i list
-  val legalize : bbmap -> Label.t list -> bbmap * Label.t list
+  val pre_legalize : i list -> i list
+  val post_legalize : bbmap -> Label.t list -> bbmap * Label.t list
 
   (* Get reverse postorder. On CFG, topoorder may not exist because cycle
    * In this case, reverse postorder is a "best-effort" for it. On DAG,
