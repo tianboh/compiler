@@ -31,6 +31,15 @@ struct
 
   type ssa_bbmap = ssa_bb Label.Map.t
 
+  let get_defs (instr : ssa_instr) : Temp.t list =
+    match instr with Phi p -> [ p.dst ] | Instr i -> Instr.get_defs i
+
+  let get_uses (instr : ssa_instr) : Temp.t list =
+    match instr with
+    | Phi p ->
+        Label.Map.fold p.srcs ~init:[] ~f:(fun ~key:_ ~data:t acc -> t :: acc)
+    | Instr i -> Instr.get_uses i
+
   (* Collect every definition of temp. Key is temp, value is definition set. *)
   let collect_tmap (bbmap : Cfg.bbmap) : Label.Set.t Temp.Map.t =
     let tmap = ref Temp.Map.empty in

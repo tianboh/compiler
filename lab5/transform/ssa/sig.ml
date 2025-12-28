@@ -39,6 +39,8 @@ module type S = sig
 
   type ssa_bbmap = ssa_bb Label.Map.t
 
+  val get_defs : ssa_instr -> Temp.t list
+  val get_uses : ssa_instr -> Temp.t list
   val collect_tmap : cfg_bbmap -> cfg_set Temp.Map.t
 
   val insert_phi :
