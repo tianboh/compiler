@@ -1,0 +1,6 @@
+(library
+ (name adce)
+ (libraries core util var analysis_dominator analysis_cfg ssa)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_expect)))
