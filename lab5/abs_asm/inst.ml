@@ -114,13 +114,23 @@ let is_return = function Ret -> true | _ -> false
 let is_terminator (instr : t) : bool =
   is_jump instr || is_cjump instr || is_return instr
 
+(* Different layer side-effect definition may be different.
+ * In Abs_asm, mov with register means preserv callee register,
+ * and move to %rax as return. So we treat them as side-effect
+ * to avoid that they are eliminated.
+ *)
 let has_side_effect (instr : t) : bool =
   match instr with
-  | Cast _ | Mov _ | Directive _ | Load _ | Comment _ -> false
+  | Cast _ | Directive _ | Load _ | Comment _ -> false
   | Label _ | Ret | Store _ | Jump _ | CJump _ | Push _ | Pop _ | Fcall _ ->
       true
   | Binop binop -> (
       match binop.op with Divided_by | Modulo -> true | _ -> false)
+  | Mov mov -> (
+      match (mov.dest.data, mov.src.data) with
+      | Reg _, _ -> true
+      | _, Reg _ -> true
+      | _, _ -> false)
 
 let[@warning "-27"] is_assert (i : instr) : bool = false
 

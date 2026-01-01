@@ -337,11 +337,13 @@ let rec gen (program : Src.program) (res : Dest.program) : Dest.program =
       let body, _ = gen_section "body_" h.func_name body_content in
       let prog = gen_program prologue body epilogue in
       (* let bbmap, label_list = AbsCFG.build_bb prog in
-      let ssa = AbsSSA.to_ssa bbmap in
       let new_bbmap = AbsSSA.from_ssa ssa in
       let new_prog = AbsCFG.to_instrs new_bbmap label_list in *)
       let bbmap, label_list = AbsCFG.build_bb prog in
-      let new_prog = AbsCFG.to_instrs bbmap label_list in
+      let ssa = AbsSSA.to_ssa bbmap in
+      let ssa_adce = AbsADCE.run ssa in
+      let new_bbmap = AbsSSA.from_ssa ssa_adce in
+      let new_prog = AbsCFG.to_instrs new_bbmap label_list in
       (* let prog = gen_program prologue body epilogue in *)
       let fdefn = { func_name = Symbol.name h.func_name; body = new_prog } in
       gen t (fdefn :: res)
