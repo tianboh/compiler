@@ -116,8 +116,9 @@ let is_terminator (instr : t) : bool =
 
 let has_side_effect (instr : t) : bool =
   match instr with
-  | Cast _ | Mov _ | Label _ | Directive _ | Load _ | Comment _ -> false
-  | Ret | Store _ | Jump _ | CJump _ | Push _ | Pop _ | Fcall _ -> true
+  | Cast _ | Mov _ | Directive _ | Load _ | Comment _ -> false
+  | Label _ | Ret | Store _ | Jump _ | CJump _ | Push _ | Pop _ | Fcall _ ->
+      true
   | Binop binop -> (
       match binop.op with Divided_by | Modulo -> true | _ -> false)
 

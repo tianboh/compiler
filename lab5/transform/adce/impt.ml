@@ -32,6 +32,8 @@ struct
     !defmap
 
   let run (ssa_bbmap : Ssa.ssa_bbmap) : Ssa.ssa_bbmap =
+    (* printf "before ADCE\n";
+    Ssa.print_ssa_bbmap ssa_bbmap; *)
     let (worklist : Temp.t list ref) = ref [] in
     let (live_set : Temp.Set.t ref) = ref Temp.Set.empty in
     let (defmap : Ssa.ssa_instr Temp.Map.t ref) = ref Temp.Map.empty in
@@ -59,5 +61,7 @@ struct
         in
         let adce_ssa_bb = { ssa_bb with instrs } in
         ret := Label.Map.set !ret ~key:adce_ssa_bb.label ~data:adce_ssa_bb);
+    (* printf "after ADCE\n";
+    Ssa.print_ssa_bbmap !ret; *)
     !ret
 end

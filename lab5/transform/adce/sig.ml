@@ -28,6 +28,7 @@ module type ADCEInstrInterface = sig
    * 4) Push/Pop, it modifies %rsp
    * 5) Jump/Cjump, change CFG
    * 6) Div/Mod
+   * 7) Label, similar to Jump/Cjump logic
    *)
   val has_side_effect : instr -> bool
 
