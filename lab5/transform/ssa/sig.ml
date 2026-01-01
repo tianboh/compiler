@@ -21,6 +21,7 @@ module type SSAInstrInterface = sig
 
   (* gen_mov is used when deconstructing phi node. *)
   val gen_mov : Temp.t -> Temp.t -> instr
+  val pp_inst : instr -> string
 end
 
 module type S = sig
@@ -49,6 +50,7 @@ module type S = sig
   val rename : ssa_bbmap -> Label.t -> cfg_set Label.Map.t -> ssa_bbmap
   val to_ssa : cfg_bbmap -> ssa_bbmap
   val from_ssa : ssa_bbmap -> cfg_bbmap
+  val print_ssa_bbmap : ssa_bbmap -> unit
 end
 
 module type Make = functor

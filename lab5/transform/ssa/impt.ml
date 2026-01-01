@@ -283,4 +283,22 @@ struct
         in
         ret := Label.Map.set !ret ~key:label ~data:bb);
     !ret
+
+  let print_ssa_instr (instr : ssa_instr) : unit =
+    let () =
+      match instr with
+      | Instr i -> printf "%s" (Instr.pp_inst i)
+      | Phi phi ->
+          printf "%s = " (Temp.name phi.dst);
+          Label.Map.iteri phi.srcs ~f:(fun ~key:branch ~data ->
+              printf "%s %s, " (Label.name branch) (Temp.name data))
+    in
+    printf "\n"
+
+  let print_ssa_bbmap (ssa_bbmap : ssa_bbmap) : unit =
+    Label.Map.iter ssa_bbmap ~f:(fun ssa_bb ->
+        printf "%s\n" (Label.name ssa_bb.label);
+        List.iter ssa_bb.instrs ~f:(fun instr ->
+            printf "\t";
+            print_ssa_instr instr))
 end
