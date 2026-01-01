@@ -29,7 +29,17 @@ module Sreg = Var.X86_reg.Hard
 module Size = Var.Size
 module AbsCFG = Analysis_cfg.Impt.Wrapper (Inst)
 module AbsDom = Analysis_dominator.Impt.Make (AbsCFG)
-module AbsSSA = Ssa.Impt.Make (Inst) (AbsCFG) (AbsDom)
+module AbsSSA_internal = Ssa.Impt.Make (Inst) (AbsCFG) (AbsDom)
+
+module AbsSSA = struct
+  include AbsSSA_internal
+
+  type instr = Inst.instr
+  type cfg_bbmap = AbsCFG.bbmap
+  type cfg_set = AbsCFG.set
+end
+
+module AbsADCE = Adce.Impt.Make (Inst) (AbsSSA)
 open Inst
 open Reg
 

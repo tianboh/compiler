@@ -21,10 +21,13 @@ module Temp = Var.Temp
 module type ADCEInstrInterface = sig
   type instr
 
-  (* Instructions with following cases are considered side-effect
+  (* Instructions with following cases are considered side-effect in ADCE
    * 1) Mem write
    * 2) Return
    * 3) Function call
+   * 4) Push/Pop, it modifies %rsp
+   * 5) Jump/Cjump, change CFG
+   * 6) Div/Mod
    *)
   val has_side_effect : instr -> bool
 

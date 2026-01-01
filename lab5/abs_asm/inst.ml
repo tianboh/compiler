@@ -114,6 +114,13 @@ let is_return = function Ret -> true | _ -> false
 let is_terminator (instr : t) : bool =
   is_jump instr || is_cjump instr || is_return instr
 
+let has_side_effect (instr : t) : bool =
+  match instr with
+  | Cast _ | Mov _ | Label _ | Directive _ | Load _ | Comment _ -> false
+  | Ret | Store _ | Jump _ | CJump _ | Push _ | Pop _ | Fcall _ -> true
+  | Binop binop -> (
+      match binop.op with Divided_by | Modulo -> true | _ -> false)
+
 let[@warning "-27"] is_assert (i : instr) : bool = false
 
 let get_label (instr : instr) : Label.t =
